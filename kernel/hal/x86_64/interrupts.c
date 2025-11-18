@@ -73,6 +73,26 @@ void interrupt_handler_c(interrupt_frame_t* frame) {
         return;
     }
     
+    // Handle keyboard interrupt (IRQ 1 = interrupt 33)
+    if (interrupt_num == 33) {
+        extern void keyboard_interrupt_handler(void);
+        keyboard_interrupt_handler();
+        
+        // Send EOI to PIC
+        pic_send_eoi(irq);
+        return;
+    }
+    
+    // Handle mouse interrupt (IRQ 12 = interrupt 44)
+    if (interrupt_num == 44) {
+        extern void mouse_interrupt_handler(void);
+        mouse_interrupt_handler();
+        
+        // Send EOI to PIC
+        pic_send_eoi(irq);
+        return;
+    }
+    
     // Handle other interrupts
     kdebug("Unhandled interrupt: %lu (IRQ %u)\n", interrupt_num, irq);
     

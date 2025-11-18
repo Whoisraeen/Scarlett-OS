@@ -232,6 +232,15 @@ void kernel_main(boot_info_t* boot_info) {
     kinfo("Initializing AHCI driver...\n");
     ahci_init();
     
+    // Input Drivers
+    extern error_code_t keyboard_init(void);
+    kinfo("Initializing keyboard...\n");
+    keyboard_init();
+    
+    extern error_code_t mouse_init(void);
+    kinfo("Initializing mouse...\n");
+    mouse_init();
+    
     // User & Group System
     extern error_code_t user_init(void);
     kinfo("Initializing user system...\n");

@@ -160,11 +160,11 @@
 - [x] Double buffering
 - [x] Clipping and alpha blending
 
-#### E.3 Windowing System (12-16 weeks)
+#### E.3 Windowing System (12-16 weeks) - ✅ 25% Complete
 - [ ] Window manager
-- [ ] Event system (mouse, keyboard)
+- [x] Event system (mouse, keyboard) - PS/2 drivers implemented
 - [ ] Window compositing
-- [ ] Input handling
+- [x] Input handling - Keyboard and mouse drivers ready
 
 #### E.4 UI Toolkit (12-16 weeks)
 - [ ] Widget system (buttons, inputs, etc.)

@@ -102,7 +102,10 @@ C_SRCS += sched/scheduler.c \
           sync/lockfree.c \
           drivers/graphics/framebuffer.c \
           graphics/graphics.c \
-          graphics/font.c
+          graphics/font.c \
+          drivers/ps2/ps2.c \
+          drivers/ps2/keyboard.c \
+          drivers/ps2/mouse.c
 
 # Object files
 ASM_OBJS = $(ASM_SRCS:.S=.o)
