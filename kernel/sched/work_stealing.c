@@ -12,7 +12,17 @@
 #include "../include/kprintf.h"
 #include "../include/debug.h"
 
-// Forward declarations
+// Forward declaration
+typedef struct per_cpu_runqueue {
+    spinlock_t lock;
+    thread_t* ready_queues[128];
+    thread_t* blocked_queue;
+    thread_t* current_thread;
+    thread_t* idle_thread;
+    uint32_t cpu_id;
+} per_cpu_runqueue_t;
+
+// Forward declaration
 extern per_cpu_runqueue_t* get_cpu_runqueue(uint32_t cpu_id);
 extern void add_to_ready_queue(thread_t* thread, uint32_t cpu_id);
 
@@ -49,14 +59,9 @@ static thread_t* try_steal_from_cpu(uint32_t thief_cpu_id, uint32_t victim_cpu_i
             victim_rq->ready_queues[priority] = stolen->next;
             stolen->next = NULL;
             
-            // Check CPU affinity - don't steal if thread is pinned to victim CPU
-            if (stolen->cpu_affinity >= 0 && (int32_t)victim_cpu_id == stolen->cpu_affinity) {
-                // Put it back (restore queue)
-                stolen->next = victim_rq->ready_queues[priority];
-                victim_rq->ready_queues[priority] = stolen;
-                stolen = NULL;
-                continue;  // Try next priority
-            }
+            // Check CPU affinity (if implemented)
+            // TODO: Add cpu_affinity field to thread_t
+            // For now, threads can be stolen from any CPU
             
             // Found a stealable thread
             break;

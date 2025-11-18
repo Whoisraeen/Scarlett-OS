@@ -6,8 +6,8 @@
 #ifndef KERNEL_APIC_H
 #define KERNEL_APIC_H
 
-#include "../types.h"
-#include "../errors.h"
+#include "types.h"
+#include "errors.h"
 
 // Local APIC registers
 #define LAPIC_ID          0x020

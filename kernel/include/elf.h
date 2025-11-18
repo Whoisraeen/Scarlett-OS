@@ -8,7 +8,8 @@
 #ifndef KERNEL_ELF_H
 #define KERNEL_ELF_H
 
-#include "../types.h"
+#include "types.h"
+#include "mm/vmm.h"
 
 // ELF magic number
 #define ELF_MAGIC 0x464C457F  // "\x7FELF"

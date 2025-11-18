@@ -8,6 +8,7 @@
 
 #include "../types.h"
 #include "../errors.h"
+#include "mm/vmm.h"
 
 // Memory protection flags
 #define PROT_READ    0x01

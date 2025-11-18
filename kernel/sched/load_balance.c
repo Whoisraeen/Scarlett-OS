@@ -16,11 +16,20 @@
 // Load balancing threshold (difference in runqueue length)
 #define LOAD_BALANCE_THRESHOLD 2
 
+// Forward declaration
+typedef struct per_cpu_runqueue {
+    spinlock_t lock;
+    thread_t* ready_queues[128];
+    thread_t* blocked_queue;
+    thread_t* current_thread;
+    thread_t* idle_thread;
+    uint32_t cpu_id;
+} per_cpu_runqueue_t;
+
 /**
  * Get runqueue length for a CPU
  */
 static uint32_t get_runqueue_length(uint32_t cpu_id) {
-    extern per_cpu_runqueue_t* get_cpu_runqueue(uint32_t cpu_id);
     per_cpu_runqueue_t* rq = get_cpu_runqueue(cpu_id);
     if (!rq) {
         return 0;

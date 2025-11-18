@@ -10,6 +10,7 @@
 #include "../include/process.h"
 #include "../include/mm/vmm.h"
 #include "../include/mm/mmap.h"
+#include "../include/fs/vfs.h"
 #include "../include/errors.h"
 #include "../include/kprintf.h"
 #include "../include/debug.h"
@@ -117,9 +118,9 @@ uint64_t syscall_handler(uint64_t syscall_num, uint64_t arg1, uint64_t arg2,
             }
             
             // Regular file - use VFS
-            extern error_code_t vfs_write(fd_t fd, const void* buf, size_t count, size_t* bytes_written);
+            extern error_code_t vfs_write(int32_t fd, const void* buf, size_t count, size_t* bytes_written);
             size_t bytes_written = 0;
-            error_code_t err = vfs_write((fd_t)fd, buf, size, &bytes_written);
+            error_code_t err = vfs_write((int32_t)fd, buf, size, &bytes_written);
             if (err != ERR_OK) {
                 return (uint64_t)err;
             }
@@ -154,9 +155,9 @@ uint64_t syscall_handler(uint64_t syscall_num, uint64_t arg1, uint64_t arg2,
             }
             
             // Regular file - use VFS
-            extern error_code_t vfs_read(fd_t fd, void* buf, size_t count, size_t* bytes_read);
+            extern error_code_t vfs_read(int32_t fd, void* buf, size_t count, size_t* bytes_read);
             size_t bytes_read = 0;
-            error_code_t err = vfs_read((fd_t)fd, buf, size, &bytes_read);
+            error_code_t err = vfs_read((int32_t)fd, buf, size, &bytes_read);
             if (err != ERR_OK) {
                 return (uint64_t)err;
             }
@@ -176,8 +177,8 @@ uint64_t syscall_handler(uint64_t syscall_num, uint64_t arg1, uint64_t arg2,
             }
             
             // Open file via VFS
-            extern error_code_t vfs_open(const char* path, uint64_t flags, fd_t* fd);
-            fd_t fd;
+            extern error_code_t vfs_open(const char* path, uint64_t flags, int32_t* fd);
+            int32_t fd;
             error_code_t err = vfs_open(path, flags, &fd);
             if (err != ERR_OK) {
                 return (uint64_t)err;
@@ -191,8 +192,8 @@ uint64_t syscall_handler(uint64_t syscall_num, uint64_t arg1, uint64_t arg2,
             int fd = (int)arg1;
             
             // Close file via VFS
-            extern error_code_t vfs_close(fd_t fd);
-            error_code_t err = vfs_close((fd_t)fd);
+            extern error_code_t vfs_close(int32_t fd);
+            error_code_t err = vfs_close((int32_t)fd);
             return (uint64_t)err;
         }
         
@@ -256,7 +257,7 @@ uint64_t syscall_handler(uint64_t syscall_num, uint64_t arg1, uint64_t arg2,
                 return (uint64_t)ERR_INVALID_ARG;
             }
             
-            extern error_code_t process_exec(process_t* process, const char* path, const char** argv, const char** envp);
+            extern error_code_t process_exec(process_t* process, const char* path, char* const* argv, char* const* envp);
             error_code_t err = process_exec(current, path, argv, envp);
             
             // If exec succeeds, it doesn't return (process is replaced)
@@ -272,13 +273,13 @@ uint64_t syscall_handler(uint64_t syscall_num, uint64_t arg1, uint64_t arg2,
         }
         
         case SYS_MMAP: {
-            // arg1 = addr (hint, can be NULL), arg2 = length, arg3 = prot, arg4 = flags, arg5 = fd, arg6 = offset
-            vaddr_t addr = (vaddr_t)arg1;
+            // arg1 = addr (hint, can be NULL), arg2 = length, arg3 = prot, arg4 = flags, arg5 = fd, offset not used (would be arg6)
+            vaddr_t addr __attribute__((unused)) = (vaddr_t)arg1;  // Hint address (currently ignored)
             size_t length = (size_t)arg2;
             uint64_t prot = arg3;
             uint64_t flags = arg4;
             int fd = (int)arg5;
-            uint64_t offset = arg6;
+            uint64_t offset = 0;  // Offset not available in current syscall interface
             
             // Validate arguments
             if (length == 0) {

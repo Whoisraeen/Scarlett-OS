@@ -83,16 +83,21 @@ void mouse_interrupt_handler(void) {
         y_movement = -y_movement;
         
         // Create mouse event
+        mouse_event_t event = {0};
+        event.x = x_movement;
+        event.y = y_movement;
+        event.scroll = 0;  // Scroll wheel not supported in standard PS/2
+        event.buttons = flags & 0x07;
+        event.button_left = left;
+        event.button_right = right;
+        event.button_middle = middle;
+        
+        // Send to input event system
+        extern void input_handle_mouse(mouse_event_t*);
+        input_handle_mouse(&event);
+        
+        // Also call callback if set
         if (mouse_state.callback) {
-            mouse_event_t event = {0};
-            event.x = x_movement;
-            event.y = y_movement;
-            event.scroll = 0;  // Scroll wheel not supported in standard PS/2
-            event.buttons = flags & 0x07;
-            event.button_left = left;
-            event.button_right = right;
-            event.button_middle = middle;
-            
             mouse_state.callback(&event);
         }
         

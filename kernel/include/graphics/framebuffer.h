@@ -7,6 +7,7 @@
 #define KERNEL_GRAPHICS_FRAMEBUFFER_H
 
 #include "../types.h"
+#include "../errors.h"
 #include "../../../bootloader/common/boot_info.h"
 
 // Framebuffer structure

@@ -6,6 +6,8 @@
 #include "../include/types.h"
 #include "../include/security/memory_protection.h"
 #include "../include/mm/vmm.h"
+#include "../include/config.h"
+#include "../include/process.h"
 #include "../include/kprintf.h"
 #include "../include/debug.h"
 #include "../include/errors.h"
@@ -92,7 +94,7 @@ bool stack_canary_verify(uint64_t canary) {
  */
 error_code_t set_page_nx(uint64_t address, bool nx) {
     // Get current process's address space
-    extern process_t* current_process;
+    process_t* current_process = process_get_current();
     address_space_t* as = NULL;
     
     if (current_process && current_process->address_space) {
@@ -176,7 +178,7 @@ error_code_t set_page_nx(uint64_t address, bool nx) {
  */
 error_code_t set_stack_executable(bool executable) {
     // Get current process
-    extern process_t* current_process;
+    process_t* current_process = process_get_current();
     if (!current_process || !current_process->address_space) {
         return ERR_INVALID_STATE;
     }

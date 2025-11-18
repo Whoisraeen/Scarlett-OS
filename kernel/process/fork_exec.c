@@ -9,7 +9,7 @@
 #include "../include/mm/pmm.h"
 #include "../include/mm/heap.h"
 #include "../include/config.h"
-#include "../include/loader/elf.h"
+#include "../include/elf.h"
 #include "../include/kprintf.h"
 #include "../include/debug.h"
 #include "../include/string.h"
@@ -89,7 +89,7 @@ pid_t process_fork(process_t* parent) {
 /**
  * Execute a new program (replace current process)
  */
-error_code_t process_exec(process_t* process, const char* path, const char** argv, const char** envp) {
+error_code_t process_exec(process_t* process, const char* path, char* const* argv, char* const* envp) {
     if (!process || !path) {
         return ERR_INVALID_ARG;
     }

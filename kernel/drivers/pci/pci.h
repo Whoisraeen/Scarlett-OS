@@ -33,6 +33,13 @@
 #define PCI_SUBCLASS_SATA        0x06
 #define PCI_PROG_IF_AHCI         0x01
 
+// VirtIO device vendor ID
+#define PCI_VENDOR_ID_VIRTIO     0x1AF4
+
+// Network class
+#define PCI_CLASS_NETWORK        0x02
+#define PCI_SUBCLASS_ETHERNET    0x00
+
 // PCI device structure
 typedef struct {
     uint8_t bus;

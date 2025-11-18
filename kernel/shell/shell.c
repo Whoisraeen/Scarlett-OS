@@ -62,8 +62,13 @@ int shell_parse_command(const char* line, char** argv, int max_args) {
         return 0;
     }
     
+    // Copy line to a modifiable buffer
+    static char line_buffer[512];
+    strncpy(line_buffer, line, sizeof(line_buffer) - 1);
+    line_buffer[sizeof(line_buffer) - 1] = '\0';
+    
     int argc = 0;
-    const char* p = line;
+    char* p = line_buffer;
     bool in_quotes = false;
     bool in_token = false;
     

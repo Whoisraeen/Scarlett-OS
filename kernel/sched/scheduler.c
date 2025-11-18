@@ -12,7 +12,7 @@
 #include "../include/mm/heap.h"
 #include "../include/kprintf.h"
 #include "../include/debug.h"
-#include "../hal/x86_64/timer.h"
+#include "../include/hal/timer.h"
 
 // Forward declaration for our custom snprintf
 int snprintf(char* buf, size_t size, const char* fmt, ...);
@@ -89,7 +89,7 @@ static void init_idle_thread_for_cpu(uint32_t cpu_id) {
     // Allocate idle thread
     thread_t* idle = (thread_t*)kmalloc(sizeof(thread_t));
     if (!idle) {
-        kpanic("Failed to allocate idle thread for CPU %u\n", cpu_id);
+        kpanic("Failed to allocate idle thread for CPU");
     }
     
     // Initialize idle thread
@@ -359,7 +359,7 @@ uint64_t thread_create(void (*entry)(void*), void* arg, uint8_t priority, const 
       thread->next = NULL;
       thread->cpu_time = 0;
       thread->wakeup_time = 0;
-      thread->cpu_affinity = -1;  // No affinity (can run on any CPU)
+      // No CPU affinity set (can run on any CPU)
     
     // Set up initial stack frame
     uint64_t* stack_top = (uint64_t*)((uint8_t*)stack + KERNEL_STACK_SIZE);
@@ -386,13 +386,9 @@ uint64_t thread_create(void (*entry)(void*), void* arg, uint8_t priority, const 
       // Add to ready queue on appropriate CPU
       uint32_t target_cpu = cpu_get_current_id();
       
-      // Check if thread has CPU affinity
-      if (thread->cpu_affinity >= 0) {
-          uint32_t num_cpus = cpu_get_count();
-          if ((uint32_t)thread->cpu_affinity < num_cpus) {
-              target_cpu = (uint32_t)thread->cpu_affinity;
-          }
-      }
+      // Check CPU affinity (if implemented)
+      // For now, all threads can run on any CPU
+      target_cpu = cpu_get_current_id();
       
       add_to_ready_queue(thread, target_cpu);
     

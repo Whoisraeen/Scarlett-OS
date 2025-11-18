@@ -10,7 +10,7 @@
 #include "../include/mm/vmm.h"
 #include "../include/mm/pmm.h"
 #include "../include/config.h"
-#include "../include/loader/elf.h"
+#include "../include/elf.h"
 #include "../include/kprintf.h"
 #include "../include/debug.h"
 #include "../include/string.h"

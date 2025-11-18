@@ -8,8 +8,9 @@
 #ifndef KERNEL_PROCESS_H
 #define KERNEL_PROCESS_H
 
-#include "../types.h"
-#include "../mm/vmm.h"
+#include "types.h"
+#include "errors.h"
+#include "mm/vmm.h"
 
 // Process states
 typedef enum {
@@ -99,7 +100,7 @@ int process_setup_user_stack(process_t* process, int argc, const char** argv, co
 
 // Process operations
 pid_t process_fork(process_t* parent);
-error_code_t process_exec(process_t* process, const char* path, const char** argv, const char** envp);
+error_code_t process_exec(process_t* process, const char* path, char* const* argv, char* const* envp);
 
 #endif // KERNEL_PROCESS_H
 

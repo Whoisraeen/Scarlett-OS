@@ -87,6 +87,7 @@ C_SRCS += sched/scheduler.c \
           drivers/ata/ata.c \
           drivers/ahci/ahci.c \
           drivers/pci/pci.c \
+          drivers/ethernet/ethernet.c \
           auth/user.c \
           auth/password_hash.c \
           security/memory_protection.c \
@@ -105,7 +106,29 @@ C_SRCS += sched/scheduler.c \
           graphics/font.c \
           drivers/ps2/ps2.c \
           drivers/ps2/keyboard.c \
-          drivers/ps2/mouse.c
+          drivers/ps2/mouse.c \
+          drivers/virtio/virtio.c \
+          drivers/virtio/virtio_gpu.c \
+          graphics/accel.c \
+          input/input.c \
+          window/window.c \
+          ui/widget.c \
+          ui/layout.c \
+          ui/theme.c \
+          net/network.c \
+          net/ethernet.c \
+          net/ip.c \
+          net/udp.c \
+          net/tcp.c \
+          net/arp.c \
+          net/icmp.c \
+          net/socket.c \
+          desktop/desktop.c \
+          desktop/taskbar.c \
+          desktop/launcher.c \
+          desktop/login.c \
+          desktop/bootsplash.c \
+          net/socket_options.c
 
 # Object files
 ASM_OBJS = $(ASM_SRCS:.S=.o)
@@ -123,6 +146,15 @@ $(TARGET): $(OBJS)
 %.o: %.c
 	@echo "[CC] $<"
 	@$(CC) $(CFLAGS) -c $< -o $@
+
+# Special rule for math.c and stdio.c - allow SSE for floating point
+core/math.o: core/math.c
+	@echo "[CC] $< (with SSE for FP)"
+	@$(CC) $(filter-out -mno-sse -mno-sse2,$(CFLAGS)) -c $< -o $@
+
+core/stdio.o: core/stdio.c
+	@echo "[CC] $< (with SSE for FP)"
+	@$(CC) $(filter-out -mno-sse -mno-sse2,$(CFLAGS)) -c $< -o $@
 
 %.o: %.S
 	@echo "[AS] $<"

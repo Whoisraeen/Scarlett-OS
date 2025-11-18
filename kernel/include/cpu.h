@@ -6,7 +6,8 @@
 #ifndef KERNEL_CPU_H
 #define KERNEL_CPU_H
 
-#include "../types.h"
+#include "types.h"
+#include "errors.h"
 
 // Maximum number of CPUs
 #define MAX_CPUS 256

@@ -8,6 +8,9 @@
 #ifndef KERNEL_ERRORS_H
 #define KERNEL_ERRORS_H
 
+#include "types.h"
+#include <stdbool.h>
+
 // Error codes (negative values indicate errors)
 typedef enum {
     // Success

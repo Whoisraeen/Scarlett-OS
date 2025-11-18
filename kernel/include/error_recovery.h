@@ -6,8 +6,8 @@
 #ifndef KERNEL_ERROR_RECOVERY_H
 #define KERNEL_ERROR_RECOVERY_H
 
-#include "../types.h"
-#include "../errors.h"
+#include "types.h"
+#include "errors.h"
 
 // Error recovery context
 typedef struct {

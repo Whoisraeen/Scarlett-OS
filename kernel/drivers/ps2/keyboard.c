@@ -221,22 +221,27 @@ void keyboard_interrupt_handler(void) {
     }
     
     // Create key event
+    key_event_t event = {0};
+    event.scancode = scancode;
+    event.keycode = scancode;
+    event.state = is_release ? KEY_STATE_RELEASED : KEY_STATE_PRESSED;
+    event.shift = keyboard_state.shift_pressed;
+    event.ctrl = keyboard_state.ctrl_pressed;
+    event.alt = keyboard_state.alt_pressed;
+    event.caps_lock = keyboard_state.caps_lock;
+    
+    if (!is_release) {
+        event.ascii = keyboard_scancode_to_ascii(scancode, 
+            keyboard_state.shift_pressed, 
+            keyboard_state.caps_lock);
+    }
+    
+    // Send to input event system
+    extern void input_handle_keyboard(key_event_t*);
+    input_handle_keyboard(&event);
+    
+    // Also call callback if set
     if (keyboard_state.callback) {
-        key_event_t event = {0};
-        event.scancode = scancode;
-        event.keycode = scancode;
-        event.state = is_release ? KEY_STATE_RELEASED : KEY_STATE_PRESSED;
-        event.shift = keyboard_state.shift_pressed;
-        event.ctrl = keyboard_state.ctrl_pressed;
-        event.alt = keyboard_state.alt_pressed;
-        event.caps_lock = keyboard_state.caps_lock;
-        
-        if (!is_release) {
-            event.ascii = keyboard_scancode_to_ascii(scancode, 
-                keyboard_state.shift_pressed, 
-                keyboard_state.caps_lock);
-        }
-        
         keyboard_state.callback(&event);
     }
 }

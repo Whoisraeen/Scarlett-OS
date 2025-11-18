@@ -140,11 +140,11 @@ error_code_t pci_enumerate(void) {
                 dev->device_id = (vendor_device >> 16) & 0xFFFF;
                 
                 uint32_t class_rev = pci_read_config_dword(bus, device, function, PCI_CONFIG_REVISION_ID);
-                dev->revision_id = class_rev & 0xFF;
+                // revision_id is not stored in pci_device_t structure
                 dev->prog_if = (class_rev >> 8) & 0xFF;
                 dev->subclass = (class_rev >> 16) & 0xFF;
                 dev->class_code = (class_rev >> 24) & 0xFF;
-                dev->header_type = pci_read_config_byte(bus, device, function, PCI_CONFIG_HEADER_TYPE);
+                dev->header_type = pci_read_config(bus, device, function, PCI_CONFIG_HEADER_TYPE) & 0xFF;
                 
                 // Read BARs
                 for (int i = 0; i < 6; i++) {

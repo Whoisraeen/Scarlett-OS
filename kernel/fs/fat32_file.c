@@ -158,7 +158,8 @@ error_code_t fat32_file_open(fat32_fs_t* fs, const char* path, uint64_t flags, f
             // Use the newly created entry
             entry = new_entry;
         } else {
-        return ERR_NOT_FOUND;
+            return ERR_NOT_FOUND;
+        }
     }
     
     // Check if file is a directory
@@ -281,12 +282,9 @@ error_code_t fat32_file_write(fat32_fs_t* fs, fd_t fd, const void* buf, size_t c
         return ERR_INVALID_ARG;
     }
     
-    // Check write permission
-    if (!(file->entry.attributes & FAT32_ATTR_READ_ONLY)) {
-            // Check file flags for write permission
-            if (!(flags & VFS_MODE_WRITE)) {
-                return ERR_PERMISSION_DENIED;
-            }
+    // Check write permission (if file is read-only, deny write)
+    if (file->entry.attributes & FAT32_ATTR_READ_ONLY) {
+        return ERR_PERMISSION_DENIED;
     }
     
     size_t total_written = 0;

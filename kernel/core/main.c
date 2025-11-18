@@ -10,6 +10,7 @@
 #include "../include/kprintf.h"
 #include "../include/debug.h"
 #include "../include/config.h"
+#include "../include/errors.h"
 #include "../include/mm/vmm.h"
 #include "../include/mm/pmm.h"
 #include "../../bootloader/common/boot_info.h"
@@ -92,6 +93,16 @@ void kernel_main(boot_info_t* boot_info) {
               boot_info->framebuffer.height,
               boot_info->framebuffer.bpp);
         framebuffer_init(&boot_info->framebuffer);
+        
+        // Initialize boot splash screen early
+        extern error_code_t bootsplash_init(void);
+        kinfo("Initializing boot splash screen...\n");
+        bootsplash_init();
+        
+        extern error_code_t bootsplash_render(void);
+        bootsplash_render();
+        extern error_code_t bootsplash_set_message(const char* message);
+        bootsplash_set_message("Initializing kernel...");
     } else {
         kwarn("No framebuffer available\n");
     }
@@ -218,10 +229,15 @@ void kernel_main(boot_info_t* boot_info) {
     kinfo("Initializing block device system...\n");
     block_device_init();
     
-    // PCI enumeration (needed for AHCI)
+    // PCI enumeration (needed for AHCI and network cards)
     extern error_code_t pci_init(void);
     kinfo("Initializing PCI subsystem...\n");
     pci_init();
+    
+    // Ethernet driver (probes PCI for network cards)
+    extern error_code_t ethernet_driver_init(void);
+    kinfo("Initializing Ethernet driver...\n");
+    ethernet_driver_init();
     
     // Storage Drivers
     extern error_code_t ata_init(void);
@@ -231,6 +247,11 @@ void kernel_main(boot_info_t* boot_info) {
     extern error_code_t ahci_init(void);
     kinfo("Initializing AHCI driver...\n");
     ahci_init();
+    
+    // Input Event System
+    extern error_code_t input_event_init(void);
+    kinfo("Initializing input event system...\n");
+    input_event_init();
     
     // Input Drivers
     extern error_code_t keyboard_init(void);
@@ -266,6 +287,64 @@ void kernel_main(boot_info_t* boot_info) {
     kinfo("Initializing Shell...\n");
     shell_init();
     
+    // Window Manager
+    extern error_code_t window_manager_init(void);
+    kinfo("Initializing Window Manager...\n");
+    window_manager_init();
+    
+    // 2D Graphics Acceleration
+    extern error_code_t gfx_accel_init(void);
+    kinfo("Initializing 2D Graphics Acceleration...\n");
+    gfx_accel_init();
+    
+    // Note: VirtIO GPU initialization would happen via PCI enumeration
+    // In QEMU, VirtIO devices appear as PCI devices that can be detected
+    // The acceleration layer will use software fallback if no GPU is found
+    
+    // Network Stack
+    extern error_code_t network_init(void);
+    kinfo("Initializing Network Stack...\n");
+    network_init();
+    
+    extern error_code_t arp_init(void);
+    kinfo("Initializing ARP...\n");
+    arp_init();
+    
+    extern error_code_t icmp_init(void);
+    kinfo("Initializing ICMP...\n");
+    icmp_init();
+    
+    extern error_code_t tcp_init(void);
+    kinfo("Initializing TCP...\n");
+    tcp_init();
+    
+    extern error_code_t socket_init(void);
+    kinfo("Initializing Socket System...\n");
+    socket_init();
+    
+    // Desktop Environment
+    extern error_code_t desktop_init(void);
+    kinfo("Initializing Desktop Environment...\n");
+    desktop_init();
+    
+    extern error_code_t taskbar_init(void);
+    kinfo("Initializing Taskbar...\n");
+    taskbar_init();
+    
+    extern error_code_t launcher_init(void);
+    kinfo("Initializing Application Launcher...\n");
+    launcher_init();
+    
+    extern error_code_t login_screen_init(void);
+    kinfo("Initializing Login Screen...\n");
+    login_screen_init();
+    
+    // Update boot splash
+    extern error_code_t bootsplash_set_message(const char* message);
+    extern error_code_t bootsplash_set_progress(uint32_t percent);
+    bootsplash_set_message("Booting complete!");
+    bootsplash_set_progress(100);
+    
     kinfo("\n========================================\n");
     kinfo("Phase 3 initialization complete!\n");
     kinfo("========================================\n");
@@ -290,11 +369,46 @@ void kernel_main(boot_info_t* boot_info) {
     // kinfo("Testing divide by zero exception...\n");
     // volatile int x = 1 / 0;
     
-    // Main loop - check for rescheduling and handle idle
+    // Hide boot splash and show login/desktop
+    extern error_code_t bootsplash_hide(void);
+    extern error_code_t login_screen_show(void);
+    extern error_code_t login_screen_render(void);
+    extern error_code_t desktop_render(void);
+    extern error_code_t taskbar_render(void);
+    extern error_code_t window_manager_render_all(void);
+    extern error_code_t window_manager_handle_input(void);
+    extern error_code_t launcher_render(void);
+    extern bool login_screen_is_logged_in(void);
+    
+    bootsplash_hide();
+    login_screen_show();
+    
+    // Main loop - desktop environment loop
     while (1) {
         // Check if reschedule is needed (for preemptive multitasking)
         extern void scheduler_check_reschedule(void);
         scheduler_check_reschedule();
+        
+        // Handle input events
+        window_manager_handle_input();
+        extern error_code_t login_screen_handle_input(void);
+        login_screen_handle_input();
+        
+        // Render desktop environment
+        if (login_screen_is_logged_in()) {
+            // User is logged in - show desktop
+            desktop_render();
+            window_manager_render_all();
+            taskbar_render();
+            launcher_render();
+        } else {
+            // Show login screen
+            login_screen_render();
+        }
+        
+        // Swap buffers if double buffering is enabled
+        extern void gfx_swap_buffers(void);
+        gfx_swap_buffers();
         
         // Halt the CPU (will be woken by interrupts)
         __asm__ volatile("hlt");

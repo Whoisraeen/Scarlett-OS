@@ -428,7 +428,7 @@ error_code_t ata_read_sectors(ata_device_t* device, uint64_t lba, uint32_t count
         return ERR_INVALID_ARG;
     }
     
-    return ata_block_read(&device->block_dev, lba, count, buffer);
+    return ata_block_read_blocks(&device->block_dev, lba, count, buffer);
 }
 
 /**
@@ -439,6 +439,6 @@ error_code_t ata_write_sectors(ata_device_t* device, uint64_t lba, uint32_t coun
         return ERR_INVALID_ARG;
     }
     
-    return ata_block_write(&device->block_dev, lba, count, buffer);
+    return ata_block_write_blocks(&device->block_dev, lba, count, buffer);
 }
 

@@ -8,7 +8,7 @@
 #ifndef KERNEL_SHELL_H
 #define KERNEL_SHELL_H
 
-#include "../types.h"
+#include "types.h"
 
 // Shell command structure
 typedef struct shell_command {

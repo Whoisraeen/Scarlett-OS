@@ -6,8 +6,9 @@
 #ifndef KERNEL_FS_FAT32_H
 #define KERNEL_FS_FAT32_H
 
-#include "../types.h"
-#include "../errors.h"
+#include "types.h"
+#include "errors.h"
+#include "fs/vfs.h"
 #include "vfs.h"
 #include "block.h"
 
