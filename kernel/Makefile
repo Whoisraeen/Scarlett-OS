@@ -99,7 +99,10 @@ C_SRCS += sched/scheduler.c \
           sync/mutex.c \
           sync/semaphore.c \
           sync/rwlock.c \
-          sync/lockfree.c
+          sync/lockfree.c \
+          drivers/graphics/framebuffer.c \
+          graphics/graphics.c \
+          graphics/font.c
 
 # Object files
 ASM_OBJS = $(ASM_SRCS:.S=.o)

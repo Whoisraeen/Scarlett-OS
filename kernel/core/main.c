@@ -83,13 +83,15 @@ void kernel_main(boot_info_t* boot_info) {
           boot_info->bootloader_version >> 16,
           boot_info->bootloader_version & 0xFFFF);
     
-    // Print framebuffer info
+    // Initialize framebuffer
+    extern error_code_t framebuffer_init(framebuffer_info_t*);
     if (boot_info->framebuffer.base != 0) {
         kinfo("Framebuffer: 0x%016lx (%ux%u @ %u bpp)\n",
               boot_info->framebuffer.base,
               boot_info->framebuffer.width,
               boot_info->framebuffer.height,
               boot_info->framebuffer.bpp);
+        framebuffer_init(&boot_info->framebuffer);
     } else {
         kwarn("No framebuffer available\n");
     }
