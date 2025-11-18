@@ -9,6 +9,10 @@
 #include "../../include/errors.h"
 #include "../../include/kprintf.h"
 #include "../../include/debug.h"
+#include "../../include/mm/heap.h"
+#include "../../include/mm/pmm.h"
+#include "../../include/sched/scheduler.h"
+#include "../../include/string.h"
 
 // AP startup code location (4KB page)
 #define AP_STARTUP_ADDR 0x1000
@@ -32,11 +36,29 @@ void ap_init(void) {
     per_cpu_data_t* per_cpu = cpu_get_per_cpu_data(cpu_id);
     if (per_cpu) {
         per_cpu->cpu_id = cpu_id;
-        // TODO: Set up kernel stack, idle stack, etc.
+        
+        // Allocate kernel stack (64KB)
+        void* kernel_stack = kmalloc(64 * 1024);
+        if (kernel_stack) {
+            per_cpu->kernel_stack = kernel_stack;
+        }
+        
+        // Allocate idle thread stack (64KB)
+        void* idle_stack = kmalloc(64 * 1024);
+        if (idle_stack) {
+            per_cpu->idle_stack = idle_stack;
+        }
+        
+        // Link CPU info
+        cpu_info_t* info = cpu_get_info(cpu_id);
+        if (info) {
+            per_cpu->info = info;
+            info->state = CPU_STATE_ONLINE;
+        }
     }
     
     // Initialize scheduler for this CPU
-    // TODO: Initialize per-CPU runqueue
+    scheduler_init_per_cpu(cpu_id);
     
     kinfo("AP %u: Initialization complete\n", cpu_id);
     
@@ -59,8 +81,18 @@ error_code_t ap_startup(uint32_t apic_id) {
         return ERR_INVALID_ARG;
     }
     
-    // TODO: Copy startup code to 0x1000
-    // For now, simplified
+    // Copy startup code to 0x1000
+    // This address must be page-aligned and below 1MB
+    uint8_t* dest = (uint8_t*)AP_STARTUP_ADDR;
+    const uint8_t* src = (const uint8_t*)ap_startup_16;
+    
+    // Copy code
+    for (size_t i = 0; i < code_size; i++) {
+        dest[i] = src[i];
+    }
+    
+    // Flush instruction cache
+    __asm__ volatile("mfence");
     
     // Send INIT IPI
     apic_send_init(apic_id);

@@ -109,6 +109,35 @@ static void init_idle_thread_for_cpu(uint32_t cpu_id) {
 }
 
 /**
+ * Initialize per-CPU scheduler (for APs)
+ */
+void scheduler_init_per_cpu(uint32_t cpu_id) {
+    if (cpu_id >= MAX_CPUS) {
+        return;
+    }
+    
+    per_cpu_runqueue_t* rq = &per_cpu_runqueues[cpu_id];
+    
+    // Initialize lock
+    spinlock_init(&rq->lock);
+    
+    // Clear ready queues
+    for (int j = 0; j < 128; j++) {
+        rq->ready_queues[j] = NULL;
+    }
+    
+    rq->blocked_queue = NULL;
+    rq->current_thread = NULL;
+    rq->idle_thread = NULL;
+    rq->cpu_id = cpu_id;
+    
+    // Initialize idle thread for this CPU
+    init_idle_thread_for_cpu(cpu_id);
+    
+    kinfo("Scheduler initialized for CPU %u\n", cpu_id);
+}
+
+/**
  * Initialize scheduler
  */
 void scheduler_init(void) {

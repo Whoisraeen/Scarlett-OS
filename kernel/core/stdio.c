@@ -1,13 +1,32 @@
 /**
  * @file stdio.c
- * @brief Standard I/O implementation (scanf variants)
+ * @brief Standard I/O implementation (scanf variants and File I/O)
  */
 
 #include "../include/stdio.h"
 #include "../include/string.h"
 #include "../include/kprintf.h"
 #include "../include/types.h"
+#include "../include/fs/vfs.h"
+#include "../include/mm/heap.h"
+#include "../include/errors.h"
 #include <stdarg.h>
+
+// Maximum open files
+#define MAX_OPEN_FILES 64
+
+// FILE structure pool
+static FILE file_pool[MAX_OPEN_FILES];
+static bool file_pool_used[MAX_OPEN_FILES];
+
+// Standard streams (initialized on first use)
+static FILE stdin_file = {.fd = STDIN_FILENO, .error = 0, .eof = 0};
+static FILE stdout_file = {.fd = STDOUT_FILENO, .error = 0, .eof = 0};
+static FILE stderr_file = {.fd = STDERR_FILENO, .error = 0, .eof = 0};
+
+FILE* stdin = &stdin_file;
+FILE* stdout = &stdout_file;
+FILE* stderr = &stderr_file;
 
 /**
  * Skip whitespace
@@ -318,5 +337,259 @@ double strtod(const char* nptr, char** endptr) {
     }
     
     return value;
+}
+
+/**
+ * Convert mode string to VFS flags
+ */
+static uint64_t parse_mode(const char* mode) {
+    uint64_t flags = 0;
+    
+    if (!mode || !mode[0]) {
+        return 0;
+    }
+    
+    // Parse mode string (r, w, a, r+, w+, a+)
+    if (mode[0] == 'r') {
+        flags |= VFS_MODE_READ;
+        if (mode[1] == '+') {
+            flags |= VFS_MODE_WRITE;
+        }
+    } else if (mode[0] == 'w') {
+        flags |= VFS_MODE_WRITE | VFS_MODE_CREATE | VFS_MODE_TRUNC;
+        if (mode[1] == '+') {
+            flags |= VFS_MODE_READ;
+        }
+    } else if (mode[0] == 'a') {
+        flags |= VFS_MODE_WRITE | VFS_MODE_CREATE | VFS_MODE_APPEND;
+        if (mode[1] == '+') {
+            flags |= VFS_MODE_READ;
+        }
+    }
+    
+    return flags;
+}
+
+/**
+ * Allocate FILE structure
+ */
+static FILE* alloc_file(void) {
+    for (int i = 0; i < MAX_OPEN_FILES; i++) {
+        if (!file_pool_used[i]) {
+            file_pool_used[i] = true;
+            file_pool[i].fd = -1;
+            file_pool[i].error = 0;
+            file_pool[i].eof = 0;
+            return &file_pool[i];
+        }
+    }
+    return NULL;
+}
+
+/**
+ * Free FILE structure
+ */
+static void free_file(FILE* file) {
+    if (!file) {
+        return;
+    }
+    
+    for (int i = 0; i < MAX_OPEN_FILES; i++) {
+        if (&file_pool[i] == file) {
+            file_pool_used[i] = false;
+            return;
+        }
+    }
+}
+
+/**
+ * Open a file
+ */
+FILE* fopen(const char* pathname, const char* mode) {
+    if (!pathname || !mode) {
+        return NULL;
+    }
+    
+    // Allocate FILE structure
+    FILE* file = alloc_file();
+    if (!file) {
+        return NULL;
+    }
+    
+    // Parse mode
+    uint64_t flags = parse_mode(mode);
+    if (flags == 0) {
+        free_file(file);
+        return NULL;
+    }
+    
+    // Open file via VFS
+    fd_t fd;
+    error_code_t err = vfs_open(pathname, flags, &fd);
+    if (err != ERR_OK) {
+        free_file(file);
+        return NULL;
+    }
+    
+    file->fd = fd;
+    file->error = 0;
+    file->eof = 0;
+    
+    return file;
+}
+
+/**
+ * Close a file
+ */
+int fclose(FILE* stream) {
+    if (!stream) {
+        return -1;
+    }
+    
+    // Special handling for standard streams
+    if (stream == stdin || stream == stdout || stream == stderr) {
+        // Don't close standard streams
+        return 0;
+    }
+    
+    // Close file descriptor
+    if (stream->fd >= 0) {
+        vfs_close(stream->fd);
+    }
+    
+    // Free FILE structure
+    free_file(stream);
+    
+    return 0;
+}
+
+/**
+ * Read from file
+ */
+size_t fread(void* ptr, size_t size, size_t nmemb, FILE* stream) {
+    if (!ptr || !stream || size == 0 || nmemb == 0) {
+        return 0;
+    }
+    
+    if (stream->error) {
+        return 0;
+    }
+    
+    size_t total_bytes = size * nmemb;
+    size_t bytes_read = 0;
+    
+    error_code_t err = vfs_read(stream->fd, ptr, total_bytes, &bytes_read);
+    if (err != ERR_OK) {
+        stream->error = 1;
+        return 0;
+    }
+    
+    if (bytes_read < total_bytes) {
+        stream->eof = 1;
+    }
+    
+    // Return number of items read (not bytes)
+    return bytes_read / size;
+}
+
+/**
+ * Write to file
+ */
+size_t fwrite(const void* ptr, size_t size, size_t nmemb, FILE* stream) {
+    if (!ptr || !stream || size == 0 || nmemb == 0) {
+        return 0;
+    }
+    
+    if (stream->error) {
+        return 0;
+    }
+    
+    size_t total_bytes = size * nmemb;
+    size_t bytes_written = 0;
+    
+    error_code_t err = vfs_write(stream->fd, ptr, total_bytes, &bytes_written);
+    if (err != ERR_OK) {
+        stream->error = 1;
+        return 0;
+    }
+    
+    // Return number of items written (not bytes)
+    return bytes_written / size;
+}
+
+/**
+ * Seek in file
+ */
+int fseek(FILE* stream, long offset, int whence) {
+    if (!stream) {
+        return -1;
+    }
+    
+    if (stream->error) {
+        return -1;
+    }
+    
+    error_code_t err = vfs_seek(stream->fd, offset, whence);
+    if (err != ERR_OK) {
+        stream->error = 1;
+        return -1;
+    }
+    
+    // Clear EOF flag on successful seek
+    stream->eof = 0;
+    
+    return 0;
+}
+
+/**
+ * Get current file position
+ */
+long ftell(FILE* stream) {
+    if (!stream) {
+        return -1;
+    }
+    
+    if (stream->error) {
+        return -1;
+    }
+    
+    size_t position;
+    error_code_t err = vfs_tell(stream->fd, &position);
+    if (err != ERR_OK) {
+        return -1;
+    }
+    
+    return (long)position;
+}
+
+/**
+ * Check end-of-file indicator
+ */
+int feof(FILE* stream) {
+    if (!stream) {
+        return 0;
+    }
+    return stream->eof;
+}
+
+/**
+ * Check error indicator
+ */
+int ferror(FILE* stream) {
+    if (!stream) {
+        return 0;
+    }
+    return stream->error;
+}
+
+/**
+ * Clear error and EOF indicators
+ */
+void clearerr(FILE* stream) {
+    if (!stream) {
+        return;
+    }
+    stream->error = 0;
+    stream->eof = 0;
 }
 

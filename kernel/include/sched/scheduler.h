@@ -55,6 +55,11 @@ typedef struct thread {
 void scheduler_init(void);
 
 /**
+ * Initialize per-CPU scheduler (for Application Processors)
+ */
+void scheduler_init_per_cpu(uint32_t cpu_id);
+
+/**
  * Create a new thread
  * @param entry Entry point function
  * @param arg Argument to pass to entry point
