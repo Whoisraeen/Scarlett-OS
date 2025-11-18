@@ -259,6 +259,7 @@ int vmm_map_page(address_space_t* as, vaddr_t vaddr, paddr_t paddr, uint64_t fla
     }
     
     // Get page table entry
+    uint64_t* pte = get_page_table_entry(as->pml4, vaddr, 4, true);
     if (!pte) {
         kerror("VMM: Failed to get PTE for mapping vaddr 0x%lx\n", vaddr);
         return -1;

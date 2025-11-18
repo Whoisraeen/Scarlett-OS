@@ -91,18 +91,83 @@ bool stack_canary_verify(uint64_t canary) {
  * Set page as non-executable (NX bit)
  */
 error_code_t set_page_nx(uint64_t address, bool nx) {
-    // TODO: Implement NX bit setting in page tables
-    // This requires modifying page table entries to set the NX (No Execute) bit
-    // For x86_64, this is bit 63 of the page table entry
+    // Get current process's address space
+    extern process_t* current_process;
+    address_space_t* as = NULL;
     
-    (void)address;
-    (void)nx;
+    if (current_process && current_process->address_space) {
+        as = current_process->address_space;
+    } else {
+        // Fall back to kernel address space
+        as = vmm_get_kernel_address_space();
+    }
     
-    // Placeholder - would need to:
-    // 1. Get page table entry for address
-    // 2. Set/clear NX bit (bit 63)
-    // 3. Invalidate TLB entry
+    if (!as) {
+        return ERR_INVALID_STATE;
+    }
     
+    // Get page table entry for this address
+    // We need to access the page table directly
+    uint64_t* pml4 = as->pml4;
+    
+    // Extract page table indices
+    uint64_t pml4_idx = (address >> 39) & 0x1FF;
+    uint64_t pdp_idx = (address >> 30) & 0x1FF;
+    uint64_t pd_idx = (address >> 21) & 0x1FF;
+    uint64_t pt_idx = (address >> 12) & 0x1FF;
+    
+    // Traverse page tables
+    if (!(pml4[pml4_idx] & VMM_PRESENT)) {
+        return ERR_NOT_FOUND;
+    }
+    
+    uint64_t* pdp = (uint64_t*)(pml4[pml4_idx] & 0xFFFFFFFFF000ULL);
+    if (!(pdp[pdp_idx] & VMM_PRESENT)) {
+        return ERR_NOT_FOUND;
+    }
+    
+    // Check if this is a 2MB page
+    if (pdp[pdp_idx] & VMM_HUGE) {
+        // 2MB page - modify PDP entry
+        if (nx) {
+            pdp[pdp_idx] |= VMM_NX;
+        } else {
+            pdp[pdp_idx] &= ~VMM_NX;
+        }
+        vmm_flush_tlb_single(address);
+        return ERR_OK;
+    }
+    
+    uint64_t* pd = (uint64_t*)(pdp[pdp_idx] & 0xFFFFFFFFF000ULL);
+    if (!(pd[pd_idx] & VMM_PRESENT)) {
+        return ERR_NOT_FOUND;
+    }
+    
+    // Check if this is a 1GB page
+    if (pd[pd_idx] & VMM_HUGE) {
+        // 1GB page - modify PD entry
+        if (nx) {
+            pd[pd_idx] |= VMM_NX;
+        } else {
+            pd[pd_idx] &= ~VMM_NX;
+        }
+        vmm_flush_tlb_single(address);
+        return ERR_OK;
+    }
+    
+    // 4KB page - modify PT entry
+    uint64_t* pt = (uint64_t*)(pd[pd_idx] & 0xFFFFFFFFF000ULL);
+    if (!(pt[pt_idx] & VMM_PRESENT)) {
+        return ERR_NOT_FOUND;
+    }
+    
+    if (nx) {
+        pt[pt_idx] |= VMM_NX;
+    } else {
+        pt[pt_idx] &= ~VMM_NX;
+    }
+    
+    vmm_flush_tlb_single(address);
     return ERR_OK;
 }
 
@@ -110,12 +175,23 @@ error_code_t set_page_nx(uint64_t address, bool nx) {
  * Enable/disable executable stack
  */
 error_code_t set_stack_executable(bool executable) {
-    // TODO: Implement stack executable flag
-    // This would mark stack pages as non-executable when executable=false
+    // Get current process
+    extern process_t* current_process;
+    if (!current_process || !current_process->address_space) {
+        return ERR_INVALID_STATE;
+    }
     
-    (void)executable;
+    // Mark all stack pages as executable or non-executable
+    size_t stack_pages = (current_process->stack_size + PAGE_SIZE - 1) / PAGE_SIZE;
+    for (size_t i = 0; i < stack_pages; i++) {
+        vaddr_t stack_vaddr = current_process->stack_base + (i * PAGE_SIZE);
+        error_code_t err = set_page_nx(stack_vaddr, !executable);
+        if (err != ERR_OK) {
+            kerror("Memory protection: Failed to set stack page NX bit\n");
+            return err;
+        }
+    }
     
-    // For now, stacks are non-executable by default
     return ERR_OK;
 }
 
@@ -123,11 +199,41 @@ error_code_t set_stack_executable(bool executable) {
  * Protect kernel address space
  */
 error_code_t protect_kernel_space(void) {
-    // TODO: Implement kernel space protection
-    // This would:
-    // 1. Mark kernel pages as supervisor-only
-    // 2. Enable SMEP (Supervisor Mode Execution Prevention)
-    // 3. Enable SMAP (Supervisor Mode Access Prevention)
+    // Enable SMEP (Supervisor Mode Execution Prevention)
+    // SMEP prevents kernel from executing code in user pages
+    // Bit 20 in CR4 register
+    
+    // Enable SMAP (Supervisor Mode Access Prevention)
+    // SMAP prevents kernel from accessing user pages
+    // Bit 21 in CR4 register
+    
+    uint64_t cr4;
+    __asm__ volatile("mov %%cr4, %0" : "=r"(cr4));
+    
+    // Check CPUID for SMEP support (CPUID.7.0.EBX bit 7)
+    uint32_t eax, ebx, ecx, edx;
+    __asm__ volatile("cpuid"
+                     : "=a"(eax), "=b"(ebx), "=c"(ecx), "=d"(edx)
+                     : "a"(7), "c"(0));
+    
+    if (ebx & (1 << 7)) {
+        // SMEP supported
+        cr4 |= (1ULL << 20);
+        kinfo("Memory protection: SMEP enabled\n");
+    } else {
+        kinfo("Memory protection: SMEP not supported by CPU\n");
+    }
+    
+    if (ebx & (1 << 20)) {
+        // SMAP supported
+        cr4 |= (1ULL << 21);
+        kinfo("Memory protection: SMAP enabled\n");
+    } else {
+        kinfo("Memory protection: SMAP not supported by CPU\n");
+    }
+    
+    // Write CR4 back
+    __asm__ volatile("mov %0, %%cr4" :: "r"(cr4));
     
     kinfo("Kernel address space protection enabled\n");
     return ERR_OK;

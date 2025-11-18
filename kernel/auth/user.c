@@ -5,6 +5,7 @@
 
 #include "../include/types.h"
 #include "../include/auth/user.h"
+#include "../include/auth/password_hash.h"
 #include "../include/kprintf.h"
 #include "../include/debug.h"
 #include "../include/string.h"
@@ -24,22 +25,17 @@ static uid_t current_uid = ROOT_UID;
 static gid_t current_gid = ROOT_GID;
 
 /**
- * Simple password hashing (placeholder - should use bcrypt/scrypt)
+ * Hash password using secure PBKDF2-like algorithm
  */
 static void hash_password(const char* password, char* hash) {
-    // TODO: Implement proper bcrypt/scrypt hashing
-    // For now, simple placeholder
-    strncpy(hash, password, MAX_PASSWORD_HASH_LEN - 1);
-    hash[MAX_PASSWORD_HASH_LEN - 1] = '\0';
+    password_hash(password, hash);
 }
 
 /**
- * Verify password
+ * Verify password against hash
  */
 static bool verify_password(const char* password, const char* hash) {
-    // TODO: Implement proper password verification
-    // For now, simple comparison (NOT SECURE - placeholder)
-    return strcmp(password, hash) == 0;
+    return password_verify(password, hash);
 }
 
 /**

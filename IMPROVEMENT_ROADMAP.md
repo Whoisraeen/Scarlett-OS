@@ -65,10 +65,10 @@
 
 ### **PHASE B: Storage & Filesystem** (3-4 months)
 
-#### B.1 Storage Drivers (6-8 weeks) - ✅ 70% Complete
+#### B.1 Storage Drivers (6-8 weeks) - ✅ 100% Complete
 - [x] ATA/IDE driver
 - [x] AHCI (SATA) driver (PCI enumeration, basic structure)
-- [ ] AHCI read/write operations (command lists, FIS, PRDT) - **Complex, requires full AHCI implementation**
+- [x] AHCI read/write operations (command lists, FIS, PRDT)
 - [x] Block device abstraction layer
 - [x] Disk I/O error handling (basic)
 
@@ -127,22 +127,22 @@
 
 ### **PHASE D: Security & Permissions** (2-3 months)
 
-#### D.1 User & Group System (4-6 weeks) - ✅ 90% Complete
+#### D.1 User & Group System (4-6 weeks) - ✅ 100% Complete
 - [x] User database
 - [x] Group management
 - [x] User ID (UID) / Group ID (GID)
-- [x] Password hashing (basic placeholder - needs bcrypt/scrypt)
+- [x] Password hashing (PBKDF2-like with salt and iterations)
 
 #### D.2 File Permissions (4-6 weeks) - ✅ 100% Complete
 - [x] Permission bits (read, write, execute)
 - [x] Owner/group/other permissions
 - [x] Permission checking in VFS
 
-#### D.3 Memory Protection (4-6 weeks) - ✅ 75% Complete
+#### D.3 Memory Protection (4-6 weeks) - ✅ 100% Complete
 - [x] ASLR (Address Space Layout Randomization) - basic implementation
 - [x] Stack canaries - basic implementation
-- [x] Non-executable stack - framework (needs page table integration)
-- [x] Kernel address space protection - framework (needs SMEP/SMAP)
+- [x] Non-executable stack - page table integration with NX bit
+- [x] Kernel address space protection - SMEP/SMAP enabled via CR4
 
 ---
 

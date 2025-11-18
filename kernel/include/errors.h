@@ -23,6 +23,7 @@ typedef enum {
     ERR_NOT_SUPPORTED = -6,
     ERR_TIMEOUT = -7,
     ERR_INTERRUPTED = -8,
+    ERR_INVALID_STATE = -9,
     
     // Memory errors
     ERR_INVALID_ADDRESS = -10,

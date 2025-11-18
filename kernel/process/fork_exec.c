@@ -58,9 +58,9 @@ pid_t process_fork(process_t* parent) {
             return -1;
         }
         
-        // Map child's page
+        // Map child's page (stack pages are non-executable)
         if (vmm_map_page(child->address_space, child_vaddr, child_paddr,
-                        VMM_PRESENT | VMM_WRITE | VMM_USER) != 0) {
+                        VMM_PRESENT | VMM_WRITE | VMM_USER | VMM_NX) != 0) {
             kerror("Fork: Failed to map child page\n");
             pmm_free_page(child_paddr);
             process_destroy(child);

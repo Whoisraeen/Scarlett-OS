@@ -88,6 +88,7 @@ C_SRCS += sched/scheduler.c \
           drivers/ahci/ahci.c \
           drivers/pci/pci.c \
           auth/user.c \
+          auth/password_hash.c \
           security/memory_protection.c \
           mm/mmap.c \
           core/test.c \

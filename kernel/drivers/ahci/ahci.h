@@ -120,6 +120,51 @@
 #define AHCI_MAX_PORTS 32
 #define AHCI_MAX_SLOTS 32
 
+// AHCI Command List Entry (32 bytes)
+typedef struct __attribute__((packed)) {
+    uint16_t flags;              // Command FIS length, etc.
+    uint16_t prdtl;              // PRDT length
+    uint32_t prdbc;              // PRDT byte count transferred
+    uint64_t ctba;               // Command table base address
+    uint32_t reserved[4];
+} ahci_cmd_header_t;
+
+// AHCI Command Table (128 bytes + PRDT)
+typedef struct __attribute__((packed)) {
+    uint8_t cfis[64];            // Command FIS
+    uint8_t acmd[16];            // ATAPI command (if ATAPI)
+    uint8_t reserved[48];
+    // PRDT follows (variable length)
+} ahci_cmd_table_t;
+
+// Physical Region Descriptor Table Entry (16 bytes)
+typedef struct __attribute__((packed)) {
+    uint64_t dba;                // Data base address
+    uint32_t reserved;
+    uint32_t dbc;                // Data byte count (bit 0 = interrupt)
+} ahci_prdt_entry_t;
+
+// Register FIS - Host to Device (20 bytes)
+typedef struct __attribute__((packed)) {
+    uint8_t fis_type;            // FIS_TYPE_REG_H2D
+    uint8_t pmport_c;             // Port multiplier port + command
+    uint8_t command;             // ATA command
+    uint8_t features_low;
+    uint8_t lba_low;
+    uint8_t lba_mid;
+    uint8_t lba_high;
+    uint8_t device;
+    uint8_t lba_low_ext;
+    uint8_t lba_mid_ext;
+    uint8_t lba_high_ext;
+    uint8_t features_high;
+    uint8_t count_low;
+    uint8_t count_high;
+    uint8_t icc;
+    uint8_t control;
+    uint8_t reserved[3];
+} ahci_fis_h2d_t;
+
 // AHCI device structure
 typedef struct {
     uint64_t base_address;         // MMIO base address

@@ -139,7 +139,7 @@ process_t* process_create(const char* name, vaddr_t entry_point) {
         
         vaddr_t stack_vaddr = process->stack_base + (i * PAGE_SIZE);
         if (vmm_map_page(process->address_space, stack_vaddr, page,
-                        VMM_PRESENT | VMM_WRITE | VMM_USER) != 0) {
+                        VMM_PRESENT | VMM_WRITE | VMM_USER | VMM_NX) != 0) {
             kerror("Process: Failed to map stack page\n");
             pmm_free_page(page);
             vmm_destroy_address_space(process->address_space);
