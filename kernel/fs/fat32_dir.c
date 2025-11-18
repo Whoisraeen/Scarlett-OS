@@ -12,6 +12,12 @@
 #include "../include/string.h"
 #include "../include/errors.h"
 
+// Forward declaration
+extern error_code_t fat32_find_free_dir_entry(fat32_fs_t* fs, uint32_t cluster, 
+                                               uint32_t* sector_out, uint32_t* entry_out);
+extern error_code_t fat32_parse_path(const char* path, char components[][12], uint32_t* component_count);
+extern error_code_t fat32_find_in_dir(fat32_fs_t* fs, uint32_t cluster, const char* name, fat32_dir_entry_t* entry);
+
 // Directory handle structure
 typedef struct {
     fat32_fs_t* fs;
@@ -70,15 +76,132 @@ error_code_t fat32_mkdir(fat32_fs_t* fs, const char* path) {
         return ERR_INVALID_ARG;
     }
     
-    // TODO: Implement directory creation
-    // 1. Parse path to get parent directory and new directory name
-    // 2. Find parent directory
-    // 3. Allocate cluster for new directory
-    // 4. Create directory entry in parent
-    // 5. Initialize new directory with . and .. entries
+    // Parse path
+    char components[32][12];
+    uint32_t component_count;
+    error_code_t err = fat32_parse_path(path, components, &component_count);
+    if (err != ERR_OK) {
+        return err;
+    }
     
-    kinfo("FAT32: mkdir %s (not yet implemented)\n", path);
-    return ERR_NOT_SUPPORTED;
+    if (component_count == 0) {
+        return ERR_INVALID_ARG;  // Cannot create root
+    }
+    
+    // Get parent directory and new directory name
+    const char* dirname = components[component_count - 1];
+    uint32_t parent_cluster = fs->root_cluster;
+    
+    // Traverse to parent directory
+    for (uint32_t i = 0; i < component_count - 1; i++) {
+        fat32_dir_entry_t entry;
+        err = fat32_find_in_dir(fs, parent_cluster, components[i], &entry);
+        if (err != ERR_OK) {
+            return err;
+        }
+        if (!(entry.attributes & FAT32_ATTR_DIRECTORY)) {
+            return ERR_NOT_DIRECTORY;
+        }
+        parent_cluster = entry.cluster_low | ((uint32_t)entry.cluster_high << 16);
+    }
+    
+    // Check if directory already exists
+    fat32_dir_entry_t existing;
+    if (fat32_find_in_dir(fs, parent_cluster, dirname, &existing) == ERR_OK) {
+        return ERR_ALREADY_EXISTS;
+    }
+    
+    // Allocate cluster for new directory
+    uint32_t new_cluster = fat32_alloc_cluster(fs);
+    if (new_cluster < 2) {
+        return ERR_DISK_FULL;
+    }
+    
+    // Initialize directory with . and .. entries
+    uint8_t* cluster_data = (uint8_t*)kmalloc(fs->bytes_per_cluster);
+    if (!cluster_data) {
+        fat32_free_cluster(fs, new_cluster);
+        return ERR_OUT_OF_MEMORY;
+    }
+    
+    memset(cluster_data, 0, fs->bytes_per_cluster);
+    fat32_dir_entry_t* entries = (fat32_dir_entry_t*)cluster_data;
+    
+    // Create . entry
+    memset(entries[0].name, ' ', 11);
+    entries[0].name[0] = '.';
+    entries[0].attributes = FAT32_ATTR_DIRECTORY;
+    entries[0].cluster_high = (new_cluster >> 16) & 0xFFFF;
+    entries[0].cluster_low = new_cluster & 0xFFFF;
+    entries[0].file_size = 0;
+    
+    // Create .. entry
+    memset(entries[1].name, ' ', 11);
+    entries[1].name[0] = '.';
+    entries[1].name[1] = '.';
+    entries[1].attributes = FAT32_ATTR_DIRECTORY;
+    entries[1].cluster_high = (parent_cluster >> 16) & 0xFFFF;
+    entries[1].cluster_low = parent_cluster & 0xFFFF;
+    entries[1].file_size = 0;
+    
+    // Write cluster
+    err = fat32_write_cluster(fs, new_cluster, cluster_data);
+    if (err != ERR_OK) {
+        kfree(cluster_data);
+        fat32_free_cluster(fs, new_cluster);
+        return err;
+    }
+    
+    kfree(cluster_data);
+    
+    // Find free entry in parent directory
+    uint32_t sector;
+    uint32_t entry_index;
+    err = fat32_find_free_dir_entry(fs, parent_cluster, &sector, &entry_index);
+    if (err != ERR_OK) {
+        fat32_free_cluster(fs, new_cluster);
+        return err;
+    }
+    
+    // Read parent directory sector
+    uint8_t sector_data[512];
+    err = block_device_read(fs->device, sector, sector_data);
+    if (err != ERR_OK) {
+        fat32_free_cluster(fs, new_cluster);
+        return err;
+    }
+    
+    // Create directory entry
+    fat32_dir_entry_t* dir_entry = (fat32_dir_entry_t*)sector_data;
+    dir_entry += entry_index;
+    
+    // Format directory name
+    char formatted[11];
+    memset(formatted, ' ', 11);
+    size_t name_len = strlen(dirname);
+    for (size_t i = 0; i < name_len && i < 11; i++) {
+        char c = dirname[i];
+        if (c >= 'a' && c <= 'z') {
+            c = c - 'a' + 'A';
+        }
+        formatted[i] = c;
+    }
+    
+    memcpy(dir_entry->name, formatted, 11);
+    dir_entry->attributes = FAT32_ATTR_DIRECTORY;
+    dir_entry->cluster_high = (new_cluster >> 16) & 0xFFFF;
+    dir_entry->cluster_low = new_cluster & 0xFFFF;
+    dir_entry->file_size = 0;
+    
+    // Write back parent directory
+    err = block_device_write(fs->device, sector, sector_data);
+    if (err != ERR_OK) {
+        fat32_free_cluster(fs, new_cluster);
+        return err;
+    }
+    
+    kinfo("FAT32: Created directory %s (cluster %u)\n", dirname, new_cluster);
+    return ERR_OK;
 }
 
 /**

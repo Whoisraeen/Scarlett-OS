@@ -287,24 +287,53 @@ error_code_t fat32_read_dir(fat32_fs_t* fs, uint32_t cluster, fat32_dir_entry_t*
 }
 
 /**
- * Find file in directory (simplified)
+ * Find file in directory (with path traversal)
  */
 error_code_t fat32_find_file(fat32_fs_t* fs, const char* path, fat32_dir_entry_t* entry) {
     if (!fs || !path || !entry) {
         return ERR_INVALID_ARG;
     }
     
-    // For now, just search root directory
-    // TODO: Implement path traversal
-    
-    fat32_dir_entry_t entries[16];
-    error_code_t err = fat32_read_dir(fs, fs->root_cluster, entries, 16);
+    // Parse path into components
+    char components[32][12];
+    uint32_t component_count;
+    error_code_t err = fat32_parse_path(path, components, &component_count);
     if (err != ERR_OK) {
         return err;
     }
     
-    // Simple filename matching (8.3 format)
-    // TODO: Implement proper path parsing
+    if (component_count == 0) {
+        // Root directory
+        entry->attributes = FAT32_ATTR_DIRECTORY;
+        entry->cluster_high = (fs->root_cluster >> 16) & 0xFFFF;
+        entry->cluster_low = fs->root_cluster & 0xFFFF;
+        entry->file_size = 0;
+        return ERR_OK;
+    }
+    
+    // Start from root cluster
+    uint32_t current_cluster = fs->root_cluster;
+    
+    // Traverse path
+    for (uint32_t i = 0; i < component_count; i++) {
+        fat32_dir_entry_t dir_entry;
+        err = fat32_find_in_dir(fs, current_cluster, components[i], &dir_entry);
+        if (err != ERR_OK) {
+            return err;
+        }
+        
+        // Check if it's a directory (unless it's the last component)
+        if (i < component_count - 1) {
+            if (!(dir_entry.attributes & FAT32_ATTR_DIRECTORY)) {
+                return ERR_NOT_DIRECTORY;
+            }
+            current_cluster = dir_entry.cluster_low | ((uint32_t)dir_entry.cluster_high << 16);
+        } else {
+            // Last component - return it
+            memcpy(entry, &dir_entry, sizeof(fat32_dir_entry_t));
+            return ERR_OK;
+        }
+    }
     
     return ERR_NOT_FOUND;
 }

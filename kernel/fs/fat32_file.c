@@ -149,9 +149,15 @@ error_code_t fat32_file_open(fat32_fs_t* fs, const char* path, uint64_t flags, f
     if (err != ERR_OK) {
         // File not found - create if CREATE flag is set
         if (flags & VFS_MODE_CREATE) {
-            // TODO: Implement file creation
-            return ERR_NOT_SUPPORTED;
-        }
+            // Create new file
+            fat32_dir_entry_t new_entry;
+            error_code_t create_err = fat32_create_file(fs, path, &new_entry);
+            if (create_err != ERR_OK) {
+                return create_err;
+            }
+            // Use the newly created entry
+            entry = new_entry;
+        } else {
         return ERR_NOT_FOUND;
     }
     
@@ -277,7 +283,10 @@ error_code_t fat32_file_write(fat32_fs_t* fs, fd_t fd, const void* buf, size_t c
     
     // Check write permission
     if (!(file->entry.attributes & FAT32_ATTR_READ_ONLY)) {
-        // TODO: Check file flags for write permission
+            // Check file flags for write permission
+            if (!(flags & VFS_MODE_WRITE)) {
+                return ERR_PERMISSION_DENIED;
+            }
     }
     
     size_t total_written = 0;

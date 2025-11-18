@@ -18,6 +18,7 @@ typedef enum {
     ERR_OUT_OF_MEMORY = -2,
     ERR_NOT_FOUND = -3,
     ERR_ALREADY_EXISTS = -4,
+    ERR_NOT_EMPTY = -39,
     ERR_PERMISSION_DENIED = -5,
     ERR_NOT_SUPPORTED = -6,
     ERR_TIMEOUT = -7,
