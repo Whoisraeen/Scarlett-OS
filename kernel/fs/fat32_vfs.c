@@ -258,17 +258,143 @@ static error_code_t fat32_vfs_unlink(vfs_filesystem_t* fs, const char* path) {
 }
 
 /**
+ * Format filename to 8.3 format (helper for rename)
+ */
+static void format_filename_8_3(const char* name, char* formatted) {
+    memset(formatted, ' ', 11);
+    
+    const char* dot = strchr(name, '.');
+    const char* ext = dot ? (dot + 1) : NULL;
+    size_t name_len = dot ? (dot - name) : strlen(name);
+    size_t ext_len = ext ? strlen(ext) : 0;
+    
+    // Copy name (up to 8 characters, uppercase)
+    for (size_t i = 0; i < name_len && i < 8; i++) {
+        char c = name[i];
+        if (c >= 'a' && c <= 'z') {
+            c = c - 'a' + 'A';
+        }
+        formatted[i] = c;
+    }
+    
+    // Copy extension (up to 3 characters, uppercase)
+    if (ext && ext_len > 0) {
+        for (size_t i = 0; i < ext_len && i < 3; i++) {
+            char c = ext[i];
+            if (c >= 'a' && c <= 'z') {
+                c = c - 'a' + 'A';
+            }
+            formatted[8 + i] = c;
+        }
+    }
+}
+
+/**
  * FAT32 rename VFS wrapper
  */
 static error_code_t fat32_vfs_rename(vfs_filesystem_t* fs, const char* oldpath, const char* newpath) {
     if (!fs || !fs->private_data || !oldpath || !newpath) {
         return ERR_INVALID_ARG;
     }
-    // TODO: Implement rename
-    (void)fs;
-    (void)oldpath;
-    (void)newpath;
-    return ERR_NOT_SUPPORTED;
+    
+    fat32_fs_t* fat32_fs = (fat32_fs_t*)fs->private_data;
+    
+    // Parse both paths
+    char old_components[32][12];
+    char new_components[32][12];
+    uint32_t old_count, new_count;
+    
+    error_code_t err = fat32_parse_path(oldpath, old_components, &old_count);
+    if (err != ERR_OK) {
+        return err;
+    }
+    
+    err = fat32_parse_path(newpath, new_components, &new_count);
+    if (err != ERR_OK) {
+        return err;
+    }
+    
+    if (old_count == 0 || new_count == 0) {
+        return ERR_INVALID_ARG;  // Cannot rename root
+    }
+    
+    // Get parent directories and filenames
+    const char* old_name = old_components[old_count - 1];
+    const char* new_name = new_components[new_count - 1];
+    
+    // Find parent directory for old path
+    uint32_t old_parent_cluster = fat32_fs->root_cluster;
+    for (uint32_t i = 0; i < old_count - 1; i++) {
+        fat32_dir_entry_t entry;
+        err = fat32_find_in_dir(fat32_fs, old_parent_cluster, old_components[i], &entry);
+        if (err != ERR_OK) {
+            return err;
+        }
+        if (!(entry.attributes & FAT32_ATTR_DIRECTORY)) {
+            return ERR_NOT_DIRECTORY;
+        }
+        old_parent_cluster = (entry.cluster_low) | ((uint32_t)entry.cluster_high << 16);
+    }
+    
+    // Find parent directory for new path (must be same as old parent for now)
+    uint32_t new_parent_cluster = fat32_fs->root_cluster;
+    for (uint32_t i = 0; i < new_count - 1; i++) {
+        fat32_dir_entry_t entry;
+        err = fat32_find_in_dir(fat32_fs, new_parent_cluster, new_components[i], &entry);
+        if (err != ERR_OK) {
+            return err;
+        }
+        if (!(entry.attributes & FAT32_ATTR_DIRECTORY)) {
+            return ERR_NOT_DIRECTORY;
+        }
+        new_parent_cluster = (entry.cluster_low) | ((uint32_t)entry.cluster_high << 16);
+    }
+    
+    // For simplicity, only allow rename within same directory
+    if (old_parent_cluster != new_parent_cluster) {
+        return ERR_NOT_SUPPORTED;  // Cross-directory rename not yet implemented
+    }
+    
+    // Check if new name already exists
+    fat32_dir_entry_t existing;
+    if (fat32_find_in_dir(fat32_fs, new_parent_cluster, new_name, &existing) == ERR_OK) {
+        return ERR_ALREADY_EXISTS;
+    }
+    
+    // Find old entry location
+    uint32_t entry_cluster;
+    uint32_t entry_index;
+    err = fat32_find_in_dir_location(fat32_fs, old_parent_cluster, old_name, &entry_cluster, &entry_index);
+    if (err != ERR_OK) {
+        return err;
+    }
+    
+    // Load the cluster containing the entry
+    uint8_t* cluster_data = (uint8_t*)kmalloc(fat32_fs->bytes_per_cluster);
+    if (!cluster_data) {
+        return ERR_OUT_OF_MEMORY;
+    }
+    
+    err = fat32_read_cluster(fat32_fs, entry_cluster, cluster_data);
+    if (err != ERR_OK) {
+        kfree(cluster_data);
+        return err;
+    }
+    
+    // Update the entry with new name
+    fat32_dir_entry_t* entries = (fat32_dir_entry_t*)cluster_data;
+    format_filename_8_3(new_name, entries[entry_index].name);
+    
+    // Write back the cluster
+    err = fat32_write_cluster(fat32_fs, entry_cluster, cluster_data);
+    kfree(cluster_data);
+    
+    if (err != ERR_OK) {
+        return err;
+    }
+    
+    kinfo("FAT32: Renamed %s to %s\n", oldpath, newpath);
+    return ERR_OK;
 }
 
 /**

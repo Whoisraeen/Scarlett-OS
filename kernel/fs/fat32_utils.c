@@ -241,3 +241,95 @@ error_code_t fat32_find_in_dir(fat32_fs_t* fs, uint32_t cluster, const char* nam
     return ERR_NOT_FOUND;
 }
 
+/**
+ * Find file in directory by name and return its location
+ * Returns the cluster and entry index where the file is located
+ */
+error_code_t fat32_find_in_dir_location(fat32_fs_t* fs, uint32_t cluster, const char* name, 
+                                        uint32_t* out_cluster, uint32_t* out_entry_index) {
+    if (!fs || !name || !out_cluster || !out_entry_index) {
+        return ERR_INVALID_ARG;
+    }
+    
+    // Format name to 8.3
+    char formatted[11];
+    memset(formatted, ' ', 11);
+    
+    const char* dot = strchr(name, '.');
+    const char* ext = dot ? (dot + 1) : NULL;
+    size_t name_len = dot ? (dot - name) : strlen(name);
+    size_t ext_len = ext ? strlen(ext) : 0;
+    
+    // Copy name (up to 8 chars, uppercase)
+    for (size_t i = 0; i < name_len && i < 8; i++) {
+        char c = name[i];
+        if (c >= 'a' && c <= 'z') {
+            c = c - 'a' + 'A';
+        }
+        formatted[i] = c;
+    }
+    
+    // Copy extension (up to 3 chars, uppercase)
+    if (ext && ext_len > 0) {
+        for (size_t i = 0; i < ext_len && i < 3; i++) {
+            char c = ext[i];
+            if (c >= 'a' && c <= 'z') {
+                c = c - 'a' + 'A';
+            }
+            formatted[8 + i] = c;
+        }
+    }
+    
+    // Search directory
+    uint32_t current_cluster = cluster;
+    uint8_t* cluster_data = (uint8_t*)kmalloc(fs->bytes_per_cluster);
+    if (!cluster_data) {
+        return ERR_OUT_OF_MEMORY;
+    }
+    
+    while (current_cluster >= 2 && current_cluster < FAT32_CLUSTER_EOF_MIN) {
+        error_code_t err = fat32_read_cluster(fs, current_cluster, cluster_data);
+        if (err != ERR_OK) {
+            kfree(cluster_data);
+            return err;
+        }
+        
+        fat32_dir_entry_t* entries = (fat32_dir_entry_t*)cluster_data;
+        size_t entries_per_cluster = fs->bytes_per_cluster / sizeof(fat32_dir_entry_t);
+        
+        for (size_t i = 0; i < entries_per_cluster; i++) {
+            if (entries[i].name[0] == 0x00) {
+                // End of directory
+                kfree(cluster_data);
+                return ERR_NOT_FOUND;
+            }
+            
+            if (entries[i].name[0] == 0xE5) {
+                continue;  // Deleted entry
+            }
+            
+            // Compare names
+            bool match = true;
+            for (int j = 0; j < 11; j++) {
+                if (entries[i].name[j] != formatted[j]) {
+                    match = false;
+                    break;
+                }
+            }
+            
+            if (match) {
+                *out_cluster = current_cluster;
+                *out_entry_index = i;
+                kfree(cluster_data);
+                return ERR_OK;
+            }
+        }
+        
+        // Get next cluster
+        current_cluster = fat32_get_next_cluster(fs, current_cluster);
+    }
+    
+    kfree(cluster_data);
+    return ERR_NOT_FOUND;
+}
+

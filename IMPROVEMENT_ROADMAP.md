@@ -65,9 +65,10 @@
 
 ### **PHASE B: Storage & Filesystem** (3-4 months)
 
-#### B.1 Storage Drivers (6-8 weeks) - ✅ 85% Complete
+#### B.1 Storage Drivers (6-8 weeks) - ✅ 70% Complete
 - [x] ATA/IDE driver
 - [x] AHCI (SATA) driver (PCI enumeration, basic structure)
+- [ ] AHCI read/write operations (command lists, FIS, PRDT) - **Complex, requires full AHCI implementation**
 - [x] Block device abstraction layer
 - [x] Disk I/O error handling (basic)
 
@@ -93,6 +94,7 @@
 - [x] VFS integration
 - [x] File creation/deletion
 - [x] File permissions (basic)
+- [x] File rename operation
 
 ---
 

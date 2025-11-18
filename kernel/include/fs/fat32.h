@@ -128,6 +128,8 @@ error_code_t fat32_parse_path(const char* path, char components[][12], uint32_t*
 uint64_t fat32_date_to_unix(uint16_t fat_date, uint16_t fat_time);
 void fat32_unix_to_date(uint64_t unix_time, uint16_t* fat_date, uint16_t* fat_time);
 error_code_t fat32_find_in_dir(fat32_fs_t* fs, uint32_t cluster, const char* name, fat32_dir_entry_t* entry);
+error_code_t fat32_find_in_dir_location(fat32_fs_t* fs, uint32_t cluster, const char* name, 
+                                        uint32_t* out_cluster, uint32_t* out_entry_index);
 
 #endif // KERNEL_FS_FAT32_H
 
