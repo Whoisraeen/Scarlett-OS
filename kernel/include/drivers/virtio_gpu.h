@@ -8,7 +8,7 @@
 
 #include "../../include/types.h"
 #include "../../include/errors.h"
-#include "../virtio.h"
+#include "drivers/virtio.h"
 
 // VirtIO GPU control queue
 #define VIRTIO_GPU_CONTROL_QUEUE  0
@@ -65,7 +65,7 @@ typedef struct {
                 uint32_t r;
                 uint32_t width;
                 uint32_t height;
-            } pmodes[16];
+            } modes[16];
         } resp;
     } capsets;
 } __attribute__((packed)) virtio_gpu_resp_display_info_t;

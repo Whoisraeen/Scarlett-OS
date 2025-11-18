@@ -17,7 +17,7 @@ static virtio_gpu_t* g_virtio_gpu = NULL;
 /**
  * Send command to VirtIO GPU
  */
-static error_code_t virtio_gpu_send_command(virtio_gpu_t* gpu, void* cmd, size_t cmd_size) {
+static error_code_t virtio_gpu_send_command(virtio_gpu_t* gpu, void* cmd, size_t cmd_size __attribute__((unused))) {
     if (!gpu || !gpu->virtio_dev || !gpu->virtio_dev->initialized) {
         return ERR_INVALID_STATE;
     }

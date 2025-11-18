@@ -63,13 +63,13 @@ error_code_t taskbar_add_window(window_t* window) {
         return ERR_INVALID_ARG;
     }
     
-    spinlock_acquire(&taskbar_lock);
+    spinlock_lock(&taskbar_lock);
     
     // Check if window already in taskbar
     taskbar_item_t* item = taskbar_state.items;
     while (item) {
         if (item->window == window) {
-            spinlock_release(&taskbar_lock);
+            spinlock_unlock(&taskbar_lock);
             return ERR_ALREADY_EXISTS;
         }
         item = item->next;
@@ -78,7 +78,7 @@ error_code_t taskbar_add_window(window_t* window) {
     // Create new taskbar item
     taskbar_item_t* new_item = (taskbar_item_t*)kmalloc(sizeof(taskbar_item_t));
     if (!new_item) {
-        spinlock_release(&taskbar_lock);
+        spinlock_unlock(&taskbar_lock);
         return ERR_OUT_OF_MEMORY;
     }
     
@@ -92,7 +92,7 @@ error_code_t taskbar_add_window(window_t* window) {
     new_item->next = taskbar_state.items;
     taskbar_state.items = new_item;
     
-    spinlock_release(&taskbar_lock);
+    spinlock_unlock(&taskbar_lock);
     
     return ERR_OK;
 }
@@ -105,7 +105,7 @@ error_code_t taskbar_remove_window(window_t* window) {
         return ERR_INVALID_ARG;
     }
     
-    spinlock_acquire(&taskbar_lock);
+    spinlock_lock(&taskbar_lock);
     
     taskbar_item_t* item = taskbar_state.items;
     taskbar_item_t* prev = NULL;
@@ -118,14 +118,14 @@ error_code_t taskbar_remove_window(window_t* window) {
                 taskbar_state.items = item->next;
             }
             kfree(item);
-            spinlock_release(&taskbar_lock);
+            spinlock_unlock(&taskbar_lock);
             return ERR_OK;
         }
         prev = item;
         item = item->next;
     }
     
-    spinlock_release(&taskbar_lock);
+    spinlock_unlock(&taskbar_lock);
     return ERR_NOT_FOUND;
 }
 
@@ -137,7 +137,7 @@ error_code_t taskbar_set_active_window(window_t* window) {
         return ERR_INVALID_STATE;
     }
     
-    spinlock_acquire(&taskbar_lock);
+    spinlock_lock(&taskbar_lock);
     
     taskbar_item_t* item = taskbar_state.items;
     while (item) {
@@ -145,7 +145,7 @@ error_code_t taskbar_set_active_window(window_t* window) {
         item = item->next;
     }
     
-    spinlock_release(&taskbar_lock);
+    spinlock_unlock(&taskbar_lock);
     
     return ERR_OK;
 }
@@ -196,7 +196,7 @@ error_code_t taskbar_render(void) {
                    RGB(255, 255, 255), 0);
     
     // Render window items
-    spinlock_acquire(&taskbar_lock);
+    spinlock_lock(&taskbar_lock);
     
     uint32_t item_x = start_btn_x + start_btn_w + 8;
     taskbar_item_t* item = taskbar_state.items;
@@ -222,7 +222,7 @@ error_code_t taskbar_render(void) {
         item = item->next;
     }
     
-    spinlock_release(&taskbar_lock);
+    spinlock_unlock(&taskbar_lock);
     
     return ERR_OK;
 }

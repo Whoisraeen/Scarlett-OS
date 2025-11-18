@@ -104,7 +104,7 @@ error_code_t tcp_init(void) {
  */
 static tcp_connection_t* tcp_find_connection(uint32_t local_ip, uint16_t local_port, 
                                              uint32_t remote_ip, uint16_t remote_port) {
-    spinlock_acquire(&tcp_state.lock);
+    spinlock_lock(&tcp_state.lock);
     
     for (int i = 0; i < MAX_TCP_CONNECTIONS; i++) {
         tcp_connection_t* conn = tcp_state.connections[i];
@@ -113,12 +113,12 @@ static tcp_connection_t* tcp_find_connection(uint32_t local_ip, uint16_t local_p
             conn->local_port == local_port &&
             conn->remote_ip == remote_ip &&
             conn->remote_port == remote_port) {
-            spinlock_release(&tcp_state.lock);
+            spinlock_unlock(&tcp_state.lock);
             return conn;
         }
     }
     
-    spinlock_release(&tcp_state.lock);
+    spinlock_unlock(&tcp_state.lock);
     return NULL;
 }
 
@@ -157,14 +157,14 @@ tcp_connection_t* tcp_create_connection(uint32_t local_ip, uint16_t local_port,
     conn->receive_buffer_pos = 0;
     
     // Add to connection list
-    spinlock_acquire(&tcp_state.lock);
+    spinlock_lock(&tcp_state.lock);
     for (int i = 0; i < MAX_TCP_CONNECTIONS; i++) {
         if (!tcp_state.connections[i]) {
             tcp_state.connections[i] = conn;
             break;
         }
     }
-    spinlock_release(&tcp_state.lock);
+    spinlock_unlock(&tcp_state.lock);
     
     return conn;
 }
@@ -172,7 +172,7 @@ tcp_connection_t* tcp_create_connection(uint32_t local_ip, uint16_t local_port,
 /**
  * Send TCP packet
  */
-static error_code_t tcp_send_packet(tcp_connection_t* conn, uint8_t flags, void* data, size_t data_len) {
+error_code_t tcp_send_packet(tcp_connection_t* conn, uint8_t flags, void* data, size_t data_len) {
     if (!conn) {
         return ERR_INVALID_ARG;
     }
@@ -374,14 +374,14 @@ error_code_t tcp_close(tcp_connection_t* conn) {
     }
     
     // Remove from connection list
-    spinlock_acquire(&tcp_state.lock);
+    spinlock_lock(&tcp_state.lock);
     for (int i = 0; i < MAX_TCP_CONNECTIONS; i++) {
         if (tcp_state.connections[i] == conn) {
             tcp_state.connections[i] = NULL;
             break;
         }
     }
-    spinlock_release(&tcp_state.lock);
+    spinlock_unlock(&tcp_state.lock);
     
     if (conn->receive_buffer) {
         kfree(conn->receive_buffer);

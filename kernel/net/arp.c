@@ -52,7 +52,7 @@ void arp_update_cache(uint32_t ip_address, uint8_t* mac_address) {
         return;
     }
     
-    spinlock_acquire(&arp_state.lock);
+    spinlock_lock(&arp_state.lock);
     
     // Find existing entry or free slot
     arp_cache_entry_t* entry = NULL;
@@ -77,7 +77,7 @@ void arp_update_cache(uint32_t ip_address, uint8_t* mac_address) {
     entry->timestamp = 0;  // Simplified - would use actual timestamp
     entry->valid = true;
     
-    spinlock_release(&arp_state.lock);
+    spinlock_unlock(&arp_state.lock);
 }
 
 /**
@@ -88,18 +88,18 @@ error_code_t arp_resolve(uint32_t ip_address, uint8_t* mac_address) {
         return ERR_INVALID_ARG;
     }
     
-    spinlock_acquire(&arp_state.lock);
+    spinlock_lock(&arp_state.lock);
     
     // Search cache
     for (int i = 0; i < ARP_CACHE_SIZE; i++) {
         if (arp_state.cache[i].valid && arp_state.cache[i].ip_address == ip_address) {
             memcpy(mac_address, arp_state.cache[i].mac_address, 6);
-            spinlock_release(&arp_state.lock);
+            spinlock_unlock(&arp_state.lock);
             return ERR_OK;
         }
     }
     
-    spinlock_release(&arp_state.lock);
+    spinlock_unlock(&arp_state.lock);
     
     // Not in cache - send ARP request
     return arp_request(ip_address);

@@ -164,16 +164,30 @@ void pmm_init(boot_info_t* boot_info) {
  * Allocate a single physical page
  */
 paddr_t pmm_alloc_page(void) {
-    // Find first free page
-    for (pfn_t pfn = 0; pfn < total_pages; pfn++) {
+    static pfn_t last_allocated = 0;  // Hint for next allocation
+
+    // Try from last allocated position first (locality)
+    for (pfn_t pfn = last_allocated; pfn < total_pages; pfn++) {
         if (!bitmap_test(pfn)) {
             bitmap_set(pfn);
             free_pages--;
             used_pages++;
+            last_allocated = pfn + 1;
             return PFN_TO_PADDR(pfn);
         }
     }
-    
+
+    // Wrap around and search from beginning
+    for (pfn_t pfn = 0; pfn < last_allocated; pfn++) {
+        if (!bitmap_test(pfn)) {
+            bitmap_set(pfn);
+            free_pages--;
+            used_pages++;
+            last_allocated = pfn + 1;
+            return PFN_TO_PADDR(pfn);
+        }
+    }
+
     kerror("PMM: Out of physical memory!\n");
     return 0;
 }

@@ -42,14 +42,16 @@ error_code_t launcher_init(void) {
     launcher_state.visible = false;
     
     // Create launcher window (will be shown when needed)
-    extern window_t* window_create(uint32_t x, uint32_t y, uint32_t width, uint32_t height, const char* title);
+    extern window_t* window_create(int32_t x, int32_t y, uint32_t width, uint32_t height, const char* title);
     launcher_state.window = window_create(100, 100, 400, 600, "Applications");
     if (!launcher_state.window) {
         kfree(launcher_state.apps);
         return ERR_OUT_OF_MEMORY;
     }
     
-    launcher_state.window->visible = false;  // Hidden by default
+    // Hidden by default
+    extern error_code_t window_set_visible(window_t* window, bool visible);
+    window_set_visible(launcher_state.window, false);
     
     launcher_state.initialized = true;
     
@@ -106,7 +108,10 @@ error_code_t launcher_show(void) {
     }
     
     launcher_state.visible = true;
-    launcher_state.window->visible = true;
+    if (launcher_state.window) {
+        extern error_code_t window_set_visible(window_t* window, bool visible);
+        window_set_visible(launcher_state.window, true);
+    }
     
     return ERR_OK;
 }
@@ -121,7 +126,8 @@ error_code_t launcher_hide(void) {
     
     launcher_state.visible = false;
     if (launcher_state.window) {
-        launcher_state.window->visible = false;
+        extern error_code_t window_set_visible(window_t* window, bool visible);
+        window_set_visible(launcher_state.window, false);
     }
     
     return ERR_OK;
@@ -219,8 +225,8 @@ error_code_t launcher_handle_click(uint32_t x, uint32_t y) {
     window_t* win = launcher_state.window;
     
     // Check if click is within launcher window
-    if (x < win->x || x > win->x + win->width ||
-        y < win->y || y > win->y + win->height) {
+    if ((int32_t)x < win->x || (int32_t)x > win->x + (int32_t)win->width ||
+        (int32_t)y < win->y || (int32_t)y > win->y + (int32_t)win->height) {
         return ERR_NOT_FOUND;
     }
     

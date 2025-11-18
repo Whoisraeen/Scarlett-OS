@@ -44,18 +44,18 @@ error_code_t socket_init(void) {
  * Find socket by file descriptor
  */
 static socket_t* socket_find(int fd) {
-    spinlock_acquire(&socket_state.lock);
+    spinlock_lock(&socket_state.lock);
     
     socket_t* sock = socket_state.sockets;
     while (sock) {
         if ((int)(sock - socket_state.sockets) == fd - 3) {
-            spinlock_release(&socket_state.lock);
+            spinlock_unlock(&socket_state.lock);
             return sock;
         }
         sock = sock->next;
     }
     
-    spinlock_release(&socket_state.lock);
+    spinlock_unlock(&socket_state.lock);
     return NULL;
 }
 
@@ -81,11 +81,11 @@ int socket_create(int domain, int type, int protocol) {
     sock->bound = false;
     sock->connected = false;
     
-    spinlock_acquire(&socket_state.lock);
+    spinlock_lock(&socket_state.lock);
     sock->next = socket_state.sockets;
     socket_state.sockets = sock;
     int fd = socket_state.next_fd++;
-    spinlock_release(&socket_state.lock);
+    spinlock_unlock(&socket_state.lock);
     
     return fd;
 }
@@ -190,7 +190,7 @@ int socket_accept(int sockfd, sockaddr_in_t* addr) {
 /**
  * Send data on socket
  */
-error_code_t socket_send(int sockfd, void* data, size_t len, int flags) {
+error_code_t socket_send(int sockfd, void* data, size_t len, int flags __attribute__((unused))) {
     socket_t* sock = socket_find(sockfd);
     if (!sock || !data || len == 0) {
         return ERR_INVALID_ARG;
@@ -213,8 +213,8 @@ error_code_t socket_send(int sockfd, void* data, size_t len, int flags) {
         case SOCK_STREAM: {
             // TCP
             if (sock->data) {
-                extern error_code_t tcp_send(void* conn, void* data, size_t len);
-                return tcp_send(sock->data, data, len);
+                extern error_code_t tcp_send(tcp_connection_t* conn, void* data, size_t len);
+                return tcp_send((tcp_connection_t*)sock->data, data, len);
             }
             return ERR_INVALID_STATE;
         }
@@ -227,7 +227,7 @@ error_code_t socket_send(int sockfd, void* data, size_t len, int flags) {
 /**
  * Receive data from socket
  */
-error_code_t socket_recv(int sockfd, void* buffer, size_t* len, int flags) {
+error_code_t socket_recv(int sockfd, void* buffer, size_t* len, int flags __attribute__((unused))) {
     socket_t* sock = socket_find(sockfd);
     if (!sock || !buffer || !len) {
         return ERR_INVALID_ARG;
@@ -255,8 +255,8 @@ error_code_t socket_recv(int sockfd, void* buffer, size_t* len, int flags) {
         case SOCK_STREAM: {
             // TCP
             if (sock->data) {
-                extern error_code_t tcp_receive(void* conn, void* buffer, size_t* len);
-                return tcp_receive(sock->data, buffer, len);
+                extern error_code_t tcp_receive(tcp_connection_t* conn, void* buffer, size_t* len);
+                return tcp_receive((tcp_connection_t*)sock->data, buffer, len);
             }
             return ERR_INVALID_STATE;
         }
@@ -275,7 +275,7 @@ error_code_t socket_close(int sockfd) {
         return ERR_INVALID_ARG;
     }
     
-    spinlock_acquire(&socket_state.lock);
+    spinlock_lock(&socket_state.lock);
     
     // Remove from list
     if (socket_state.sockets == sock) {
@@ -290,7 +290,7 @@ error_code_t socket_close(int sockfd) {
         }
     }
     
-    spinlock_release(&socket_state.lock);
+    spinlock_unlock(&socket_state.lock);
     
     // Close TCP connection if exists
     if (sock->type == SOCK_STREAM && sock->data) {

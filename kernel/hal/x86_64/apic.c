@@ -8,8 +8,9 @@
 #include "../../include/errors.h"
 #include "../../include/kprintf.h"
 #include "../../include/debug.h"
+#include "../../include/config.h"
 
-// Local APIC base address (set during initialization)
+// Local APIC base address (virtual address after PHYS_MAP_BASE mapping)
 static uint64_t lapic_base = 0;
 
 /**
@@ -99,22 +100,26 @@ void apic_send_startup(uint32_t apic_id, uint32_t vector) {
  */
 error_code_t apic_init(void) {
     kinfo("Initializing Local APIC...\n");
-    
+
     // Read APIC base from MSR
     uint64_t msr_value = rdmsr(0x1B);  // IA32_APIC_BASE MSR
-    lapic_base = msr_value & 0xFFFFF000;  // Base address (page-aligned)
-    
+    uint64_t lapic_phys = msr_value & 0xFFFFF000;  // Physical base address (page-aligned)
+
     bool apic_enabled = (msr_value & (1 << 11)) != 0;  // APIC Global Enable bit
-    
+
     if (!apic_enabled) {
         // Enable APIC
         msr_value |= (1 << 11);
         wrmsr(0x1B, msr_value);
-        lapic_base = msr_value & 0xFFFFF000;
+        lapic_phys = msr_value & 0xFFFFF000;
         kinfo("APIC was disabled, enabled it\n");
     }
-    
-    kinfo("Local APIC base: 0x%016lx\n", lapic_base);
+
+    // Map physical APIC address to virtual address using PHYS_MAP_BASE
+    lapic_base = lapic_phys + PHYS_MAP_BASE;
+
+    kinfo("Local APIC physical base: 0x%016lx\n", lapic_phys);
+    kinfo("Local APIC virtual base: 0x%016lx\n", lapic_base);
     
     // Read APIC version
     uint32_t version = apic_read(LAPIC_VER);

@@ -39,7 +39,7 @@ ASM_SRCS = hal/x86_64/boot32.S \
            hal/x86_64/idt_load.S \
            hal/x86_64/exceptions.S \
            hal/x86_64/user_mode.S \
-           hal/x86_64/interrupts.S
+           hal/x86_64/interrupt_stubs.S
 
 C_SRCS = core/main.c \
          core/kprintf.c \
@@ -83,6 +83,7 @@ C_SRCS += sched/scheduler.c \
           fs/fat32_vfs.c \
           fs/fat32_create.c \
           fs/fat32_dir.c \
+          fs/fat32_utils.c \
           fs/permissions.c \
           drivers/ata/ata.c \
           drivers/ahci/ahci.c \
@@ -127,8 +128,7 @@ C_SRCS += sched/scheduler.c \
           desktop/taskbar.c \
           desktop/launcher.c \
           desktop/login.c \
-          desktop/bootsplash.c \
-          net/socket_options.c
+          desktop/bootsplash.c
 
 # Object files
 ASM_OBJS = $(ASM_SRCS:.S=.o)
@@ -147,12 +147,16 @@ $(TARGET): $(OBJS)
 	@echo "[CC] $<"
 	@$(CC) $(CFLAGS) -c $< -o $@
 
-# Special rule for math.c and stdio.c - allow SSE for floating point
+# Special rule for math.c, stdio.c, and graphics.c - allow SSE for floating point
 core/math.o: core/math.c
 	@echo "[CC] $< (with SSE for FP)"
 	@$(CC) $(filter-out -mno-sse -mno-sse2,$(CFLAGS)) -c $< -o $@
 
 core/stdio.o: core/stdio.c
+	@echo "[CC] $< (with SSE for FP)"
+	@$(CC) $(filter-out -mno-sse -mno-sse2,$(CFLAGS)) -c $< -o $@
+
+graphics/graphics.o: graphics/graphics.c
 	@echo "[CC] $< (with SSE for FP)"
 	@$(CC) $(filter-out -mno-sse -mno-sse2,$(CFLAGS)) -c $< -o $@
 

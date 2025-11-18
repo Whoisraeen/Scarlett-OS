@@ -122,11 +122,12 @@ void pic_init(void) {
     outb(0x21, 0x01);  // 8086 mode
     outb(0xA1, 0x01);  // 8086 mode
     
-    // Mask all interrupts except timer (IRQ 0)
-    outb(0x21, 0xFE);  // Enable timer only (bit 0 = timer)
-    outb(0xA1, 0xFF);  // Disable all slave interrupts
-    
-    kinfo("PIC initialized\n");
+    // Mask ALL interrupts initially (including timer)
+    // Timer will be unmasked after scheduler is initialized
+    outb(0x21, 0xFF);  // Mask all master interrupts
+    outb(0xA1, 0xFF);  // Mask all slave interrupts
+
+    kinfo("PIC initialized (all IRQs masked)\n");
 }
 
 /**

@@ -4,6 +4,7 @@
  */
 
 #include "../include/ui/widget.h"
+#include "../include/drivers/ps2.h"
 #include "../include/kprintf.h"
 #include "../include/debug.h"
 #include "../include/mm/heap.h"

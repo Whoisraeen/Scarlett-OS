@@ -131,6 +131,7 @@ void fat32_unix_to_date(uint64_t unix_time, uint16_t* fat_date, uint16_t* fat_ti
 error_code_t fat32_find_in_dir(fat32_fs_t* fs, uint32_t cluster, const char* name, fat32_dir_entry_t* entry);
 error_code_t fat32_find_in_dir_location(fat32_fs_t* fs, uint32_t cluster, const char* name, 
                                         uint32_t* out_cluster, uint32_t* out_entry_index);
+error_code_t fat32_find_free_dir_entry(fat32_fs_t* fs, uint32_t cluster, uint32_t* sector_out, uint32_t* entry_out);
 
 #endif // KERNEL_FS_FAT32_H
 

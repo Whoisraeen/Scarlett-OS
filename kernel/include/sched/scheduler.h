@@ -7,6 +7,7 @@
 #define KERNEL_SCHED_SCHEDULER_H
 
 #include "../types.h"
+#include "../sync/spinlock.h"
 
 // Thread states
 typedef enum {
@@ -126,6 +127,11 @@ void thread_block(void);
  * Unblock a thread
  */
 void thread_unblock(thread_t* thread);
+
+// Global thread table (for CPU affinity and other uses)
+#define MAX_THREADS 256
+extern spinlock_t thread_table_lock;
+extern thread_t* thread_table[MAX_THREADS];
 
 #endif // KERNEL_SCHED_SCHEDULER_H
 

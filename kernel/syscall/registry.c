@@ -7,6 +7,7 @@
 #include "../include/syscall/registry.h"
 #include "../include/syscall/syscall.h"
 #include "../include/kprintf.h"
+#include "../include/debug.h"
 
 // System call registry
 static const syscall_info_t syscall_registry[] = {

@@ -7,6 +7,8 @@
 #define KERNEL_NET_ETHERNET_H
 
 #include "../types.h"
+#include "../errors.h"
+#include "network.h"
 
 // Ethernet frame structure
 #define ETH_HEADER_SIZE 14

@@ -41,13 +41,13 @@ error_code_t network_register_device(net_device_t* device) {
         return ERR_INVALID_ARG;
     }
     
-    spinlock_acquire(&network_state.lock);
+    spinlock_lock(&network_state.lock);
     
     // Add to device list
     device->next = network_state.devices;
     network_state.devices = device;
     
-    spinlock_release(&network_state.lock);
+    spinlock_unlock(&network_state.lock);
     
     kinfo("Registered network device: %s (MAC: %02x:%02x:%02x:%02x:%02x:%02x)\n",
           device->name,
@@ -65,18 +65,18 @@ net_device_t* network_find_device(const char* name) {
         return NULL;
     }
     
-    spinlock_acquire(&network_state.lock);
+    spinlock_lock(&network_state.lock);
     
     net_device_t* device = network_state.devices;
     while (device) {
         if (strcmp(device->name, name) == 0) {
-            spinlock_release(&network_state.lock);
+            spinlock_unlock(&network_state.lock);
             return device;
         }
         device = device->next;
     }
     
-    spinlock_release(&network_state.lock);
+    spinlock_unlock(&network_state.lock);
     return NULL;
 }
 

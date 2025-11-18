@@ -49,11 +49,11 @@ error_code_t input_event_enqueue(input_event_t* event) {
         return ERR_INVALID_ARG;
     }
     
-    spinlock_acquire(&input_queue.lock);
+    spinlock_lock(&input_queue.lock);
     
     // Check if queue is full
     if (input_queue.count >= INPUT_EVENT_QUEUE_SIZE) {
-        spinlock_release(&input_queue.lock);
+        spinlock_unlock(&input_queue.lock);
         return ERR_DEVICE_BUSY;  // Queue full
     }
     
@@ -62,7 +62,7 @@ error_code_t input_event_enqueue(input_event_t* event) {
     input_queue.tail = (input_queue.tail + 1) % INPUT_EVENT_QUEUE_SIZE;
     input_queue.count++;
     
-    spinlock_release(&input_queue.lock);
+    spinlock_unlock(&input_queue.lock);
     
     return ERR_OK;
 }
@@ -75,11 +75,11 @@ error_code_t input_event_dequeue(input_event_t* event) {
         return ERR_INVALID_ARG;
     }
     
-    spinlock_acquire(&input_queue.lock);
+    spinlock_lock(&input_queue.lock);
     
     // Check if queue is empty
     if (input_queue.count == 0) {
-        spinlock_release(&input_queue.lock);
+        spinlock_unlock(&input_queue.lock);
         return ERR_NOT_FOUND;
     }
     
@@ -88,7 +88,7 @@ error_code_t input_event_dequeue(input_event_t* event) {
     input_queue.head = (input_queue.head + 1) % INPUT_EVENT_QUEUE_SIZE;
     input_queue.count--;
     
-    spinlock_release(&input_queue.lock);
+    spinlock_unlock(&input_queue.lock);
     
     return ERR_OK;
 }
@@ -101,9 +101,9 @@ bool input_event_available(void) {
         return false;
     }
     
-    spinlock_acquire(&input_queue.lock);
+    spinlock_lock(&input_queue.lock);
     bool available = (input_queue.count > 0);
-    spinlock_release(&input_queue.lock);
+    spinlock_unlock(&input_queue.lock);
     
     return available;
 }
@@ -116,11 +116,11 @@ void input_event_clear(void) {
         return;
     }
     
-    spinlock_acquire(&input_queue.lock);
+    spinlock_lock(&input_queue.lock);
     input_queue.head = 0;
     input_queue.tail = 0;
     input_queue.count = 0;
-    spinlock_release(&input_queue.lock);
+    spinlock_unlock(&input_queue.lock);
 }
 
 /**

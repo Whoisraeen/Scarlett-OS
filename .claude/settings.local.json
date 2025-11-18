@@ -4,7 +4,9 @@
       "Bash(\"C:\\Users\\woisr\\Downloads\\OS\\.cursor\\rules\\dev-rules.mdc\")",
       "Bash(find:*)",
       "Bash(make clean:*)",
-      "Bash(make:*)"
+      "Bash(make:*)",
+      "Bash(wsl bash -c \"cd /mnt/c/Users/woisr/Downloads/OS/kernel && make clean && make 2>&1 | grep -E ''error:|Error|undefined reference'' | head -50\")",
+      "Bash(wsl bash:*)"
     ],
     "deny": [],
     "ask": []

@@ -40,7 +40,7 @@ interrupt_handler_\num:
     push %r15
     
     // Call C handler
-    mov %rsp, %rdi  // Pass stack pointer as first argument
+    mov %rsp, %rdi
     call interrupt_handler_c
     
     // Check if we need to reschedule (for timer interrupt)
@@ -73,20 +73,36 @@ interrupt_handler_\num:
 .endm
 
 // Generate interrupt handlers for IRQ 0-15 (interrupts 32-47)
-INTERRUPT_STUB 32  // IRQ 0 - Timer
-INTERRUPT_STUB 33  // IRQ 1 - Keyboard
-INTERRUPT_STUB 34  // IRQ 2 - Cascade
-INTERRUPT_STUB 35  // IRQ 3 - COM2
-INTERRUPT_STUB 36  // IRQ 4 - COM1
-INTERRUPT_STUB 37  // IRQ 5 - LPT2
-INTERRUPT_STUB 38  // IRQ 6 - Floppy
-INTERRUPT_STUB 39  // IRQ 7 - LPT1
-INTERRUPT_STUB 40  // IRQ 8 - RTC
-INTERRUPT_STUB 41  // IRQ 9 - Free
-INTERRUPT_STUB 42  // IRQ 10 - Free
-INTERRUPT_STUB 43  // IRQ 11 - Free
-INTERRUPT_STUB 44  // IRQ 12 - PS/2 Mouse
-INTERRUPT_STUB 45  // IRQ 13 - FPU
-INTERRUPT_STUB 46  // IRQ 14 - Primary ATA
-INTERRUPT_STUB 47  // IRQ 15 - Secondary ATA
+// IRQ 0 - Timer
+INTERRUPT_STUB 32
+// IRQ 1 - Keyboard
+INTERRUPT_STUB 33
+// IRQ 2 - Cascade
+INTERRUPT_STUB 34
+// IRQ 3 - COM2
+INTERRUPT_STUB 35
+// IRQ 4 - COM1
+INTERRUPT_STUB 36
+// IRQ 5 - LPT2
+INTERRUPT_STUB 37
+// IRQ 6 - Floppy
+INTERRUPT_STUB 38
+// IRQ 7 - LPT1
+INTERRUPT_STUB 39
+// IRQ 8 - RTC
+INTERRUPT_STUB 40
+// IRQ 9 - Free
+INTERRUPT_STUB 41
+// IRQ 10 - Free
+INTERRUPT_STUB 42
+// IRQ 11 - Free
+INTERRUPT_STUB 43
+// IRQ 12 - PS/2 Mouse
+INTERRUPT_STUB 44
+// IRQ 13 - FPU
+INTERRUPT_STUB 45
+// IRQ 14 - Primary ATA
+INTERRUPT_STUB 46
+// IRQ 15 - Secondary ATA
+INTERRUPT_STUB 47
 

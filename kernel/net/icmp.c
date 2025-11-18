@@ -5,6 +5,7 @@
 
 #include "../include/net/icmp.h"
 #include "../include/net/ip.h"
+#include "../include/net/network.h"
 #include "../include/kprintf.h"
 #include "../include/debug.h"
 #include "../include/mm/heap.h"

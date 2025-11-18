@@ -5,6 +5,7 @@
 
 #include "../include/types.h"
 #include "../include/kprintf.h"
+#include "../include/debug.h"
 #include "../include/sched/scheduler.h"
 #include "../include/string.h"
 

@@ -49,7 +49,7 @@ static void fat32_format_filename(const char* name, char* formatted) {
 /**
  * Find free directory entry slot
  */
-static error_code_t fat32_find_free_dir_entry(fat32_fs_t* fs, uint32_t cluster, 
+error_code_t fat32_find_free_dir_entry(fat32_fs_t* fs, uint32_t cluster, 
                                                uint32_t* sector_out, uint32_t* entry_out) {
     uint8_t* cluster_data = (uint8_t*)kmalloc(fs->bytes_per_cluster);
     if (!cluster_data) {

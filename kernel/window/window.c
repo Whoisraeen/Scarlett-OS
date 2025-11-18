@@ -90,7 +90,7 @@ window_t* window_create(int32_t x, int32_t y, uint32_t width, uint32_t height, c
     memset(window->buffer, 0xFF, buffer_size);
     
     // Add to window list
-    spinlock_acquire(&wm_state.lock);
+    spinlock_lock(&wm_state.lock);
     window->next = wm_state.windows;
     if (wm_state.windows) {
         wm_state.windows->prev = window;
@@ -105,7 +105,7 @@ window_t* window_create(int32_t x, int32_t y, uint32_t width, uint32_t height, c
         wm_state.focused_window->flags &= ~WINDOW_FLAG_FOCUSED;
         wm_state.focused_window = window;
     }
-    spinlock_release(&wm_state.lock);
+    spinlock_unlock(&wm_state.lock);
     
     kinfo("Created window %lu: %s (%dx%d at %d,%d)\n", 
           window->id, window->title, width, height, x, y);
@@ -121,7 +121,7 @@ error_code_t window_destroy(window_t* window) {
         return ERR_INVALID_ARG;
     }
     
-    spinlock_acquire(&wm_state.lock);
+    spinlock_lock(&wm_state.lock);
     
     // Remove from list
     if (window->prev) {
@@ -142,7 +142,7 @@ error_code_t window_destroy(window_t* window) {
         }
     }
     
-    spinlock_release(&wm_state.lock);
+    spinlock_unlock(&wm_state.lock);
     
     // Free resources
     if (window->buffer) {
@@ -240,7 +240,7 @@ error_code_t window_set_focus(window_t* window, bool focused) {
         return ERR_INVALID_ARG;
     }
     
-    spinlock_acquire(&wm_state.lock);
+    spinlock_lock(&wm_state.lock);
     
     if (focused) {
         // Unfocus previous window
@@ -257,7 +257,7 @@ error_code_t window_set_focus(window_t* window, bool focused) {
         }
     }
     
-    spinlock_release(&wm_state.lock);
+    spinlock_unlock(&wm_state.lock);
     
     return ERR_OK;
 }
@@ -273,7 +273,7 @@ window_t* window_get_focused(void) {
  * Find window at coordinates
  */
 window_t* window_find_at(int32_t x, int32_t y) {
-    spinlock_acquire(&wm_state.lock);
+    spinlock_lock(&wm_state.lock);
     
     // Search from front to back (top to bottom in Z-order)
     window_t* window = wm_state.windows;
@@ -281,13 +281,13 @@ window_t* window_find_at(int32_t x, int32_t y) {
         if ((window->flags & WINDOW_FLAG_VISIBLE) &&
             x >= window->x && x < (int32_t)(window->x + window->width) &&
             y >= window->y && y < (int32_t)(window->y + window->height)) {
-            spinlock_release(&wm_state.lock);
+            spinlock_unlock(&wm_state.lock);
             return window;
         }
         window = window->next;
     }
     
-    spinlock_release(&wm_state.lock);
+    spinlock_unlock(&wm_state.lock);
     return NULL;
 }
 
@@ -391,7 +391,7 @@ error_code_t window_manager_render_all(void) {
     // framebuffer_clear(RGB(50, 50, 50));  // Dark gray background
     
     // Render all windows (back to front)
-    spinlock_acquire(&wm_state.lock);
+    spinlock_lock(&wm_state.lock);
     window_t* window = wm_state.windows;
     while (window) {
         if (window->flags & WINDOW_FLAG_VISIBLE) {
@@ -399,7 +399,7 @@ error_code_t window_manager_render_all(void) {
         }
         window = window->next;
     }
-    spinlock_release(&wm_state.lock);
+    spinlock_unlock(&wm_state.lock);
     
     // Swap buffers if double buffering is enabled
     gfx_swap_buffers();

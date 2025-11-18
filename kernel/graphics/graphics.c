@@ -22,6 +22,9 @@ static struct {
 static void* back_buffer = NULL;
 static bool double_buffer_enabled = false;
 
+// Forward declarations
+static void set_pixel_buffer(uint32_t x, uint32_t y, uint32_t color);
+
 /**
  * Check if point is within clip rectangle
  */
@@ -117,6 +120,20 @@ void gfx_fill_rect(uint32_t x, uint32_t y, uint32_t width, uint32_t height, uint
 }
 
 /**
+ * Helper function to draw 8 symmetric points of a circle
+ */
+static void draw_circle_points(int32_t cx, int32_t cy, int32_t px, int32_t py, uint32_t color) {
+    if (!is_point_clipped(cx + px, cy + py)) set_pixel_buffer(cx + px, cy + py, color);
+    if (!is_point_clipped(cx - px, cy + py)) set_pixel_buffer(cx - px, cy + py, color);
+    if (!is_point_clipped(cx + px, cy - py)) set_pixel_buffer(cx + px, cy - py, color);
+    if (!is_point_clipped(cx - px, cy - py)) set_pixel_buffer(cx - px, cy - py, color);
+    if (!is_point_clipped(cx + py, cy + px)) set_pixel_buffer(cx + py, cy + px, color);
+    if (!is_point_clipped(cx - py, cy + px)) set_pixel_buffer(cx - py, cy + px, color);
+    if (!is_point_clipped(cx + py, cy - px)) set_pixel_buffer(cx + py, cy - px, color);
+    if (!is_point_clipped(cx - py, cy - px)) set_pixel_buffer(cx - py, cy - px, color);
+}
+
+/**
  * Draw circle outline using midpoint algorithm
  */
 void gfx_draw_circle(uint32_t x, uint32_t y, uint32_t radius, uint32_t color) {
@@ -132,18 +149,6 @@ void gfx_draw_circle(uint32_t x, uint32_t y, uint32_t radius, uint32_t color) {
     int32_t px = 0;
     int32_t py = r;
     int32_t d = 1 - r;
-    
-    // Helper function to draw 8 symmetric points
-    static void draw_circle_points(int32_t cx, int32_t cy, int32_t px, int32_t py, uint32_t color) {
-        if (!is_point_clipped(cx + px, cy + py)) set_pixel_buffer(cx + px, cy + py, color);
-        if (!is_point_clipped(cx - px, cy + py)) set_pixel_buffer(cx - px, cy + py, color);
-        if (!is_point_clipped(cx + px, cy - py)) set_pixel_buffer(cx + px, cy - py, color);
-        if (!is_point_clipped(cx - px, cy - py)) set_pixel_buffer(cx - px, cy - py, color);
-        if (!is_point_clipped(cx + py, cy + px)) set_pixel_buffer(cx + py, cy + px, color);
-        if (!is_point_clipped(cx - py, cy + px)) set_pixel_buffer(cx - py, cy + px, color);
-        if (!is_point_clipped(cx + py, cy - px)) set_pixel_buffer(cx + py, cy - px, color);
-        if (!is_point_clipped(cx - py, cy - px)) set_pixel_buffer(cx - py, cy - px, color);
-    }
     
     draw_circle_points(cx, cy, px, py, color);
     

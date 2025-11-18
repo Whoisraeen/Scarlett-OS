@@ -50,26 +50,29 @@ static inline void outb(uint16_t port, uint8_t val) {
 }
 
 /**
- * Initialize PIT timer
+ * Initialize PIT timer (but keep IRQ masked initially)
  */
 void timer_init(void) {
     kinfo("Initializing PIT timer...\n");
-    
+
     // Calculate divisor
     uint16_t divisor = (uint16_t)PIT_DIVISOR;
-    
+
     kinfo("PIT: Setting frequency to %u Hz (divisor: %u)\n", TARGET_FREQUENCY, divisor);
-    
+
     // Send command byte
     outb(PIT_COMMAND, PIT_CHANNEL0 | PIT_ACCESS_LOHI | PIT_MODE_3 | PIT_BINARY);
-    
+
     // Set divisor (low byte, then high byte)
     outb(PIT_CHANNEL0_DATA, divisor & 0xFF);
     outb(PIT_CHANNEL0_DATA, (divisor >> 8) & 0xFF);
-    
+
     timer_ticks = 0;
-    
-    kinfo("PIT timer initialized (10ms per tick)\n");
+
+    // Note: Timer IRQ (IRQ 0) is masked by default in PIC init
+    // It will be unmasked when scheduler is ready
+
+    kinfo("PIT timer initialized (IRQ masked, 10ms per tick)\n");
 }
 
 /**
@@ -86,15 +89,34 @@ uint64_t timer_get_ms(void) {
     return timer_ticks * (1000 / TARGET_FREQUENCY);
 }
 
+// Flag to indicate if scheduler is ready
+static bool scheduler_ready = false;
+
+/**
+ * Enable scheduler ticks (unmasks timer IRQ)
+ */
+void timer_enable_scheduler(void) {
+    scheduler_ready = true;
+
+    // Unmask IRQ 0 (timer) on PIC
+    uint8_t mask = inb(0x21);
+    mask &= ~(1 << 0);  // Clear bit 0 to unmask IRQ 0
+    outb(0x21, mask);
+
+    kdebug("Timer IRQ unmasked, scheduler ticks enabled\n");
+}
+
 /**
  * Timer interrupt handler (called from interrupt handler)
  */
 void timer_interrupt_handler(void) {
     timer_ticks++;
-    
-    // Call scheduler to potentially switch threads
-    extern void scheduler_tick(void);
-    scheduler_tick();
+
+    // Call scheduler to potentially switch threads (only if initialized)
+    if (scheduler_ready) {
+        extern void scheduler_tick(void);
+        scheduler_tick();
+    }
 }
 
 /**

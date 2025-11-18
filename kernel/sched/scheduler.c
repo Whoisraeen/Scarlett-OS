@@ -32,8 +32,8 @@ typedef struct {
 } per_cpu_runqueue_t;
 
 // Global thread table (shared, protected by lock)
-static spinlock_t thread_table_lock = SPINLOCK_INIT;
-static thread_t* thread_table[MAX_THREADS];
+spinlock_t thread_table_lock = SPINLOCK_INIT;
+thread_t* thread_table[MAX_THREADS];
 static uint64_t next_tid = 1;
 
 // Global sleeping queue

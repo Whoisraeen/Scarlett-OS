@@ -183,7 +183,7 @@ error_code_t ethernet_driver_probe(pci_device_t* pci_dev) {
         return ERR_OUT_OF_MEMORY;
     }
     
-    spinlock_acquire(&ethernet_lock);
+    spinlock_lock(&ethernet_lock);
     
     // Allocate NIC structure
     ethernet_nic_t* nic = &ethernet_nics[ethernet_nic_count];
@@ -193,20 +193,20 @@ error_code_t ethernet_driver_probe(pci_device_t* pci_dev) {
     // Initialize NIC
     error_code_t err = ethernet_nic_init(nic);
     if (err != ERR_OK) {
-        spinlock_release(&ethernet_lock);
+        spinlock_unlock(&ethernet_lock);
         return err;
     }
     
     // Register with network stack
     err = network_register_device(&nic->net_device);
     if (err != ERR_OK) {
-        spinlock_release(&ethernet_lock);
+        spinlock_unlock(&ethernet_lock);
         return err;
     }
     
     ethernet_nic_count++;
     
-    spinlock_release(&ethernet_lock);
+    spinlock_unlock(&ethernet_lock);
     
     kinfo("Ethernet driver: Probing successful for %02x:%02x.%x\n",
           pci_dev->bus, pci_dev->device, pci_dev->function);
@@ -262,10 +262,10 @@ error_code_t ethernet_nic_register(ethernet_nic_t* nic) {
         return ERR_INVALID_ARG;
     }
     
-    spinlock_acquire(&ethernet_lock);
+    spinlock_lock(&ethernet_lock);
     
     if (ethernet_nic_count >= MAX_ETHERNET_NICS) {
-        spinlock_release(&ethernet_lock);
+        spinlock_unlock(&ethernet_lock);
         return ERR_OUT_OF_MEMORY;
     }
     
@@ -276,7 +276,7 @@ error_code_t ethernet_nic_register(ethernet_nic_t* nic) {
     // Register with network stack
     error_code_t err = network_register_device(&nic->net_device);
     
-    spinlock_release(&ethernet_lock);
+    spinlock_unlock(&ethernet_lock);
     
     return err;
 }
@@ -289,17 +289,17 @@ ethernet_nic_t* ethernet_nic_find_by_mac(uint8_t* mac) {
         return NULL;
     }
     
-    spinlock_acquire(&ethernet_lock);
+    spinlock_lock(&ethernet_lock);
     
     for (uint32_t i = 0; i < ethernet_nic_count; i++) {
         if (memcmp(ethernet_nics[i].mac_address, mac, 6) == 0) {
             ethernet_nic_t* nic = &ethernet_nics[i];
-            spinlock_release(&ethernet_lock);
+            spinlock_unlock(&ethernet_lock);
             return nic;
         }
     }
     
-    spinlock_release(&ethernet_lock);
+    spinlock_unlock(&ethernet_lock);
     return NULL;
 }
 
@@ -307,15 +307,15 @@ ethernet_nic_t* ethernet_nic_find_by_mac(uint8_t* mac) {
  * Get default Ethernet NIC
  */
 ethernet_nic_t* ethernet_nic_get_default(void) {
-    spinlock_acquire(&ethernet_lock);
+    spinlock_lock(&ethernet_lock);
     
     if (ethernet_nic_count == 0) {
-        spinlock_release(&ethernet_lock);
+        spinlock_unlock(&ethernet_lock);
         return NULL;
     }
     
     ethernet_nic_t* nic = &ethernet_nics[0];
-    spinlock_release(&ethernet_lock);
+    spinlock_unlock(&ethernet_lock);
     return nic;
 }
 

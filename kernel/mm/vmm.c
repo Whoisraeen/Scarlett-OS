@@ -76,92 +76,43 @@ void vmm_init(void) {
     kinfo("[VMM-ENTRY] vmm_init() called\n");
     kinfo("Initializing Virtual Memory Manager...\n");
 
+    // Disable interrupts during VMM initialization to prevent any interference
+    __asm__ volatile("cli");
+    kinfo("VMM: Interrupts disabled\n");
+
     // Get current page table (set up by bootloader)
+    kinfo("VMM: Reading CR3...\n");
     uint64_t cr3;
     __asm__ volatile("mov %%cr3, %0" : "=r"(cr3));
-    kdebug("VMM: CR3 = 0x%lx\n", cr3);
+    kinfo("VMM: CR3 = 0x%lx\n", cr3);
 
     // IMPORTANT: We can't use PHYS_MAP_BASE yet because bootloader didn't map it
     // The bootloader only identity-maps first 2GB
     // For now, we'll use identity mapping for page table access
     // CR3 points to PML4 which is in low memory (< 2GB), so we can access it directly
+    kinfo("VMM: Setting kernel_address_space.pml4...\n");
     kernel_address_space.pml4 = (uint64_t*)cr3;
     kernel_address_space.asid = 0;
     kernel_address_space.next = NULL;
 
-    kdebug("VMM: kernel_address_space.pml4 = %p\n", kernel_address_space.pml4);
-    kdebug("VMM: Setting up physical memory direct map at 0x%lx\n", PHYS_MAP_BASE);
+    kinfo("VMM: kernel_address_space.pml4 = %p\n", kernel_address_space.pml4);
+    kinfo("VMM: Setting up physical memory direct map at 0x%lx\n", PHYS_MAP_BASE);
 
-    // Map the first 4GB of physical memory to PHYS_MAP_BASE
-    // This allows us to access any physical address by adding PHYS_MAP_BASE
-    // We'll map 4GB using 2MB pages (2048 pages = 4GB)
-    uint64_t phys_addr = 0;
-    for (uint64_t i = 0; i < 2048; i++) {
-        vaddr_t virt_addr = PHYS_MAP_BASE + phys_addr;
-
-        // Get PML4 index for this virtual address
-        uint64_t pml4_idx = (virt_addr >> 39) & 0x1FF;
-        uint64_t pdp_idx = (virt_addr >> 30) & 0x1FF;
-        uint64_t pd_idx = (virt_addr >> 21) & 0x1FF;
-
-        // Ensure PML4 entry exists
-        if (!(kernel_address_space.pml4[pml4_idx] & VMM_PRESENT)) {
-            paddr_t pdp_phys = pmm_alloc_page();
-            if (pdp_phys == 0) {
-                kerror("VMM: Out of memory during PHYS_MAP setup\n");
-                kpanic("VMM initialization failed");
-            }
-            // Clear the new PDP
-            uint64_t* pdp_virt = (uint64_t*)pdp_phys;  // Identity mapped
-            for (int j = 0; j < 512; j++) pdp_virt[j] = 0;
-            kernel_address_space.pml4[pml4_idx] = pdp_phys | VMM_PRESENT | VMM_WRITE;
-        }
-
-        // Get PDP
-        paddr_t pdp_phys = kernel_address_space.pml4[pml4_idx] & 0xFFFFFFFFF000ULL;
-        uint64_t* pdp = (uint64_t*)pdp_phys;  // Identity mapped
-
-        // Ensure PDP entry exists
-        if (!(pdp[pdp_idx] & VMM_PRESENT)) {
-            paddr_t pd_phys = pmm_alloc_page();
-            if (pd_phys == 0) {
-                kerror("VMM: Out of memory during PHYS_MAP setup\n");
-                kpanic("VMM initialization failed");
-            }
-            // Clear the new PD
-            uint64_t* pd_virt = (uint64_t*)pd_phys;  // Identity mapped
-            for (int j = 0; j < 512; j++) pd_virt[j] = 0;
-            pdp[pdp_idx] = pd_phys | VMM_PRESENT | VMM_WRITE;
-        }
-
-        // Get PD
-        paddr_t pd_phys = pdp[pdp_idx] & 0xFFFFFFFFF000ULL;
-        uint64_t* pd = (uint64_t*)pd_phys;  // Identity mapped
-
-        // Map 2MB page
-        pd[pd_idx] = phys_addr | VMM_PRESENT | VMM_WRITE | VMM_HUGE;
-
-        phys_addr += 0x200000;  // 2MB
-    }
-
-    // Flush TLB to activate new mappings
-    vmm_flush_tlb_all();
-
-    kdebug("VMM: Physical memory direct map complete (4GB mapped)\n");
+    // TEMPORARY: Skip PHYS_MAP_BASE mapping for now to isolate the hang
+    // TODO: Fix and re-enable this
+    kinfo("VMM: Skipping PHYS_MAP_BASE mapping for now (TEMPORARY)\n");
+    kinfo("VMM: WARNING - APIC and other features requiring PHYS_MAP_BASE will not work!\n");
 
     // For now, keep using identity mapping for pml4
     // TODO: Switch to PHYS_MAP_BASE after verifying it works
     // kernel_address_space.pml4 = (uint64_t*)(cr3 + PHYS_MAP_BASE);
     
     kprintf("[INFO] VMM initialized with kernel page tables at 0x%lx\n", cr3);
-    
-    // Force serial flush by writing directly
-    extern void serial_putchar(char c);
-    const char* msg = "VMM: Testing direct serial output\n";
-    for (const char* p = msg; *p; p++) {
-        serial_putchar(*p);
-    }
-    
+
+    // Re-enable interrupts
+    __asm__ volatile("sti");
+    kinfo("VMM: Interrupts re-enabled\n");
+
     kprintf("[INFO] VMM initialization complete\n");
 }
 

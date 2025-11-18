@@ -127,8 +127,9 @@ error_code_t virtio_queue_init(virtio_device_t* dev, uint16_t queue_index, uint1
     // Set up queue
     virtio_mmio_write(dev->mmio_base, VIRTIO_MMIO_QUEUE_NUM, queue_size);
     
-    // Get physical address
-    uint64_t phys_addr = vmm_get_physical((uint64_t)queue_mem);
+    // Get physical address (use kernel address space - pass NULL for default)
+    extern address_space_t* vmm_get_kernel_address_space(void);
+    uint64_t phys_addr = vmm_get_physical(vmm_get_kernel_address_space(), (vaddr_t)queue_mem);
     
     // Set descriptor table address
     virtio_mmio_write(dev->mmio_base, VIRTIO_MMIO_QUEUE_DESC_LOW, phys_addr & 0xFFFFFFFF);
