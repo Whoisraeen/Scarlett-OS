@@ -82,8 +82,13 @@ C_SRCS += sched/scheduler.c \
           fs/fat32_file.c \
           fs/fat32_vfs.c \
           fs/fat32_create.c \
+          fs/fat32_dir.c \
           fs/permissions.c \
           drivers/ata/ata.c \
+          drivers/ahci/ahci.c \
+          drivers/pci/pci.c \
+          auth/user.c \
+          security/memory_protection.c \
           mm/mmap.c \
           core/test.c \
           core/userspace_launch.c \
@@ -92,7 +97,8 @@ C_SRCS += sched/scheduler.c \
           sync/spinlock.c \
           sync/mutex.c \
           sync/semaphore.c \
-          sync/rwlock.c
+          sync/rwlock.c \
+          sync/lockfree.c
 
 # Object files
 ASM_OBJS = $(ASM_SRCS:.S=.o)

@@ -216,10 +216,29 @@ void kernel_main(boot_info_t* boot_info) {
     kinfo("Initializing block device system...\n");
     block_device_init();
     
+    // PCI enumeration (needed for AHCI)
+    extern error_code_t pci_init(void);
+    kinfo("Initializing PCI subsystem...\n");
+    pci_init();
+    
     // Storage Drivers
     extern error_code_t ata_init(void);
     kinfo("Initializing ATA driver...\n");
     ata_init();
+    
+    extern error_code_t ahci_init(void);
+    kinfo("Initializing AHCI driver...\n");
+    ahci_init();
+    
+    // User & Group System
+    extern error_code_t user_init(void);
+    kinfo("Initializing user system...\n");
+    user_init();
+    
+    // Memory Protection
+    extern error_code_t memory_protection_init(void);
+    kinfo("Initializing memory protection...\n");
+    memory_protection_init();
     
     // Virtual File System
     extern error_code_t vfs_init(void);

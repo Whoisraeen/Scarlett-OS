@@ -351,14 +351,184 @@ error_code_t vfs_tell(fd_t fd, size_t* position) {
     return ERR_OK;
 }
 
-// Placeholder implementations for other operations
-error_code_t vfs_mkdir(const char* path) { (void)path; return ERR_NOT_SUPPORTED; }
-error_code_t vfs_rmdir(const char* path) { (void)path; return ERR_NOT_SUPPORTED; }
-error_code_t vfs_opendir(const char* path, fd_t* fd) { (void)path; (void)fd; return ERR_NOT_SUPPORTED; }
-error_code_t vfs_readdir(fd_t fd, vfs_dirent_t* entry) { (void)fd; (void)entry; return ERR_NOT_SUPPORTED; }
-error_code_t vfs_closedir(fd_t fd) { (void)fd; return ERR_NOT_SUPPORTED; }
-error_code_t vfs_unlink(const char* path) { (void)path; return ERR_NOT_SUPPORTED; }
-error_code_t vfs_rename(const char* oldpath, const char* newpath) { (void)oldpath; (void)newpath; return ERR_NOT_SUPPORTED; }
-error_code_t vfs_stat(const char* path, vfs_stat_t* stat) { (void)path; (void)stat; return ERR_NOT_SUPPORTED; }
-error_code_t vfs_unmount(const char* mountpoint) { (void)mountpoint; return ERR_NOT_SUPPORTED; }
+/**
+ * Create directory
+ */
+error_code_t vfs_mkdir(const char* path) {
+    if (!path) {
+        return ERR_INVALID_ARG;
+    }
+    
+    vfs_mount_t* mount;
+    char resolved_path[256];
+    error_code_t err = vfs_resolve_path(path, &mount, resolved_path);
+    if (err != ERR_OK || !mount || !mount->fs) {
+        return err != ERR_OK ? err : ERR_NOT_FOUND;
+    }
+    
+    if (!mount->fs->mkdir) {
+        return ERR_NOT_SUPPORTED;
+    }
+    
+    return mount->fs->mkdir(mount->fs, resolved_path);
+}
+
+/**
+ * Remove directory
+ */
+error_code_t vfs_rmdir(const char* path) {
+    if (!path) {
+        return ERR_INVALID_ARG;
+    }
+    
+    vfs_mount_t* mount;
+    char resolved_path[256];
+    error_code_t err = vfs_resolve_path(path, &mount, resolved_path);
+    if (err != ERR_OK || !mount || !mount->fs) {
+        return err != ERR_OK ? err : ERR_NOT_FOUND;
+    }
+    
+    if (!mount->fs->rmdir) {
+        return ERR_NOT_SUPPORTED;
+    }
+    
+    return mount->fs->rmdir(mount->fs, resolved_path);
+}
+
+/**
+ * Open directory
+ */
+error_code_t vfs_opendir(const char* path, fd_t* fd) {
+    if (!path || !fd) {
+        return ERR_INVALID_ARG;
+    }
+    
+    vfs_mount_t* mount;
+    char resolved_path[256];
+    error_code_t err = vfs_resolve_path(path, &mount, resolved_path);
+    if (err != ERR_OK || !mount || !mount->fs) {
+        return err != ERR_OK ? err : ERR_NOT_FOUND;
+    }
+    
+    if (!mount->fs->opendir) {
+        return ERR_NOT_SUPPORTED;
+    }
+    
+    return mount->fs->opendir(mount->fs, resolved_path, fd);
+}
+
+/**
+ * Read directory entry
+ */
+error_code_t vfs_readdir(fd_t fd, vfs_dirent_t* entry) {
+    if (fd < 0 || fd >= MAX_FDS || !entry) {
+        return ERR_INVALID_ARG;
+    }
+    
+    // Directory handles are separate from file handles
+    // For now, we'll use the filesystem directly
+    // TODO: Implement proper directory handle management
+    
+    // Find filesystem from mount
+    if (!root_mount || !root_mount->fs || !root_mount->fs->readdir) {
+        return ERR_NOT_SUPPORTED;
+    }
+    
+    return root_mount->fs->readdir(root_mount->fs, fd, entry);
+}
+
+/**
+ * Close directory
+ */
+error_code_t vfs_closedir(fd_t fd) {
+    if (fd < 0 || fd >= MAX_FDS) {
+        return ERR_INVALID_ARG;
+    }
+    
+    if (!root_mount || !root_mount->fs || !root_mount->fs->closedir) {
+        return ERR_NOT_SUPPORTED;
+    }
+    
+    return root_mount->fs->closedir(root_mount->fs, fd);
+}
+
+/**
+ * Delete file
+ */
+error_code_t vfs_unlink(const char* path) {
+    if (!path) {
+        return ERR_INVALID_ARG;
+    }
+    
+    vfs_mount_t* mount;
+    char resolved_path[256];
+    error_code_t err = vfs_resolve_path(path, &mount, resolved_path);
+    if (err != ERR_OK || !mount || !mount->fs) {
+        return err != ERR_OK ? err : ERR_NOT_FOUND;
+    }
+    
+    if (!mount->fs->unlink) {
+        return ERR_NOT_SUPPORTED;
+    }
+    
+    return mount->fs->unlink(mount->fs, resolved_path);
+}
+
+/**
+ * Rename file
+ */
+error_code_t vfs_rename(const char* oldpath, const char* newpath) {
+    if (!oldpath || !newpath) {
+        return ERR_INVALID_ARG;
+    }
+    
+    vfs_mount_t* mount;
+    char resolved_old[256], resolved_new[256];
+    error_code_t err = vfs_resolve_path(oldpath, &mount, resolved_old);
+    if (err != ERR_OK || !mount || !mount->fs) {
+        return err != ERR_OK ? err : ERR_NOT_FOUND;
+    }
+    
+    err = vfs_resolve_path(newpath, &mount, resolved_new);
+    if (err != ERR_OK) {
+        return err;
+    }
+    
+    if (!mount->fs->rename) {
+        return ERR_NOT_SUPPORTED;
+    }
+    
+    return mount->fs->rename(mount->fs, resolved_old, resolved_new);
+}
+
+/**
+ * Get file status
+ */
+error_code_t vfs_stat(const char* path, vfs_stat_t* stat) {
+    if (!path || !stat) {
+        return ERR_INVALID_ARG;
+    }
+    
+    vfs_mount_t* mount;
+    char resolved_path[256];
+    error_code_t err = vfs_resolve_path(path, &mount, resolved_path);
+    if (err != ERR_OK || !mount || !mount->fs) {
+        return err != ERR_OK ? err : ERR_NOT_FOUND;
+    }
+    
+    if (!mount->fs->stat) {
+        return ERR_NOT_SUPPORTED;
+    }
+    
+    return mount->fs->stat(mount->fs, resolved_path, stat);
+}
+
+/**
+ * Unmount filesystem
+ */
+error_code_t vfs_unmount(const char* mountpoint) {
+    (void)mountpoint;
+    // TODO: Implement unmount
+    return ERR_NOT_SUPPORTED;
+}
 

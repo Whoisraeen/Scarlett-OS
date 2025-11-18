@@ -5,12 +5,8 @@
 
 #include "../include/types.h"
 #include "../include/fs/permissions.h"
+#include "../include/auth/user.h"
 #include "../include/kprintf.h"
-
-// For now, assume root user (UID 0) and root group (GID 0)
-// TODO: Integrate with user/group system when available
-static uint32_t current_uid = 0;
-static uint32_t current_gid = 0;
 
 /**
  * Check if user has read permission
@@ -118,16 +114,16 @@ void permissions_set_owner(file_permissions_t* perms, uint32_t uid, uint32_t gid
 }
 
 /**
- * Get current user ID (placeholder - will integrate with user system)
+ * Get current user ID
  */
 uint32_t permissions_get_current_uid(void) {
-    return current_uid;
+    return (uint32_t)get_current_uid();
 }
 
 /**
- * Get current group ID (placeholder - will integrate with user system)
+ * Get current group ID
  */
 uint32_t permissions_get_current_gid(void) {
-    return current_gid;
+    return (uint32_t)get_current_gid();
 }
 

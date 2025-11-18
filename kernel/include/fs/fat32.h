@@ -116,5 +116,12 @@ error_code_t fat32_file_tell(fat32_fs_t* fs, fd_t fd, size_t* position);
 error_code_t fat32_create_file(fat32_fs_t* fs, const char* path, fat32_dir_entry_t* entry);
 error_code_t fat32_delete_file(fat32_fs_t* fs, const char* path);
 
+// Directory operations
+error_code_t fat32_mkdir(fat32_fs_t* fs, const char* path);
+error_code_t fat32_rmdir(fat32_fs_t* fs, const char* path);
+error_code_t fat32_opendir(fat32_fs_t* fs, const char* path, fd_t* fd);
+error_code_t fat32_readdir(fat32_fs_t* fs, fd_t fd, vfs_dirent_t* entry);
+error_code_t fat32_closedir(fat32_fs_t* fs, fd_t fd);
+
 #endif // KERNEL_FS_FAT32_H
 

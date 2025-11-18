@@ -40,7 +40,9 @@ typedef enum {
     ERR_FILE_EXISTS = -31,
     ERR_DIRECTORY_NOT_FOUND = -32,
     ERR_NOT_A_DIRECTORY = -33,
-    ERR_IS_DIRECTORY = -36,
+    ERR_NOT_DIRECTORY = -36,
+    ERR_IS_DIRECTORY = -37,
+    ERR_END_OF_FILE = -38,
     ERR_READ_ONLY = -34,
     ERR_DISK_FULL = -35,
     
