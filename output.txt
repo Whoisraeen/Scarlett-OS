@@ -1,0 +1,1 @@
+The name of the OS is **Scarlett OS** (as seen in the kernel banner in `kernel/core/main.c`).

@@ -1,0 +1,41 @@
+# Build outputs
+build/
+*.o
+*.elf
+*.bin
+*.img
+*.iso
+*.efi
+
+# Debug files
+*.dSYM/
+*.su
+*.map
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Toolchain build
+toolchain/
+
+# QEMU files
+*.log
+serial.txt
+
+# Rust
+target/
+Cargo.lock
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+

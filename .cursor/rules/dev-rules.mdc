@@ -1,0 +1,812 @@
+# OS Development AI Agent Rules
+
+## Core Directive
+
+You are an expert AI coding agent assisting in the development of a production-grade microkernel operating system. Your primary responsibility is to write correct, secure, high-quality code that strictly adheres to the project's architecture, coding standards, and development phases.
+
+**CRITICAL: Before writing ANY code, you MUST:**
+1. Read and understand the relevant documentation
+2. Verify you're working on the correct phase
+3. Check existing progress in Progress.md
+4. Follow the exact specifications in the technical documents
+5. Update Progress.md after completing tasks
+
+---
+
+## Documentation Hierarchy (MUST READ BEFORE CODING)
+
+### 1. OS_DEVELOPMENT_PLAN.md
+**Authority:** Master project plan
+**Contains:** Architecture overview, phases, team structure, standards
+**When to consult:** Before starting any new component or phase
+
+### 2. TECHNICAL_ARCHITECTURE.md
+**Authority:** Technical specification and API definitions
+**Contains:** Detailed architecture, data structures, interfaces, algorithms
+**When to consult:** Before implementing any kernel component, driver, or service
+
+### 3. PHASE_1_DETAILED_TASKS.md (and future phase docs)
+**Authority:** Task breakdown and implementation guide
+**Contains:** Week-by-week tasks, acceptance criteria, code examples
+**When to consult:** For specific implementation tasks in current phase
+
+### 4. TEAM_STRUCTURE_AND_WORKFLOW.md
+**Authority:** Coding standards and workflow
+**Contains:** C/Rust/C++/Assembly style guides, git workflow, code review requirements
+**When to consult:** Before writing any code to ensure style compliance
+
+### 5. DEVELOPMENT_ENVIRONMENT_SETUP.md
+**Authority:** Build and tooling reference
+**Contains:** Compiler flags, build commands, testing procedures
+**When to consult:** When setting up builds or debugging compilation issues
+
+---
+
+## Mandatory Pre-Code Checks
+
+Before writing ANY code, you MUST execute this checklist:
+
+```markdown
+Pre-Code Checklist:
+- [ ] Read Progress.md to understand current phase and completed tasks
+- [ ] Read all Docs in the /Docs Folder
+- [ ] Verify task is part of current phase (don't skip ahead)
+- [ ] Review relevant section in TECHNICAL_ARCHITECTURE.md
+- [ ] Check coding standards in TEAM_STRUCTURE_AND_WORKFLOW.md
+- [ ] Understand acceptance criteria from phase task document
+- [ ] Identify dependencies (what must exist before this code)
+- [ ] Plan test approach for verification
+```
+
+---
+
+## Progress Tracking (MANDATORY)
+
+### Progress Update Rules
+
+**AFTER completing ANY task, you MUST:**
+1. Mark task as completed with date
+2. List all files created/modified
+3. Document test results
+4. Update phase completion percentage
+5. Add any issues discovered to Known Issues
+6. Update "Next Up" section
+
+**NEVER:**
+- Skip progress updates
+- Mark tasks complete without testing
+- Work on multiple phases simultaneously
+- Mark tasks complete that have failing tests
+
+---
+
+## Coding Standards (STRICT ENFORCEMENT)
+
+### C Code Standards
+
+```c
+// CORRECT: Follows project standards
+/**
+ * vmm_map_page - Map virtual page to physical page
+ * @vaddr: Virtual address (must be page-aligned)
+ * @paddr: Physical address (must be page-aligned)
+ * @flags: Page flags (PTE_PRESENT | PTE_WRITE | etc.)
+ *
+ * Maps a single 4KB page from virtual to physical address space.
+ * Creates intermediate page tables as needed.
+ *
+ * Returns: 0 on success, -ENOMEM if allocation fails
+ */
+int vmm_map_page(vaddr_t vaddr, paddr_t paddr, uint64_t flags)
+{
+    page_table_t *pt;
+
+    // Align to page boundary
+    vaddr &= ~(PAGE_SIZE - 1);
+    paddr &= ~(PAGE_SIZE - 1);
+
+    // Validate flags
+    if (!(flags & PTE_PRESENT)) {
+        kprintf("ERROR: Mapping without PRESENT flag\n");
+        return -EINVAL;
+    }
+
+    // Get or create page table
+    pt = get_page_table(vaddr);
+    if (!pt) {
+        pt = alloc_page_table();
+        if (!pt)
+            return -ENOMEM;
+    }
+
+    // Set PTE
+    set_pte(pt, vaddr, paddr, flags);
+
+    // Flush TLB
+    flush_tlb_single(vaddr);
+
+    return 0;
+}
+```
+
+**C Standards Enforcement:**
+- ✅ Indentation: 4 spaces (NEVER tabs)
+- ✅ Line length: ≤ 100 characters
+- ✅ Braces: K&R style
+- ✅ Naming: snake_case for functions/variables
+- ✅ Comments: Doxygen format for functions
+- ✅ Error handling: Always check return values
+- ✅ Null checks: Always validate pointers
+- ✅ Constants: Use #define or const, NEVER magic numbers
+
+**FORBIDDEN in C code:**
+- ❌ Tabs for indentation
+- ❌ Lines > 100 characters
+- ❌ Magic numbers (use named constants)
+- ❌ Ignoring return values
+- ❌ Unvalidated pointer dereferences
+- ❌ Missing error handling
+- ❌ Memory leaks
+
+### Rust Code Standards
+
+```rust
+// CORRECT: Follows project standards
+/// NVMe command submission
+///
+/// Submits a command to the NVMe admin or I/O queue.
+///
+/// # Arguments
+/// * `queue` - Queue to submit to
+/// * `cmd` - Command to submit
+///
+/// # Returns
+/// * `Ok(completion_id)` - Command submitted successfully
+/// * `Err(Error::QueueFull)` - Queue has no space
+///
+/// # Safety
+/// Caller must ensure command is valid and buffers are accessible
+pub fn submit_command(&mut self, queue: &mut Queue, cmd: Command) -> Result<u16> {
+    // Check queue has space
+    if queue.is_full() {
+        return Err(Error::QueueFull);
+    }
+
+    // Allocate command ID
+    let cmd_id = self.alloc_cmd_id()?;
+
+    // Write command to queue
+    queue.write_command(cmd_id, &cmd)?;
+
+    // Ring doorbell
+    self.ring_doorbell(queue.id());
+
+    Ok(cmd_id)
+}
+```
+
+**Rust Standards Enforcement:**
+- ✅ Use rustfmt (auto-format all code)
+- ✅ Use clippy (zero warnings allowed)
+- ✅ Document all public APIs with ///
+- ✅ Use Result<T> for error handling
+- ✅ Use Option<T> for optional values
+- ✅ Avoid unsafe unless absolutely necessary (document why)
+- ✅ Use strong typing (avoid Any, avoid excessive casting)
+
+**FORBIDDEN in Rust code:**
+- ❌ Ignoring clippy warnings
+- ❌ Unwrap in library code (use ? or proper error handling)
+- ❌ Unsafe blocks without SAFETY comments
+- ❌ Public APIs without documentation
+- ❌ Panic in library code
+
+### C++ Code Standards
+
+```cpp
+// CORRECT: Follows project standards
+namespace gui {
+
+/// Widget base class
+///
+/// All GUI widgets inherit from this class. Provides basic
+/// geometry, rendering, and event handling interface.
+class Widget {
+public:
+    /// Construct widget with specified geometry
+    Widget(int x, int y, int width, int height)
+        : m_x(x)
+        , m_y(y)
+        , m_width(width)
+        , m_height(height)
+    {
+        kassert(width > 0 && height > 0, "Invalid widget dimensions");
+    }
+
+    virtual ~Widget() = default;
+
+    /// Render widget to graphics context
+    virtual void render(GraphicsContext& ctx) = 0;
+
+    /// Handle input event
+    /// @returns true if event was handled
+    virtual bool handleEvent(const Event& event) { return false; }
+
+    // Getters
+    int x() const { return m_x; }
+    int y() const { return m_y; }
+
+private:
+    int m_x, m_y;
+    int m_width, m_height;
+    std::vector<std::unique_ptr<Widget>> m_children;
+};
+
+} // namespace gui
+```
+
+**C++ Standards Enforcement:**
+- ✅ Use clang-format (auto-format all code)
+- ✅ Modern C++ (C++17 minimum)
+- ✅ Use smart pointers (unique_ptr, shared_ptr)
+- ✅ RAII for resource management
+- ✅ Member variables prefixed with m_
+- ✅ Use override/final keywords
+- ✅ Prefer const correctness
+
+**FORBIDDEN in C++ code:**
+- ❌ Raw new/delete (use smart pointers)
+- ❌ Manual memory management (use RAII)
+- ❌ Missing override keywords
+- ❌ Missing const on getters
+- ❌ Bare pointers for ownership
+
+### Assembly Code Standards
+
+```asm
+; CORRECT: Follows project standards
+; context_switch.S - Context switching for x86_64
+;
+; Switches execution context from one thread to another by
+; saving and restoring CPU register state.
+
+.global context_switch
+.type context_switch, @function
+
+; void context_switch(thread_t *prev, thread_t *next)
+;
+; Arguments:
+;   rdi = pointer to previous thread structure
+;   rsi = pointer to next thread structure
+;
+; Saves callee-saved registers for prev thread,
+; restores them for next thread, switches page tables.
+context_switch:
+    ; Save prev thread's context
+    mov [rdi + THREAD_RSP], rsp
+    mov [rdi + THREAD_RBP], rbp
+    mov [rdi + THREAD_RBX], rbx
+    mov [rdi + THREAD_R12], r12
+    mov [rdi + THREAD_R13], r13
+    mov [rdi + THREAD_R14], r14
+    mov [rdi + THREAD_R15], r15
+
+    ; Restore next thread's context
+    mov rsp, [rsi + THREAD_RSP]
+    mov rbp, [rsi + THREAD_RBP]
+    mov rbx, [rsi + THREAD_RBX]
+    mov r12, [rsi + THREAD_R12]
+    mov r13, [rsi + THREAD_R13]
+    mov r14, [rsi + THREAD_R14]
+    mov r15, [rsi + THREAD_R15]
+
+    ; Switch address space
+    mov rax, [rsi + THREAD_CR3]
+    mov cr3, rax
+
+    ret
+```
+
+**Assembly Standards Enforcement:**
+- ✅ Comment every function with purpose
+- ✅ Document register usage and calling convention
+- ✅ Align comments for readability
+- ✅ Use constants instead of magic numbers
+- ✅ Explain non-obvious instructions
+
+---
+
+## Security Requirements (CRITICAL)
+
+**BEFORE committing ANY code, verify:**
+
+### Memory Safety
+- [ ] All pointers validated before dereference
+- [ ] Array bounds checked
+- [ ] Integer overflow checks for size calculations
+- [ ] No use-after-free possible
+- [ ] No double-free possible
+
+### Security Vulnerabilities (ZERO TOLERANCE)
+**FORBIDDEN patterns that you MUST NEVER write:**
+
+```c
+// ❌ FORBIDDEN: Buffer overflow
+char buf[64];
+strcpy(buf, user_input);  // NEVER use strcpy with untrusted input
+
+// ✅ CORRECT:
+char buf[64];
+strncpy(buf, user_input, sizeof(buf) - 1);
+buf[sizeof(buf) - 1] = '\0';
+
+// ❌ FORBIDDEN: Integer overflow
+size_t size = count * item_size;  // Can overflow
+void *ptr = kmalloc(size);
+
+// ✅ CORRECT:
+if (count > SIZE_MAX / item_size) {
+    return -EOVERFLOW;
+}
+size_t size = count * item_size;
+void *ptr = kmalloc(size);
+
+// ❌ FORBIDDEN: Unvalidated user pointer
+int sys_read(int fd, void *buf, size_t count) {
+    memcpy(buf, kernel_data, count);  // buf is untrusted!
+}
+
+// ✅ CORRECT:
+int sys_read(int fd, void *buf, size_t count) {
+    if (!is_user_address_valid(buf, count)) {
+        return -EFAULT;
+    }
+    copy_to_user(buf, kernel_data, count);
+}
+
+// ❌ FORBIDDEN: Capability bypass
+void send_message(cap_t cap, msg_t *msg) {
+    send_ipc(cap.object, msg);  // Didn't check rights!
+}
+
+// ✅ CORRECT:
+void send_message(cap_t cap, msg_t *msg) {
+    if (!(cap.rights & CAP_WRITE)) {
+        return -EACCES;
+    }
+    send_ipc(cap.object, msg);
+}
+```
+
+**Security checklist for EVERY function:**
+- [ ] User input validated
+- [ ] Capabilities checked before access
+- [ ] No buffer overflows possible
+- [ ] No integer overflows in size calculations
+- [ ] No format string vulnerabilities
+- [ ] No race conditions (proper locking)
+- [ ] No information leaks (clear sensitive data)
+
+---
+
+## Architecture Compliance (STRICT)
+
+### Microkernel Boundaries
+
+**KERNEL SPACE (minimal):**
+Only these belong in kernel:
+- Address space management
+- Thread scheduling
+- IPC primitives
+- Interrupt handling
+- Basic hardware abstraction
+
+**USER SPACE (everything else):**
+These MUST be in user space:
+- Device drivers
+- File systems
+- Network stack
+- GUI subsystem
+- All services
+
+**FORBIDDEN:**
+- ❌ Implementing file system in kernel
+- ❌ Implementing network stack in kernel
+- ❌ Implementing drivers in kernel (except bootstrap)
+- ❌ Putting business logic in kernel
+
+### IPC Compliance
+
+**CORRECT IPC usage:**
+```c
+// Service receives request via IPC
+message_t msg;
+ipc_receive(&msg);
+
+// Validate sender has capability
+if (!(msg.caps[0].rights & CAP_READ)) {
+    reply_error(&msg, -EACCES);
+    return;
+}
+
+// Process request
+int result = handle_request(&msg);
+
+// Send reply
+reply_message(&msg, result);
+```
+
+**FORBIDDEN IPC patterns:**
+- ❌ Direct function calls across components (use IPC)
+- ❌ Shared memory without capability transfer
+- ❌ Bypassing capability checks
+- ❌ Synchronous IPC without timeout
+
+### Memory Management Compliance
+
+**CORRECT patterns per TECHNICAL_ARCHITECTURE.md:**
+```c
+// Physical allocation
+paddr_t page = pmm_alloc_page();
+if (!page) {
+    return -ENOMEM;
+}
+
+// Virtual mapping
+int ret = vmm_map_page(vaddr, page, PTE_PRESENT | PTE_WRITE);
+if (ret < 0) {
+    pmm_free_page(page);  // Clean up on error
+    return ret;
+}
+
+// Kernel heap allocation
+void *ptr = kmalloc(size);
+if (!ptr) {
+    return -ENOMEM;
+}
+// ... use ptr ...
+kfree(ptr);  // Always free
+```
+
+---
+
+## Testing Requirements (MANDATORY)
+
+### Unit Testing
+
+**EVERY function MUST have tests covering:**
+- [ ] Normal/happy path
+- [ ] Error conditions
+- [ ] Boundary conditions
+- [ ] Edge cases
+
+**Example test structure:**
+```c
+// test_vmm.c
+void test_vmm_map_page_success(void) {
+    paddr_t page = pmm_alloc_page();
+    int ret = vmm_map_page(0x1000, page, PTE_PRESENT);
+    kassert(ret == 0, "vmm_map_page should succeed");
+    kassert(vmm_get_mapping(0x1000) == page, "mapping should be correct");
+}
+
+void test_vmm_map_page_null_paddr(void) {
+    int ret = vmm_map_page(0x1000, 0, PTE_PRESENT);
+    kassert(ret == -EINVAL, "vmm_map_page should reject null physical address");
+}
+
+void run_vmm_tests(void) {
+    test_vmm_map_page_success();
+    test_vmm_map_page_null_paddr();
+    // ... more tests ...
+    kprintf("VMM tests: PASSED\n");
+}
+```
+
+### Before Marking Task Complete
+
+**MANDATORY verification:**
+```bash
+# Build must succeed
+make clean && make
+
+# No compiler warnings
+make WERROR=1
+
+# Run in QEMU
+make run
+
+# Verify expected output
+# Run unit tests
+make test
+
+# Static analysis clean
+make analyze
+
+# Format check passes
+make format-check
+```
+
+**Update Progress.md with:**
+```markdown
+- [x] Task name (Completed: 2025-01-17)
+  - Files: kernel/mm/vmm.c, kernel/include/mm/vmm.h
+  - Tests: All unit tests pass, QEMU boot successful
+  - Verification: No memory leaks, no compiler warnings
+  - Commit: abc123def
+```
+
+---
+
+## Error Handling Standards
+
+### Return Value Conventions
+
+**ALWAYS use negative error codes (Linux-style):**
+```c
+// CORRECT
+int do_something(void) {
+    if (error_condition) {
+        return -EINVAL;  // Negative error code
+    }
+    return 0;  // Success
+}
+
+// Check return values
+int ret = do_something();
+if (ret < 0) {
+    kprintf("Error: %d\n", ret);
+    return ret;  // Propagate error
+}
+```
+
+**Standard error codes (from errno.h concepts):**
+- `-ENOMEM` - Out of memory
+- `-EINVAL` - Invalid argument
+- `-EACCES` - Access denied
+- `-ENOENT` - Not found
+- `-EBUSY` - Resource busy
+- `-EAGAIN` - Try again
+- `-EFAULT` - Bad address
+
+---
+
+## AI Agent Workflow
+
+### Starting a Task
+
+```markdown
+1. Read Progress.md
+   - What phase are we in?
+   - What tasks are complete?
+   - What's next up?
+
+2. Read relevant task from PHASE_X_DETAILED_TASKS.md
+   - Understand requirements
+   - Note acceptance criteria
+   - Check dependencies
+
+3. Read TECHNICAL_ARCHITECTURE.md section
+   - Understand data structures
+   - Understand interfaces
+   - Understand algorithms
+
+4. Announce task start in Progress.md
+   - Move task from "Next Up" to "Active Tasks"
+   - Note start date
+   - List expected files
+
+5. Implement following coding standards
+
+6. Test thoroughly
+
+7. Update Progress.md
+   - Mark task complete
+   - Document results
+   - Update next up
+```
+
+### During Implementation
+
+**CONSTANTLY ask yourself:**
+- Does this follow TECHNICAL_ARCHITECTURE.md?
+- Does this match the coding standards?
+- Is this secure?
+- Is this tested?
+- Am I in the right phase?
+- Have I updated Progress.md?
+
+**If you're uncertain:**
+- Stop and re-read documentation
+- Ask the user for clarification
+- Don't guess or assume
+
+### Completing a Task
+
+**BEFORE marking complete:**
+1. All acceptance criteria met
+2. All tests pass
+3. No compiler warnings
+4. Code formatted correctly
+5. Documentation updated
+6. Progress.md updated
+7. Ready to commit
+
+---
+
+## Common Mistakes to AVOID
+
+### ❌ WRONG: Skipping ahead in phases
+```
+User: "Let's add GUI support"
+AI: "Sure!" [starts implementing GUI in Phase 1]
+```
+**✅ CORRECT:**
+```
+AI: "We're currently in Phase 1 (Bootloader & Minimal Kernel).
+GUI is Phase 9. We need to complete Phases 1-8 first.
+Current task is implementing the physical memory allocator."
+```
+
+### ❌ WRONG: Ignoring architecture
+```c
+// Implementing file system in kernel
+// kernel/fs/vfs.c
+void vfs_init(void) {
+    // File system code in kernel space
+}
+```
+**✅ CORRECT:**
+```c
+// File systems are user-space services per microkernel architecture
+// services/vfs/vfs.c (user space)
+void vfs_service_main(void) {
+    // VFS as a user-space service
+}
+```
+
+### ❌ WRONG: Poor error handling
+```c
+void *ptr = kmalloc(size);
+ptr->field = value;  // No null check!
+```
+**✅ CORRECT:**
+```c
+void *ptr = kmalloc(size);
+if (!ptr) {
+    kprintf("ERROR: Out of memory\n");
+    return -ENOMEM;
+}
+ptr->field = value;
+```
+
+### ❌ WRONG: Forgetting Progress.md
+```
+[Implements entire component without updating Progress.md]
+```
+**✅ CORRECT:**
+```
+[Updates Progress.md at start, during, and completion of each task]
+```
+
+### ❌ WRONG: Magic numbers
+```c
+for (int i = 0; i < 512; i++) {  // What is 512?
+```
+**✅ CORRECT:**
+```c
+#define PAGE_TABLE_ENTRIES 512
+for (int i = 0; i < PAGE_TABLE_ENTRIES; i++) {
+```
+
+---
+
+## Quality Gates (MUST PASS)
+
+### Gate 1: Code Compiles
+```bash
+make clean && make
+# Must succeed with zero warnings
+```
+
+### Gate 2: Tests Pass
+```bash
+make test
+# All tests must pass
+```
+
+### Gate 3: Static Analysis Clean
+```bash
+make analyze
+# Zero issues reported
+```
+
+### Gate 4: Format Check
+```bash
+make format-check
+# Code must be properly formatted
+```
+
+### Gate 5: QEMU Boot
+```bash
+make run
+# System must boot without crashes
+```
+
+### Gate 6: Documentation Updated
+- README.md updated if needed
+- Progress.md updated
+- Code comments present
+- API docs updated
+
+**ALL gates MUST pass before marking task complete.**
+
+---
+
+## Emergency Protocols
+
+### If Tests Fail
+1. STOP immediately
+2. Do NOT mark task complete
+3. Debug the issue
+4. Fix the problem
+5. Re-run all tests
+6. Document the issue in Progress.md
+
+### If Architecture Violation Detected
+1. STOP implementation
+2. Review TECHNICAL_ARCHITECTURE.md
+3. Refactor to comply
+4. Do NOT commit non-compliant code
+
+### If Security Issue Found
+1. **CRITICAL:** STOP all work
+2. Document the issue thoroughly
+3. Alert the user immediately
+4. Do NOT commit vulnerable code
+5. Fix must be verified before proceeding
+
+---
+
+## Final Checklist (Before ANY Commit)
+
+```markdown
+Pre-Commit Final Check:
+- [ ] Code follows architecture (TECHNICAL_ARCHITECTURE.md)
+- [ ] Code follows standards (TEAM_STRUCTURE_AND_WORKFLOW.md)
+- [ ] Correct phase (PHASE_X_DETAILED_TASKS.md)
+- [ ] All tests pass
+- [ ] No security vulnerabilities
+- [ ] No compiler warnings
+- [ ] Code formatted correctly
+- [ ] Documentation updated
+- [ ] Progress.md updated
+- [ ] Commit message follows format
+- [ ] Ready for code review
+- [ ] Put all .md files in the /Docs folder and keep the codebase clean with only needed files
+```
+
+---
+
+## Summary: Core Principles
+
+1. **READ FIRST, CODE SECOND** - Always consult documentation
+2. **FOLLOW THE PLAN** - Stick to current phase, don't skip ahead
+3. **TRACK PROGRESS** - Update Progress.md religiously
+4. **SECURITY FIRST** - No vulnerabilities, ever
+5. **TEST EVERYTHING** - No untested code
+6. **STANDARDS COMPLIANCE** - Follow coding standards exactly
+7. **ARCHITECTURE COMPLIANCE** - Respect microkernel boundaries
+8. **QUALITY OVER SPEED** - Do it right the first time
+9. **ASK WHEN UNCERTAIN** - Don't guess
+10. **DOCUMENT EVERYTHING** - Code, progress, decisions
+
+---
+
+**Remember: You are building a production operating system. Quality, security, and correctness are paramount. When in doubt, refer to documentation and ask questions.**
+
+---
+
+*Rules Version: 1.0*
+*Last Updated: 2025-11-17*
+*Applies to: All AI coding agents working on OS Project*

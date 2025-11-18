@@ -1,0 +1,395 @@
+/**
+ * @file main.c
+ * @brief Kernel main entry point
+ * 
+ * This is where the kernel begins execution after the bootloader
+ * hands control over to us.
+ */
+
+#include "../include/types.h"
+#include "../include/kprintf.h"
+#include "../include/debug.h"
+#include "../include/config.h"
+#include "../include/mm/vmm.h"
+#include "../include/mm/pmm.h"
+#include "../../bootloader/common/boot_info.h"
+
+// External symbols from linker script
+extern uint8_t _kernel_start[];
+extern uint8_t _kernel_end[];
+extern uint8_t _bss_start[];
+extern uint8_t _bss_end[];
+
+// Forward declarations
+static void print_banner(void);
+static void verify_boot_info(boot_info_t* boot_info);
+static void print_memory_map(boot_info_t* boot_info);
+
+/**
+ * Main kernel entry point
+ */
+void kernel_main(boot_info_t* boot_info) {
+    // Initialize VGA first for visual debugging
+    extern void vga_init(void);
+    extern void vga_writestring(const char*);
+    vga_init();
+    vga_writestring("Scarlett OS - Booting...\n");
+    
+    // Initialize serial console for debugging
+    extern void serial_init(void);
+    serial_init();
+    
+    // Print kernel banner
+    print_banner();
+    vga_writestring("Serial initialized\n");
+    
+    // Handle NULL boot_info (when booted via Multiboot2 without our bootloader)
+    if (!boot_info) {
+        kwarn("Boot info is NULL (booted via GRUB/Multiboot2)\n");
+        kwarn("Using defaults for testing...\n");
+        
+        // Create a minimal fake boot_info for testing
+        static boot_info_t fake_boot_info = {0};
+        fake_boot_info.magic = BOOT_INFO_MAGIC;
+        fake_boot_info.bootloader_name[0] = 'G';
+        fake_boot_info.bootloader_name[1] = 'R';
+        fake_boot_info.bootloader_name[2] = 'U';
+        fake_boot_info.bootloader_name[3] = 'B';
+        fake_boot_info.bootloader_name[4] = '\0';
+        fake_boot_info.bootloader_version = 0x00020000; // GRUB 2.0
+        
+        // Add a default memory region (16MB at 1MB)
+        fake_boot_info.memory_map_count = 1;
+        fake_boot_info.memory_map[0].base = 0x100000; // 1MB
+        fake_boot_info.memory_map[0].length = 16 * 1024 * 1024; // 16MB
+        fake_boot_info.memory_map[0].type = MEMORY_TYPE_CONVENTIONAL;
+        
+        boot_info = &fake_boot_info;
+    }
+    
+    verify_boot_info(boot_info);
+    
+    // Print system information
+    kinfo("Kernel loaded at: 0x%016lx - 0x%016lx\n",
+          (uint64_t)_kernel_start, (uint64_t)_kernel_end);
+    kinfo("Kernel size: %lu KB\n",
+          ((uint64_t)_kernel_end - (uint64_t)_kernel_start) / 1024);
+    kinfo("BSS section: 0x%016lx - 0x%016lx\n",
+          (uint64_t)_bss_start, (uint64_t)_bss_end);
+    
+    // Print bootloader information
+    kinfo("Bootloader: %s v%u.%u\n",
+          boot_info->bootloader_name,
+          boot_info->bootloader_version >> 16,
+          boot_info->bootloader_version & 0xFFFF);
+    
+    // Print framebuffer info
+    if (boot_info->framebuffer.base != 0) {
+        kinfo("Framebuffer: 0x%016lx (%ux%u @ %u bpp)\n",
+              boot_info->framebuffer.base,
+              boot_info->framebuffer.width,
+              boot_info->framebuffer.height,
+              boot_info->framebuffer.bpp);
+    } else {
+        kwarn("No framebuffer available\n");
+    }
+    
+    // Print memory map
+    print_memory_map(boot_info);
+    
+    // Initialize GDT
+    extern void gdt_init(void);
+    gdt_init();
+    
+    // Initialize IDT
+    extern void idt_init(void);
+    idt_init();
+    
+    // Initialize CPU detection
+    extern error_code_t cpu_init(void);
+    kinfo("Initializing CPU subsystem...\n");
+    cpu_init();
+    
+    // Initialize APIC
+    extern error_code_t apic_init(void);
+    kinfo("Initializing APIC...\n");
+    apic_init();
+    
+    // Initialize PIC and interrupts
+    extern void interrupts_init(void);
+    interrupts_init();
+    
+    // Initialize timer
+    extern void timer_init(void);
+    timer_init();
+    
+    // Enable interrupts
+    __asm__ volatile("sti");
+    kinfo("Interrupts enabled\n");
+    
+    // Initialize physical memory manager
+    extern void pmm_init(boot_info_t*);
+    pmm_init(boot_info);
+
+    kinfo("\n========================================\n");
+    kinfo("Phase 1 initialization complete!\n");
+    kinfo("========================================\n\n");
+
+    // ========================================================================
+    // Phase 2 Initialization
+    // ========================================================================
+    kinfo("=== Phase 2 Initialization ===\n");
+
+    // Virtual Memory Manager
+    extern void vmm_init(void);
+    kinfo("[MAIN] About to call vmm_init()...\n");
+    vmm_init();
+    kinfo("[MAIN] vmm_init() returned, continuing...\n");
+
+    // Test VMM mapping before heap init
+    kinfo("Testing VMM mapping...\n");
+    // Test mapping a single page at HEAP_START
+    paddr_t test_page = pmm_alloc_page();
+    if (test_page != 0) {
+        kinfo("Test: Allocated physical page at 0x%016lx\n", test_page);
+        // Test mapping at HEAP_START
+        int result = vmm_map_page(NULL, HEAP_START, test_page, 0x03); // Present + Write
+        if (result == 0) {
+            kinfo("Test: Successfully mapped HEAP_START page\n");
+            // Try to write to it
+            volatile uint64_t* test_ptr = (volatile uint64_t*)HEAP_START;
+            *test_ptr = 0xDEADBEEF;
+            if (*test_ptr == 0xDEADBEEF) {
+                kinfo("Test: Successfully wrote to mapped page!\n");
+            } else {
+                kerror("Test: Write to mapped page failed!\n");
+            }
+        } else {
+            kerror("Test: Failed to map HEAP_START page (result=%d)\n", result);
+        }
+    } else {
+        kerror("Test: Failed to allocate test page\n");
+    }
+
+    // Kernel Heap Allocator
+    extern void heap_init(void);
+    kinfo("Initializing Kernel Heap...\n");
+    heap_init();
+    kinfo("Heap init returned successfully\n");
+    
+    // Memory Mapping System
+    extern error_code_t mmap_init(void);
+    kinfo("Initializing Memory Mapping System...\n");
+    mmap_init();
+
+    // Thread Scheduler
+    extern void scheduler_init(void);
+    kinfo("Initializing Scheduler...\n");
+    scheduler_init();
+
+    // IPC System
+    extern void ipc_init(void);
+    kinfo("Initializing IPC System...\n");
+    ipc_init();
+
+    // System Calls
+    extern void syscall_init(void);
+    kinfo("Initializing System Calls...\n");
+    syscall_init();
+
+    kinfo("\n========================================\n");
+    kinfo("Phase 2 initialization complete!\n");
+    kinfo("========================================\n");
+    
+    // ========================================================================
+    // Phase 3 Initialization (Userspace Foundation)
+    // ========================================================================
+    kinfo("=== Phase 3 Initialization (Userspace) ===\n");
+    
+    // Process Management
+    extern void process_init(void);
+    kinfo("Initializing Process Management...\n");
+    process_init();
+    
+    // Block Device System
+    extern error_code_t block_device_init(void);
+    kinfo("Initializing block device system...\n");
+    block_device_init();
+    
+    // Storage Drivers
+    extern error_code_t ata_init(void);
+    kinfo("Initializing ATA driver...\n");
+    ata_init();
+    
+    // Virtual File System
+    extern error_code_t vfs_init(void);
+    kinfo("Initializing VFS...\n");
+    vfs_init();
+    
+    // Register FAT32 filesystem
+    extern error_code_t fat32_register_vfs(void);
+    kinfo("Registering FAT32 filesystem...\n");
+    fat32_register_vfs();
+    
+    // Shell (initialize but don't run yet - will launch in userspace)
+    extern void shell_init(void);
+    kinfo("Initializing Shell...\n");
+    shell_init();
+    
+    kinfo("\n========================================\n");
+    kinfo("Phase 3 initialization complete!\n");
+    kinfo("========================================\n");
+    
+    // Run kernel tests
+    extern void run_all_tests(void);
+    run_all_tests();
+    
+    // Launch shell as userspace process
+    kinfo("Launching shell as userspace process...\n");
+    extern error_code_t launch_shell_userspace(void);
+    error_code_t err = launch_shell_userspace();
+    if (err != ERR_OK) {
+        kerror("Failed to launch shell in userspace: %s\n", error_to_string(err));
+        // Fall back to kernel-mode shell for now
+        extern void shell_run(void);
+        kinfo("Falling back to kernel-mode shell...\n");
+        shell_run();
+    }
+    
+    // Test exception handling (uncomment to test)
+    // kinfo("Testing divide by zero exception...\n");
+    // volatile int x = 1 / 0;
+    
+    // Main loop - check for rescheduling and handle idle
+    while (1) {
+        // Check if reschedule is needed (for preemptive multitasking)
+        extern void scheduler_check_reschedule(void);
+        scheduler_check_reschedule();
+        
+        // Halt the CPU (will be woken by interrupts)
+        __asm__ volatile("hlt");
+    }
+}
+
+/**
+ * Print kernel banner
+ */
+static void print_banner(void) {
+    kprintf("\n");
+    kprintf("====================================================\n");
+    kprintf("                  Scarlett OS                       \n");
+    kprintf("        A Modern Microkernel Operating System      \n");
+    kprintf("====================================================\n");
+    kprintf("Version: 0.1.0 (Phase 1 - Development)\n");
+    kprintf("Architecture: x86_64\n");
+    kprintf("Build: %s %s\n", __DATE__, __TIME__);
+    kprintf("====================================================\n");
+    kprintf("\n");
+}
+
+/**
+ * Verify boot info structure
+ */
+static void verify_boot_info(boot_info_t* boot_info) {
+    kinfo("Verifying boot information...\n");
+    
+    // Check magic number
+    if (boot_info->magic != BOOT_INFO_MAGIC) {
+        kerror("Invalid boot info magic: 0x%016lx\n", boot_info->magic);
+        kpanic("Boot info verification failed!");
+    }
+    
+    // Check memory map
+    if (boot_info->memory_map_count == 0) {
+        kpanic("No memory regions in memory map!");
+    }
+    
+    if (boot_info->memory_map_count > MAX_MEMORY_REGIONS) {
+        kerror("Too many memory regions: %u\n", boot_info->memory_map_count);
+        kpanic("Memory map overflow!");
+    }
+    
+    kinfo("Boot info verified successfully\n");
+}
+
+/**
+ * Print memory map
+ */
+static void print_memory_map(boot_info_t* boot_info) {
+    kinfo("\nMemory Map (%u regions):\n", boot_info->memory_map_count);
+    kprintf("  %-18s %-18s %-12s %s\n", "Base", "Length", "Pages", "Type");
+    kprintf("  %s\n", "---------------------------------------------------------------");
+    
+    uint64_t total_memory = 0;
+    uint64_t usable_memory = 0;
+    
+    for (uint32_t i = 0; i < boot_info->memory_map_count; i++) {
+        memory_region_t* region = &boot_info->memory_map[i];
+        uint64_t pages = region->length / 4096;
+        
+        const char* type_name = "Unknown";
+        switch (region->type) {
+            case MEMORY_TYPE_CONVENTIONAL:
+                type_name = "Available";
+                usable_memory += region->length;
+                break;
+            case MEMORY_TYPE_RESERVED:
+                type_name = "Reserved";
+                break;
+            case MEMORY_TYPE_ACPI_RECLAIM:
+                type_name = "ACPI Reclaim";
+                break;
+            case MEMORY_TYPE_ACPI_NVS:
+                type_name = "ACPI NVS";
+                break;
+            case MEMORY_TYPE_UNUSABLE:
+                type_name = "Unusable";
+                break;
+            case MEMORY_TYPE_LOADER_CODE:
+                type_name = "Loader Code";
+                break;
+            case MEMORY_TYPE_LOADER_DATA:
+                type_name = "Loader Data";
+                break;
+            case MEMORY_TYPE_BOOT_SERVICES_CODE:
+                type_name = "Boot Code";
+                break;
+            case MEMORY_TYPE_BOOT_SERVICES_DATA:
+                type_name = "Boot Data";
+                break;
+            default:
+                break;
+        }
+        
+        kprintf("  0x%016lx 0x%016lx %-12lu %s\n",
+                region->base, region->length, pages, type_name);
+        
+        total_memory += region->length;
+    }
+    
+    kprintf("  %s\n", "---------------------------------------------------------------");
+    kprintf("  Total Memory:   %lu MB\n", total_memory / (1024 * 1024));
+    kprintf("  Usable Memory:  %lu MB\n", usable_memory / (1024 * 1024));
+    kprintf("\n");
+}
+
+/**
+ * Kernel panic - print message and halt
+ */
+void kpanic(const char* msg) {
+    kprintf("\n");
+    kprintf("************************* KERNEL PANIC *************************\n");
+    kprintf("* %s\n", msg);
+    kprintf("****************************************************************\n");
+    kprintf("\n");
+    kprintf("System halted.\n");
+    
+    // Disable interrupts and halt
+    __asm__ volatile("cli");
+    while (1) {
+        __asm__ volatile("hlt");
+    }
+    
+    __builtin_unreachable();
+}
+

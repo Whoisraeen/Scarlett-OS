@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(\"C:\\Users\\woisr\\Downloads\\OS\\.cursor\\rules\\dev-rules.mdc\")",
+      "Bash(find:*)",
+      "Bash(make clean:*)",
+      "Bash(make:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
