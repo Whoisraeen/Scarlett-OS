@@ -15,7 +15,8 @@
       "Bash(wsl which:*)",
       "Bash(wsl sgdisk:*)",
       "Bash(wsl objdump:*)",
-      "Bash(wsl timeout 30s make disk)"
+      "Bash(wsl timeout 30s make disk)",
+      "Bash(wsl timeout:*)"
     ],
     "deny": [],
     "ask": []

@@ -29,11 +29,19 @@ efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
     
     // Initialize GNU-EFI library
     InitializeLib(ImageHandle, SystemTable);
-    
-    // Clear screen and print banner
-    uefi_call_wrapper(ST->ConOut->ClearScreen, 1, ST->ConOut);
-    Print(L"Scarlett OS UEFI Bootloader\\n");
-    Print(L"===========================\\n\\n");
+
+    // Manually ensure ST and BS are set (GNU-EFI workaround)
+    ST = SystemTable;
+    BS = SystemTable->BootServices;
+
+    // Clear screen and print banner - use SystemTable directly to avoid global variable issues
+    uefi_call_wrapper(SystemTable->ConOut->ClearScreen, 1, SystemTable->ConOut);
+
+    // Use direct console output since Print() relies on ST global
+    CHAR16 *msg = L"Scarlett OS UEFI Bootloader\r\n";
+    uefi_call_wrapper(SystemTable->ConOut->OutputString, 2, SystemTable->ConOut, msg);
+    msg = L"===========================\r\n\r\n";
+    uefi_call_wrapper(SystemTable->ConOut->OutputString, 2, SystemTable->ConOut, msg);
     
     // Load kernel.elf from disk
     Print(L"Loading kernel.elf...\\n");
