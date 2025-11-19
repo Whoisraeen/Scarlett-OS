@@ -13,6 +13,10 @@
 #include "../include/debug.h"
 #include "../include/sync/spinlock.h"
 
+// External thread table (defined in scheduler.c)
+extern spinlock_t thread_table_lock;
+extern thread_t* thread_table[];
+
 /**
  * Set CPU affinity for a thread
  */

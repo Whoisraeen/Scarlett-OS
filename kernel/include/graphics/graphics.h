@@ -33,5 +33,13 @@ void gfx_reset_clip(void);
 void gfx_blend_pixel(uint32_t x, uint32_t y, uint32_t color, uint8_t alpha);
 void gfx_draw_rect_alpha(uint32_t x, uint32_t y, uint32_t width, uint32_t height, uint32_t color, uint8_t alpha);
 
+// Glassmorphism effects
+void gfx_fill_rounded_rect(uint32_t x, uint32_t y, uint32_t width, uint32_t height, uint32_t radius, uint32_t color);
+void gfx_fill_rounded_rect_alpha(uint32_t x, uint32_t y, uint32_t width, uint32_t height, uint32_t radius, uint32_t color, uint8_t alpha);
+void gfx_draw_rounded_rect(uint32_t x, uint32_t y, uint32_t width, uint32_t height, uint32_t radius, uint32_t color);
+void gfx_draw_shadow(uint32_t x, uint32_t y, uint32_t width, uint32_t height, uint32_t radius, uint8_t intensity);
+void gfx_apply_blur_region(uint32_t x, uint32_t y, uint32_t width, uint32_t height, uint32_t blur_radius);
+void gfx_fill_gradient_rect(uint32_t x, uint32_t y, uint32_t width, uint32_t height, uint32_t color1, uint32_t color2, bool vertical);
+
 #endif // KERNEL_GRAPHICS_GRAPHICS_H
 

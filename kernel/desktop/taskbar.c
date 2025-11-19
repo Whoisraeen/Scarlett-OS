@@ -157,73 +157,92 @@ error_code_t taskbar_render(void) {
     if (!taskbar_state.initialized) {
         return ERR_INVALID_STATE;
     }
-    
+
     framebuffer_t* fb = framebuffer_get();
     if (!fb) {
         return ERR_INVALID_STATE;
     }
-    
+
     theme_t* theme = theme_get_current();
     if (!theme) {
         return ERR_INVALID_STATE;
     }
-    
-    // Glassmorphism effect: semi-transparent background with blur
-    // Draw taskbar with alpha blending (translucent)
-    uint32_t taskbar_color = RGB(30, 30, 40);  // Dark blue-gray
-    gfx_draw_rect_alpha(taskbar_state.x, taskbar_state.y, 
-                       taskbar_state.width, taskbar_state.height,
-                       taskbar_color, 180);  // 70% opacity
-    
-    // Draw border (subtle, glass-like)
-    gfx_draw_rect(taskbar_state.x, taskbar_state.y, 
-                 taskbar_state.width, 1, RGB(100, 100, 120));
-    
-    // Draw start button (glassmorphism style)
-    uint32_t start_btn_x = 8;
+
+    // Modern glassmorphism taskbar design
+    uint32_t corner_radius = 0;  // No corner radius for taskbar (spans full width)
+
+    // Draw subtle shadow above taskbar for depth
+    gfx_draw_shadow(taskbar_state.x, taskbar_state.y - 3,
+                   taskbar_state.width, taskbar_state.height, 0, 20);
+
+    // Draw frosted glass taskbar background
+    gfx_fill_rounded_rect_alpha(taskbar_state.x, taskbar_state.y,
+                                taskbar_state.width, taskbar_state.height,
+                                corner_radius, RGB(30, 38, 55), 220);  // Semi-transparent
+
+    // Draw subtle top border (glass reflection effect)
+    uint32_t border_x = taskbar_state.x;
+    uint32_t border_y = taskbar_state.y;
+    gfx_draw_line(border_x, border_y, border_x + taskbar_state.width - 1, border_y,
+                 RGBA(255, 255, 255, 60));
+
+    // Draw start button with modern glassmorphism
+    uint32_t start_btn_x = 12;
     uint32_t start_btn_y = taskbar_state.y + 8;
-    uint32_t start_btn_w = 32;
+    uint32_t start_btn_w = 36;
     uint32_t start_btn_h = 32;
-    
-    // Start button background (glass effect)
-    gfx_draw_rect_alpha(start_btn_x, start_btn_y, start_btn_w, start_btn_h,
-                       RGB(60, 60, 80), 200);
-    gfx_draw_rect(start_btn_x, start_btn_y, start_btn_w, start_btn_h,
-                 RGB(120, 120, 140));
-    
-    // Start button icon (hamburger menu or logo)
-    gfx_draw_string(start_btn_x + 8, start_btn_y + 8, "☰", 
+    uint32_t btn_radius = 12;  // Heavily rounded corners
+
+    // Start button with glass effect and rounded corners
+    gfx_fill_rounded_rect_alpha(start_btn_x, start_btn_y, start_btn_w, start_btn_h,
+                                btn_radius, RGB(80, 95, 125), 200);
+
+    // Start button border (subtle glow)
+    gfx_draw_rounded_rect(start_btn_x, start_btn_y, start_btn_w, start_btn_h,
+                         btn_radius, RGBA(255, 255, 255, 80));
+
+    // Start button icon (modern grid icon)
+    gfx_draw_string(start_btn_x + 10, start_btn_y + 12, ":::",
                    RGB(255, 255, 255), 0);
-    
-    // Render window items
+
+    // Render window items with glassmorphism
     spinlock_lock(&taskbar_lock);
-    
-    uint32_t item_x = start_btn_x + start_btn_w + 8;
+
+    uint32_t item_x = start_btn_x + start_btn_w + 12;
     taskbar_item_t* item = taskbar_state.items;
-    
+
     while (item) {
-        uint32_t item_width = strlen(item->title) * 8 + 16;  // Approximate width
+        uint32_t item_width = strlen(item->title) * 8 + 20;  // Padding
         uint32_t item_y = taskbar_state.y + 8;
         uint32_t item_h = 32;
-        
-        // Item background (different if active)
-        uint32_t item_bg = item->active ? RGB(80, 80, 100) : RGB(50, 50, 70);
-        gfx_draw_rect_alpha(item_x, item_y, item_width, item_h, item_bg, 200);
-        
-        // Item border
-        uint32_t border_color = item->active ? RGB(100, 150, 255) : RGB(80, 80, 100);
-        gfx_draw_rect(item_x, item_y, item_width, item_h, border_color);
-        
-        // Item text
-        gfx_draw_string(item_x + 8, item_y + 10, item->title,
+        uint32_t item_radius = 10;  // Rounded corners for items
+
+        // Item background with glass effect (brighter if active)
+        if (item->active) {
+            // Active window - brighter glass with accent color
+            gfx_draw_shadow(item_x - 1, item_y - 1, item_width + 2, item_h + 2, item_radius, 15);
+            gfx_fill_rounded_rect_alpha(item_x, item_y, item_width, item_h,
+                                       item_radius, RGB(100, 120, 160), 230);
+            gfx_draw_rounded_rect(item_x, item_y, item_width, item_h,
+                                 item_radius, RGBA(120, 160, 255, 150));
+        } else {
+            // Inactive window - subtle glass
+            gfx_fill_rounded_rect_alpha(item_x, item_y, item_width, item_h,
+                                       item_radius, RGB(60, 70, 95), 180);
+            gfx_draw_rounded_rect(item_x, item_y, item_width, item_h,
+                                 item_radius, RGBA(255, 255, 255, 40));
+        }
+
+        // Item text with proper contrast
+        gfx_draw_string(item_x + 10, item_y + 12, item->title,
                        RGB(255, 255, 255), 0);
-        
-        item_x += item_width + 4;
+
+        item_x += item_width + 8;
         item = item->next;
     }
-    
+
     spinlock_unlock(&taskbar_lock);
-    
+
     return ERR_OK;
 }
 

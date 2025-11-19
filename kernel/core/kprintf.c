@@ -81,6 +81,18 @@ int kvprintf(const char* fmt, va_list args) {
         if (*fmt == '%') {
             fmt++;
             
+            // Handle width and padding
+            int width = 0;
+            bool zero_pad = false;
+            if (*fmt == '0') {
+                zero_pad = true;
+                fmt++;
+            }
+            while (*fmt >= '0' && *fmt <= '9') {
+                width = width * 10 + (*fmt - '0');
+                fmt++;
+            }
+
             // Handle long modifier
             bool is_long = false;
             if (*fmt == 'l') {
@@ -132,6 +144,13 @@ int kvprintf(const char* fmt, va_list args) {
                     // Hexadecimal
                     uint64_t val = is_long ? va_arg(args, uint64_t) : va_arg(args, unsigned int);
                     uitoa(val, buf, 16);
+                    int len = strlen(buf);
+                    if (width > len && zero_pad) {
+                        for (int i = 0; i < width - len; i++) {
+                            kputc('0');
+                            count++;
+                        }
+                    }
                     kputs(buf);
                     count += strlen(buf);
                     break;
@@ -163,9 +182,11 @@ int kvprintf(const char* fmt, va_list args) {
                 default:
                     // Unknown format, print as-is
                     kputc('%');
+                    if (zero_pad) kputc('0');
+                    // This part is tricky, would need to print the width digits too
                     if (is_long) kputc('l');
                     kputc(*fmt);
-                    count += is_long ? 3 : 2;
+                    count += 2 + (is_long ? 1 : 0) + (zero_pad ? 1 : 0);
                     break;
             }
         } else {

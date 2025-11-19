@@ -42,6 +42,10 @@ _start:
     # Set up temporary stack
     movl $boot_stack_top, %esp
 
+    # Save Multiboot info pointer
+    movl %ebx, temp_multiboot_ptr
+
+
     # Write 'C' for CPUID check
     movl $0xB8000, %edi
     movw $0x1F43, 2(%edi)  # 'C' white on blue
@@ -198,10 +202,21 @@ start64:
     pushq $0
     popfq
 
-    # Clear RDI (boot_info = NULL for now)
-    xorq %rdi, %rdi
+    # Load the saved multiboot pointer into RSI (second argument for C call)
+    # movl is used to load the 32-bit address, which zero-extends to rsi.
+    movl temp_multiboot_ptr, %esi
 
-    # Jump to kernel main
+    # Set RDI to the address of our boot_info struct (first argument)
+    movabs $boot_info, %rdi
+
+    # Call the C parser
+    .extern parse_multiboot_info
+    callq parse_multiboot_info
+
+    # Restore RDI for the call to kernel_main, as it's a volatile register
+    movabs $boot_info, %rdi
+    
+    # Call kernel main
     .extern kernel_main
     callq kernel_main
 
@@ -221,6 +236,10 @@ boot_pdpt:
 boot_pdt:
     .skip 4096
 
+temp_multiboot_ptr:
+    .long 0
+
+
 # Boot stack (16KB)
 .align 16
 boot_stack_bottom:
@@ -229,6 +248,10 @@ boot_stack_top:
 
 # Kernel stack (64KB, in high memory)
 .section .bss
+.align 16
+boot_info:
+    .skip 8192 # sizeof(boot_info_t) is mostly the memory map
+
 .align 16
 stack_bottom:
     .skip 65536

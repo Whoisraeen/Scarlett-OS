@@ -76,8 +76,31 @@ theme_t theme_blue = {
     .font_size = 8
 };
 
+// Glassmorphism theme (inspired by modern iOS/macOS design)
+theme_t theme_glass = {
+    .bg_primary = RGB(25, 30, 45),           // Deep blue-gray background
+    .bg_secondary = RGB(35, 42, 60),          // Slightly lighter blue-gray
+    .bg_tertiary = RGB(45, 54, 75),           // Medium blue-gray
+    .fg_primary = RGB(255, 255, 255),         // White text
+    .fg_secondary = RGB(180, 190, 210),       // Light gray-blue text
+    .accent = RGB(100, 150, 255),             // Bright blue accent
+    .border = RGBA(255, 255, 255, 60),        // Semi-transparent white border
+    .border_focused = RGBA(100, 150, 255, 200), // Bright blue focused border
+    .button_bg = RGBA(80, 90, 120, 180),      // Translucent glass button
+    .button_bg_hover = RGBA(100, 110, 140, 200),
+    .button_bg_pressed = RGBA(120, 130, 160, 220),
+    .button_fg = RGB(255, 255, 255),
+    .textbox_bg = RGBA(40, 48, 70, 200),      // Frosted glass textbox
+    .textbox_bg_focused = RGBA(50, 58, 80, 220),
+    .textbox_fg = RGB(255, 255, 255),
+    .textbox_placeholder = RGB(120, 130, 150),
+    .panel_bg = RGBA(30, 38, 55, 220),        // Frosted glass panel
+    .panel_border = RGBA(255, 255, 255, 40),
+    .font_size = 8
+};
+
 // Current theme
-static theme_t* current_theme = &theme_light;
+static theme_t* current_theme = &theme_glass;
 
 /**
  * Initialize theme system

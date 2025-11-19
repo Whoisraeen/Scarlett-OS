@@ -46,26 +46,7 @@ void kernel_main(boot_info_t* boot_info) {
     
     // Handle NULL boot_info (when booted via Multiboot2 without our bootloader)
     if (!boot_info) {
-        kwarn("Boot info is NULL (booted via GRUB/Multiboot2)\n");
-        kwarn("Using defaults for testing...\n");
-        
-        // Create a minimal fake boot_info for testing
-        static boot_info_t fake_boot_info = {0};
-        fake_boot_info.magic = BOOT_INFO_MAGIC;
-        fake_boot_info.bootloader_name[0] = 'G';
-        fake_boot_info.bootloader_name[1] = 'R';
-        fake_boot_info.bootloader_name[2] = 'U';
-        fake_boot_info.bootloader_name[3] = 'B';
-        fake_boot_info.bootloader_name[4] = '\0';
-        fake_boot_info.bootloader_version = 0x00020000; // GRUB 2.0
-        
-        // Add a default memory region (16MB at 1MB)
-        fake_boot_info.memory_map_count = 1;
-        fake_boot_info.memory_map[0].base = 0x100000; // 1MB
-        fake_boot_info.memory_map[0].length = 16 * 1024 * 1024; // 16MB
-        fake_boot_info.memory_map[0].type = MEMORY_TYPE_CONVENTIONAL;
-        
-        boot_info = &fake_boot_info;
+        kpanic("Boot info is NULL! The bootloader failed to pass boot information.");
     }
     
     verify_boot_info(boot_info);
@@ -99,8 +80,8 @@ void kernel_main(boot_info_t* boot_info) {
         kinfo("Initializing boot splash screen...\n");
         bootsplash_init();
         
-        extern error_code_t bootsplash_render(void);
-        bootsplash_render();
+        // Note: Delay bootsplash_render until after GDT/IDT are initialized
+        // Graphics functions may need proper CPU state setup
         extern error_code_t bootsplash_set_message(const char* message);
         bootsplash_set_message("Initializing kernel...");
     } else {
@@ -139,6 +120,9 @@ void kernel_main(boot_info_t* boot_info) {
     // Initialize physical memory manager
     extern void pmm_init(boot_info_t*);
     pmm_init(boot_info);
+    
+    // Note: Boot splash rendering skipped during early boot for speed
+    // Will be rendered later after heap is initialized
 
     kinfo("\n========================================\n");
     kinfo("Phase 1 initialization complete!\n");
@@ -273,6 +257,11 @@ void kernel_main(boot_info_t* boot_info) {
     extern void shell_init(void);
     kinfo("Initializing Shell...\n");
     shell_init();
+    
+    // Theme System
+    extern error_code_t theme_init(void);
+    kinfo("Initializing Theme System...\n");
+    theme_init();
     
     // Window Manager
     extern error_code_t window_manager_init(void);
@@ -458,6 +447,8 @@ static void print_memory_map(boot_info_t* boot_info) {
         memory_region_t* region = &boot_info->memory_map[i];
         uint64_t pages = region->length / 4096;
         
+        kprintf("Region %u: base=0x%016lx, len=0x%016lx, type=%u\n", i, region->base, region->length, region->type);
+
         const char* type_name = "Unknown";
         switch (region->type) {
             case MEMORY_TYPE_CONVENTIONAL:

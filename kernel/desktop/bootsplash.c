@@ -103,13 +103,15 @@ error_code_t bootsplash_render(void) {
     }
     
     // Draw background (gradient - blue/purple)
+    // Use integer math to avoid FPU issues during early boot
     extern void framebuffer_set_pixel(uint32_t x, uint32_t y, uint32_t color);
     for (uint32_t y = 0; y < fb->height; y++) {
         for (uint32_t x = 0; x < fb->width; x++) {
-            float t = (float)y / fb->height;
-            uint8_t r = (uint8_t)(20 + (60 - 20) * t);
-            uint8_t g = (uint8_t)(25 + (40 - 25) * t);
-            uint8_t b = (uint8_t)(50 + (100 - 50) * t);
+            // Integer-based gradient calculation
+            uint32_t t_num = (y * 256) / fb->height;  // 0-256 range
+            uint8_t r = (uint8_t)(20 + ((60 - 20) * t_num) / 256);
+            uint8_t g = (uint8_t)(25 + ((40 - 25) * t_num) / 256);
+            uint8_t b = (uint8_t)(50 + ((100 - 50) * t_num) / 256);
             framebuffer_set_pixel(x, y, RGB(r, g, b));
         }
     }

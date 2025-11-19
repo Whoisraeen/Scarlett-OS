@@ -6,7 +6,8 @@
       "Bash(make clean:*)",
       "Bash(make:*)",
       "Bash(wsl bash -c \"cd /mnt/c/Users/woisr/Downloads/OS/kernel && make clean && make 2>&1 | grep -E ''error:|Error|undefined reference'' | head -50\")",
-      "Bash(wsl bash:*)"
+      "Bash(wsl bash:*)",
+      "Bash(timeout 10 wsl bash:*)"
     ],
     "deny": [],
     "ask": []

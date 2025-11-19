@@ -7,21 +7,52 @@
 #include "../include/config.h"
 #include "../include/mm/vmm.h"
 #include "../include/mm/pmm.h"
+#include "../include/mm/bootstrap.h"
 #include "../include/kprintf.h"
 #include "../include/debug.h"
+
 
 // Kernel address space
 static address_space_t kernel_address_space;
 static uint64_t next_asid = 1;
 
+// Track whether PHYS_MAP_BASE is set up
+static bool phys_map_ready = false;
+
+// Track the maximum physical address that's mapped to PHYS_MAP_BASE
+static paddr_t phys_map_max_addr = 0;
+
+// Recursive mapping entry (PML4 entry 510)
+#define RECURSIVE_MAPPING_INDEX 510
+#define RECURSIVE_BASE 0xFFFFFF8000000000ULL
+
+/**
+ * Convert physical address to virtual for page table access
+ * Uses PHYS_MAP_BASE if available, otherwise uses recursive mapping
+ */
+static inline void* phys_to_virt_pt(paddr_t paddr) {
+    if (phys_map_ready && paddr < phys_map_max_addr) {
+        // Use PHYS_MAP_BASE if the page is within the mapped range
+        return (void*)(paddr + PHYS_MAP_BASE);
+    } else {
+        // Use identity mapping for:
+        // 1. Early boot (before PHYS_MAP_BASE is ready)
+        // 2. Pages beyond the mapped range (for page table access)
+        // This is safe for low memory < 2GB where page tables are allocated
+        return (void*)paddr;
+    }
+}
+
 /**
  * Get page table entry at any level
- * 
+ *
  * This function handles both identity-mapped and PHYS_MAP_BASE-mapped page tables.
- * During VMM initialization, page tables are identity-mapped. After PHYS_MAP_BASE
+ * During VMM initialization, page tables use identity mapping. After PHYS_MAP_BASE
  * is set up, we use PHYS_MAP_BASE for all page table access.
  */
 static uint64_t* get_page_table_entry(uint64_t* pml4, vaddr_t vaddr, int level, bool create) {
+    static bool first_call = true;
+
     // Extract indices
     uint64_t indices[4] = {
         (vaddr >> 39) & 0x1FF,  // PML4
@@ -29,43 +60,69 @@ static uint64_t* get_page_table_entry(uint64_t* pml4, vaddr_t vaddr, int level, 
         (vaddr >> 21) & 0x1FF,  // PD
         (vaddr >> 12) & 0x1FF   // PT
     };
-    
-    // For now, always use identity mapping (pml4 is in low memory)
-    // TODO: Support PHYS_MAP_BASE after it's fully verified
-    uint64_t* table = pml4;
-    
+
+    // Convert PML4 virtual address to physical for access
+    paddr_t pml4_phys = (paddr_t)pml4;
+    if (phys_map_ready && (uint64_t)pml4 >= PHYS_MAP_BASE) {
+        // PML4 is a virtual address using PHYS_MAP_BASE mapping
+        pml4_phys = (paddr_t)pml4 - PHYS_MAP_BASE;
+    } else if (!phys_map_ready) {
+        // During early boot, PML4 is identity-mapped (physical == virtual)
+        pml4_phys = (paddr_t)pml4;
+    }
+
+    if (first_call && phys_map_ready) {
+        first_call = false;
+        kinfo("get_page_table_entry: First call after PHYS_MAP_BASE ready\n");
+        kinfo("  pml4 virt = 0x%016lx, phys = 0x%016lx\n", (uint64_t)pml4, pml4_phys);
+        kinfo("  vaddr = 0x%016lx, level = %d, create = %d\n", vaddr, level, create);
+    }
+
+    uint64_t* table = phys_to_virt_pt(pml4_phys);
+
     for (int i = 0; i < level; i++) {
         uint64_t entry = table[indices[i]];
-        
+
         if (!(entry & VMM_PRESENT)) {
             if (!create) {
                 kdebug("VMM: Page table entry not present for vaddr 0x%lx at level %d\n", vaddr, i);
                 return NULL;
             }
-            
+
             // Allocate new page table
-            paddr_t new_table = pmm_alloc_page();
-            if (new_table == 0) {
+            // Note: phys_to_virt_pt() handles pages both inside and outside the PHYS_MAP_BASE range
+            // Pages in mapped range use PHYS_MAP_BASE, pages outside use identity mapping
+            kdebug("VMM: Allocating new page table for vaddr 0x%016lx level %d...\n", vaddr, i);
+
+            paddr_t new_table_phys = pmm_alloc_page();
+            if (new_table_phys == 0) {
                 kerror("VMM: Out of memory for page table\n");
                 return NULL;
             }
+
+            kdebug("VMM: Allocated page table at phys 0x%016lx\n", new_table_phys);
+
+            // Access the page table via phys_to_virt_pt (uses PHYS_MAP_BASE or identity mapping)
+            uint64_t* virt_table = phys_to_virt_pt(new_table_phys);
             
-            // Clear new table - use identity mapping for now
-            uint64_t* virt_table = (uint64_t*)new_table;
+            // Clear the page table
             for (int j = 0; j < 512; j++) {
                 virt_table[j] = 0;
             }
-            
+            kdebug("VMM: Page table cleared successfully\n");
+
             // Set entry
-            table[indices[i]] = new_table | VMM_PRESENT | VMM_WRITE;
+            kdebug("VMM: Setting PML4 entry %d to 0x%lx...\n", indices[i], new_table_phys | VMM_PRESENT | VMM_WRITE);
+            table[indices[i]] = new_table_phys | VMM_PRESENT | VMM_WRITE;
             entry = table[indices[i]];
+            kdebug("VMM: Entry set successfully\n");
         }
-        
-        // Get next level table - use identity mapping
+
+        // Get next level table using phys_to_virt_pt
         paddr_t next_table_phys = entry & 0xFFFFFFFFF000ULL;
-        table = (uint64_t*)next_table_phys;  // Identity mapped
+        table = phys_to_virt_pt(next_table_phys);
     }
-    
+
     return &table[indices[level]];
 }
 
@@ -98,15 +155,85 @@ void vmm_init(void) {
     kinfo("VMM: kernel_address_space.pml4 = %p\n", kernel_address_space.pml4);
     kinfo("VMM: Setting up physical memory direct map at 0x%lx\n", PHYS_MAP_BASE);
 
-    // TEMPORARY: Skip PHYS_MAP_BASE mapping for now to isolate the hang
-    // TODO: Fix and re-enable this
-    kinfo("VMM: Skipping PHYS_MAP_BASE mapping for now (TEMPORARY)\n");
-    kinfo("VMM: WARNING - APIC and other features requiring PHYS_MAP_BASE will not work!\n");
+    // Map ALL usable physical memory at PHYS_MAP_BASE using 2MB huge pages
+    // This drastically reduces page table overhead (512x less memory needed)
+    size_t total_pages = pmm_get_total_pages();
+    paddr_t memory_to_map = total_pages * PAGE_SIZE;
 
-    // For now, keep using identity mapping for pml4
-    // TODO: Switch to PHYS_MAP_BASE after verifying it works
-    // kernel_address_space.pml4 = (uint64_t*)(cr3 + PHYS_MAP_BASE);
-    
+    kinfo("VMM: Mapping %lu MB at PHYS_MAP_BASE using 2MB huge pages...\n",
+          memory_to_map / (1024 * 1024));
+
+    // Map using 2MB huge pages
+    // This requires PS (Page Size) bit in Page Directory entries
+    #define HUGE_PAGE_SIZE (2 * 1024 * 1024)  // 2MB
+    #define VMM_PS 0x80  // Page Size bit for huge pages
+
+    size_t huge_pages_mapped = 0;
+    kinfo("VMM: Starting PHYS_MAP_BASE huge page mapping...\n");
+
+    for (paddr_t paddr = 0; paddr < memory_to_map; paddr += HUGE_PAGE_SIZE) {
+        vaddr_t vaddr = PHYS_MAP_BASE + paddr;
+
+        // Get PML4 index
+        uint64_t pml4_idx = (vaddr >> 39) & 0x1FF;
+        uint64_t pdp_idx = (vaddr >> 30) & 0x1FF;
+        uint64_t pd_idx = (vaddr >> 21) & 0x1FF;
+
+        // Access PML4 via identity mapping
+        uint64_t* pml4 = (uint64_t*)cr3;
+
+        // Get or create PDP
+        if (!(pml4[pml4_idx] & VMM_PRESENT)) {
+            paddr_t pdp_phys = pmm_alloc_page();
+            if (pdp_phys == 0) {
+                kerror("VMM: Out of memory for PDP\n");
+                break;
+            }
+            uint64_t* pdp = (uint64_t*)pdp_phys;
+            for (int i = 0; i < 512; i++) pdp[i] = 0;
+            pml4[pml4_idx] = pdp_phys | VMM_PRESENT | VMM_WRITE;
+        }
+
+        // Get PDP
+        uint64_t* pdp = (uint64_t*)(pml4[pml4_idx] & 0xFFFFFFFFF000ULL);
+
+        // Get or create PD
+        if (!(pdp[pdp_idx] & VMM_PRESENT)) {
+            paddr_t pd_phys = pmm_alloc_page();
+            if (pd_phys == 0) {
+                kerror("VMM: Out of memory for PD\n");
+                break;
+            }
+            uint64_t* pd = (uint64_t*)pd_phys;
+            for (int i = 0; i < 512; i++) pd[i] = 0;
+            pdp[pdp_idx] = pd_phys | VMM_PRESENT | VMM_WRITE;
+        }
+
+        // Get PD and create 2MB huge page mapping
+        uint64_t* pd = (uint64_t*)(pdp[pdp_idx] & 0xFFFFFFFFF000ULL);
+        pd[pd_idx] = paddr | VMM_PRESENT | VMM_WRITE | VMM_PS | VMM_NX;
+
+        huge_pages_mapped++;
+
+        // Show progress every 64MB
+        if (huge_pages_mapped % 32 == 0) {
+            kinfo("VMM: Mapped %lu MB...\n", (huge_pages_mapped * 2));
+        }
+    }
+
+    kinfo("VMM: Successfully mapped %lu MB using %lu huge pages\n",
+          (huge_pages_mapped * 2), huge_pages_mapped);
+
+    // Now PHYS_MAP_BASE is ready - switch to using it for page table access
+    phys_map_ready = true;
+    phys_map_max_addr = memory_to_map;  // Track maximum mapped address
+    kinfo("VMM: PHYS_MAP_BASE is now ready for use (mapped up to 0x%016lx)\n", phys_map_max_addr);
+    //bootstrap_disable();
+
+    // Update kernel_address_space.pml4 to use PHYS_MAP_BASE
+    kernel_address_space.pml4 = (uint64_t*)(cr3 + PHYS_MAP_BASE);
+    kinfo("VMM: Updated kernel_address_space.pml4 to %p\n", kernel_address_space.pml4);
+
     kprintf("[INFO] VMM initialized with kernel page tables at 0x%lx\n", cr3);
 
     // Re-enable interrupts
@@ -209,10 +336,14 @@ int vmm_map_page(address_space_t* as, vaddr_t vaddr, paddr_t paddr, uint64_t fla
         as = &kernel_address_space;
     }
     
-    // Get page table entry
-    uint64_t* pte = get_page_table_entry(as->pml4, vaddr, 4, true);
+    // Get page table entry - need to use physical address for PML4 if using PHYS_MAP_BASE
+    uint64_t* pml4_virt = as->pml4;
+    
+    // If PML4 is using PHYS_MAP_BASE, extract physical address for get_page_table_entry
+    // get_page_table_entry expects either identity-mapped or will handle PHYS_MAP_BASE
+    uint64_t* pte = get_page_table_entry(pml4_virt, vaddr, 4, true);
     if (!pte) {
-        kerror("VMM: Failed to get PTE for mapping vaddr 0x%lx\n", vaddr);
+        kerror("VMM: Failed to get PTE for mapping vaddr 0x%016lx paddr 0x%016lx\n", vaddr, paddr);
         return -1;
     }
     

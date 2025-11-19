@@ -401,8 +401,7 @@ error_code_t window_manager_render_all(void) {
     }
     spinlock_unlock(&wm_state.lock);
     
-    // Swap buffers if double buffering is enabled
-    gfx_swap_buffers();
+    // Note: Don't swap buffers here - main loop handles it to avoid double-swapping
     
     return ERR_OK;
 }

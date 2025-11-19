@@ -149,68 +149,127 @@ error_code_t launcher_toggle(void) {
 }
 
 /**
- * Render launcher with glassmorphism effect
+ * Render launcher with modern glassmorphism effect
  */
 error_code_t launcher_render(void) {
     if (!launcher_state.initialized || !launcher_state.visible || !launcher_state.window) {
         return ERR_OK;  // Not an error if hidden
     }
-    
+
     window_t* win = launcher_state.window;
     theme_t* theme = theme_get_current();
-    
+
     if (!theme) {
         return ERR_INVALID_STATE;
     }
-    
-    // Render launcher window with glassmorphism
-    // Glass effect: semi-transparent with blur
-    
-    // Window background (glass effect)
-    gfx_draw_rect_alpha(win->x, win->y, win->width, win->height,
-                       RGB(40, 40, 50), 220);  // 86% opacity
-    
-    // Window border (subtle, glowing)
-    gfx_draw_rect(win->x, win->y, win->width, win->height,
-                 RGB(100, 120, 150));
-    
-    // Title bar
-    uint32_t title_bar_h = 32;
-    gfx_draw_rect_alpha(win->x, win->y, win->width, title_bar_h,
-                       RGB(60, 60, 80), 240);
-    gfx_draw_string(win->x + 8, win->y + 8, win->title,
+
+    uint32_t launcher_radius = 20;  // Heavily rounded corners for modern look
+
+    // Draw shadow for depth
+    gfx_draw_shadow(win->x, win->y, win->width, win->height, launcher_radius, 40);
+
+    // Window background with frosted glass effect
+    gfx_fill_rounded_rect_alpha(win->x, win->y, win->width, win->height,
+                                launcher_radius, RGB(35, 42, 60), 235);
+
+    // Window border with subtle glow
+    gfx_draw_rounded_rect(win->x, win->y, win->width, win->height,
+                         launcher_radius, RGBA(255, 255, 255, 70));
+
+    // Title bar with glassmorphism
+    uint32_t title_bar_h = 48;
+    gfx_fill_rounded_rect_alpha(win->x, win->y, win->width, title_bar_h,
+                                launcher_radius, RGB(50, 58, 78), 250);
+
+    // Title text
+    gfx_draw_string(win->x + 20, win->y + 18, win->title,
                    RGB(255, 255, 255), 0);
-    
-    // App grid
-    uint32_t app_x = win->x + 16;
-    uint32_t app_y = win->y + title_bar_h + 16;
-    uint32_t app_item_w = 80;
-    uint32_t app_item_h = 80;
-    uint32_t apps_per_row = (win->width - 32) / (app_item_w + 8);
-    
+
+    // Subtle separator line below title
+    gfx_draw_line(win->x + 16, win->y + title_bar_h - 1,
+                 win->x + win->width - 16, win->y + title_bar_h - 1,
+                 RGBA(255, 255, 255, 30));
+
+    // Modern app grid with glassmorphism cards
+    uint32_t app_x = win->x + 20;
+    uint32_t app_y = win->y + title_bar_h + 20;
+    uint32_t app_item_w = 100;
+    uint32_t app_item_h = 100;
+    uint32_t card_radius = 16;  // Rounded corners for app cards
+    uint32_t spacing = 16;
+    uint32_t apps_per_row = (win->width - 40) / (app_item_w + spacing);
+
     for (uint32_t i = 0; i < launcher_state.app_count; i++) {
         app_entry_t* app = &launcher_state.apps[i];
         uint32_t row = i / apps_per_row;
         uint32_t col = i % apps_per_row;
-        
-        uint32_t item_x = app_x + col * (app_item_w + 8);
-        uint32_t item_y = app_y + row * (app_item_h + 8);
-        
-        // App item background (glass card)
-        gfx_draw_rect_alpha(item_x, item_y, app_item_w, app_item_h,
-                           RGB(50, 50, 70), 180);
-        gfx_draw_rect(item_x, item_y, app_item_w, app_item_h,
-                     RGB(80, 100, 120));
-        
-        // App icon (placeholder - would load from icon_path)
-        gfx_draw_string(item_x + 32, item_y + 20, "▣", 
-                       RGB(150, 150, 255), 0);
-        
-        // App name
-        gfx_draw_string(item_x + 4, item_y + 60, app->name,
+
+        uint32_t item_x = app_x + col * (app_item_w + spacing);
+        uint32_t item_y = app_y + row * (app_item_h + spacing);
+
+        // Modern glass card with hover effect
+        // Draw card shadow for depth
+        gfx_draw_shadow(item_x, item_y, app_item_w, app_item_h, card_radius, 12);
+
+        // Card background with frosted glass
+        gfx_fill_rounded_rect_alpha(item_x, item_y, app_item_w, app_item_h,
+                                    card_radius, RGB(55, 65, 88), 200);
+
+        // Card border with subtle highlight
+        gfx_draw_rounded_rect(item_x, item_y, app_item_w, app_item_h,
+                             card_radius, RGBA(255, 255, 255, 50));
+
+        // Icon area with gradient background
+        uint32_t icon_area_h = 60;
+        gfx_fill_gradient_rect(item_x + 2, item_y + 2, app_item_w - 4, icon_area_h,
+                              RGB(70, 85, 115), RGB(55, 70, 100), true);
+
+        // App icon (modern placeholder)
+        // Draw a colorful rounded square as icon
+        uint32_t icon_size = 32;
+        uint32_t icon_x = item_x + (app_item_w - icon_size) / 2;
+        uint32_t icon_y = item_y + 15;
+
+        // Colorful icon background (different color per app)
+        uint32_t icon_colors[] = {
+            RGB(100, 150, 255),  // Blue
+            RGB(150, 100, 255),  // Purple
+            RGB(255, 100, 150),  // Pink
+            RGB(100, 200, 150),  // Teal
+            RGB(255, 180, 80),   // Orange
+        };
+        uint32_t icon_color = icon_colors[i % 5];
+
+        gfx_fill_rounded_rect(icon_x, icon_y, icon_size, icon_size,
+                             8, icon_color);
+
+        // Icon symbol (simple representation)
+        gfx_draw_string(icon_x + 12, icon_y + 12, "*",
+                       RGB(255, 255, 255), 0);
+
+        // App name with proper centering
+        uint32_t name_y = item_y + icon_area_h + 12;
+        uint32_t name_len = strlen(app->name);
+        uint32_t name_x = item_x + (app_item_w - name_len * 8) / 2;
+
+        // Ensure name fits (truncate if needed)
+        char display_name[13];
+        if (name_len > 12) {
+            strncpy(display_name, app->name, 9);
+            display_name[9] = '.';
+            display_name[10] = '.';
+            display_name[11] = '.';
+            display_name[12] = '\0';
+            name_x = item_x + 6;  // Adjust for truncated name
+        } else {
+            strncpy(display_name, app->name, sizeof(display_name) - 1);
+            display_name[sizeof(display_name) - 1] = '\0';
+        }
+
+        gfx_draw_string(name_x, name_y, display_name,
                        RGB(255, 255, 255), 0);
     }
-    
+
     return ERR_OK;
 }
 

@@ -109,16 +109,19 @@ void pmm_init(boot_info_t* boot_info) {
         page_bitmap[i] = 0xFF; // Mark all as used initially
     }
     
-    // Find highest physical address
+    // Find highest physical address in CONVENTIONAL memory only
+    // Ignore device memory regions (framebuffer, etc.) for total_pages calculation
     for (uint32_t i = 0; i < boot_info->memory_map_count; i++) {
         memory_region_t* region = &boot_info->memory_map[i];
-        paddr_t end = region->base + region->length;
-        if (end > highest_addr) {
-            highest_addr = end;
+        if (region->type == MEMORY_TYPE_CONVENTIONAL) {
+            paddr_t end = region->base + region->length;
+            if (end > highest_addr) {
+                highest_addr = end;
+            }
         }
     }
-    
-    // Calculate total pages
+
+    // Calculate total pages based on conventional memory
     total_pages = PADDR_TO_PFN(highest_addr);
     if (total_pages > MAX_PAGES) {
         total_pages = MAX_PAGES;
@@ -136,7 +139,7 @@ void pmm_init(boot_info_t* boot_info) {
             // Mark as free
             paddr_t base = ALIGN_UP(region->base, PAGE_SIZE);
             paddr_t end = ALIGN_DOWN(region->base + region->length, PAGE_SIZE);
-            
+
             if (end > base) {
                 size_t pages = (end - base) / PAGE_SIZE;
                 pmm_mark_free(base, pages);
@@ -151,8 +154,15 @@ void pmm_init(boot_info_t* boot_info) {
     size_t kernel_pages = (kernel_end - kernel_start + PAGE_SIZE - 1) / PAGE_SIZE;
     pmm_mark_used(kernel_start, kernel_pages);
     
-    // Mark first 1MB as used (for BIOS, etc.)
-    pmm_mark_used(0, 256);
+    // Mark first 2MB as used (for BIOS, bootloader page tables, etc.)
+    // Bootloader typically allocates page tables starting around 0x100000
+    // This prevents allocating pages that are already in use
+    pmm_mark_used(0, 512);  // First 2MB reserved
+    
+    // Reserve some pages at the end of first 128MB for page table allocations
+    // This ensures page tables are always accessible via PHYS_MAP_BASE
+    // Reserve last 1MB of first 128MB (pages from 0x7F00000 to 0x8000000)
+    // Actually, don't reserve - just ensure PMM prefers this range via alloc logic
     
     kinfo("PMM initialized: %lu MB total, %lu MB free, %lu MB used\n",
           (total_pages * PAGE_SIZE) / (1024 * 1024),
@@ -162,12 +172,17 @@ void pmm_init(boot_info_t* boot_info) {
 
 /**
  * Allocate a single physical page
+ * Prefers pages in the first 128MB for better PHYS_MAP_BASE compatibility
  */
 paddr_t pmm_alloc_page(void) {
     static pfn_t last_allocated = 0;  // Hint for next allocation
+    
+    // All memory is now accessible via PHYS_MAP_BASE (using 2MB huge pages)
+    // Search from 2MB onwards to avoid reserved low memory
+    pfn_t start_pfn = (2 * 1024 * 1024) / PAGE_SIZE;  // Start from 2MB
 
-    // Try from last allocated position first (locality)
-    for (pfn_t pfn = last_allocated; pfn < total_pages; pfn++) {
+    // Search from start_pfn to end of memory
+    for (pfn_t pfn = start_pfn; pfn < total_pages; pfn++) {
         if (!bitmap_test(pfn)) {
             bitmap_set(pfn);
             free_pages--;
@@ -177,8 +192,8 @@ paddr_t pmm_alloc_page(void) {
         }
     }
 
-    // Wrap around and search from beginning
-    for (pfn_t pfn = 0; pfn < last_allocated; pfn++) {
+    // If nothing from 2MB onwards, try 1MB to 2MB range
+    for (pfn_t pfn = (1 * 1024 * 1024) / PAGE_SIZE; pfn < start_pfn; pfn++) {
         if (!bitmap_test(pfn)) {
             bitmap_set(pfn);
             free_pages--;

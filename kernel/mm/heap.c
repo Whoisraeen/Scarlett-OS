@@ -57,20 +57,31 @@ static int expand_heap(size_t needed_size) {
             return -1;
         }
 
-        kdebug("Heap: Mapping page %lu/%lu: virt=0x%016lx -> phys=0x%016lx\n",
-               i + 1, pages, heap_current, page);
+        if (i == 0) {
+            kinfo("Heap: First page allocated at phys 0x%016lx, mapping to virt 0x%016lx\n",
+                  page, heap_current);
+        }
 
         // Map page to kernel address space (NULL = kernel AS)
         int result = vmm_map_page(NULL, heap_current, page,
                                  VMM_PRESENT | VMM_WRITE | VMM_NX);
         if (result != 0) {
-            kerror("Heap: Failed to map page at 0x%016lx (physical 0x%016lx)\n",
-                   heap_current, page);
+            kerror("Heap: Failed to map page at 0x%016lx (physical 0x%016lx, result=%d)\n",
+                   heap_current, page, result);
             pmm_free_page(page);
             return -1;
         }
 
+        if (i == 0) {
+            kinfo("Heap: First page mapped successfully\n");
+        }
+
         heap_current += PAGE_SIZE;
+
+        // Show progress every 4MB
+        if ((i + 1) % (1024) == 0) {
+            kinfo("Heap: Mapped %lu MB...\n", ((i + 1) * PAGE_SIZE) / (1024 * 1024));
+        }
     }
 
     heap_max = heap_current;
@@ -113,27 +124,28 @@ void heap_init(void) {
     kdebug("Heap: HEAP_MAX_SIZE = %lu MB\n", HEAP_MAX_SIZE / (1024*1024));
 
     // Expand heap initially (vmm_map_page with NULL uses kernel address space)
-    kdebug("Heap: Calling expand_heap(%lu bytes)...\n", HEAP_INITIAL_SIZE);
+    kinfo("Heap: Calling expand_heap(%lu bytes)...\n", HEAP_INITIAL_SIZE);
     if (expand_heap(HEAP_INITIAL_SIZE) != 0) {
         kerror("Heap: Failed to expand heap\n");
         kpanic("Failed to initialize heap");
     }
 
-    kdebug("Heap: expand_heap() succeeded\n");
-    kdebug("Heap: heap_total_size = %lu bytes (%lu pages)\n",
+    kinfo("Heap: expand_heap() succeeded\n");
+    kinfo("Heap: heap_total_size = %lu bytes (%lu pages)\n",
            heap_total_size, heap_total_size / PAGE_SIZE);
-    kdebug("Heap: Creating first block at 0x%016lx...\n", HEAP_START);
+    kinfo("Heap: Creating first block at 0x%016lx...\n", HEAP_START);
 
     // Create first block
     // Note: HEAP_START should now be mapped and accessible
     heap_start = (heap_block_t*)HEAP_START;
+    kinfo("Heap: Writing to heap_start at %p...\n", heap_start);
     heap_start->size = HEAP_INITIAL_SIZE - BLOCK_HEADER_SIZE;
     heap_start->free = true;
     heap_start->next = NULL;
     heap_start->prev = NULL;
     heap_start->magic = HEAP_MAGIC;
 
-    kdebug("Heap: First block created successfully\n");
+    kinfo("Heap: First block created successfully\n");
     kinfo("Heap initialized: start=0x%016lx, size=%lu KB\n",
           HEAP_START, heap_total_size / 1024);
 }

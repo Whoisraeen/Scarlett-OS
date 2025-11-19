@@ -39,15 +39,40 @@ error_code_t desktop_init(void) {
         return ERR_OUT_OF_MEMORY;
     }
     
-    // Create gradient wallpaper (glassmorphism style - blue/purple gradient)
+    // Create modern gradient wallpaper (glassmorphism style)
+    // Inspired by iOS/macOS design - deep blue to purple-pink gradient
     uint32_t* wp = (uint32_t*)desktop_state.wallpaper_buffer;
     for (uint32_t y = 0; y < fb->height; y++) {
         for (uint32_t x = 0; x < fb->width; x++) {
-            // Blue to purple gradient
-            float t = (float)y / fb->height;
-            uint8_t r = (uint8_t)(20 + (80 - 20) * t);
-            uint8_t g = (uint8_t)(30 + (50 - 30) * t);
-            uint8_t b = (uint8_t)(60 + (120 - 60) * t);
+            // Multi-color gradient: deep blue -> purple -> pink
+            float t_y = (float)y / fb->height;
+            float t_x = (float)x / fb->width;
+
+            // Create diagonal gradient with radial influence
+            float t = (t_y * 0.7f + t_x * 0.3f);
+
+            // Define gradient color stops
+            uint8_t r, g, b;
+            if (t < 0.5f) {
+                // Deep blue to vibrant purple
+                float local_t = t * 2.0f;
+                r = (uint8_t)(15 + (80 - 15) * local_t);
+                g = (uint8_t)(25 + (40 - 25) * local_t);
+                b = (uint8_t)(50 + (120 - 50) * local_t);
+            } else {
+                // Vibrant purple to deep teal
+                float local_t = (t - 0.5f) * 2.0f;
+                r = (uint8_t)(80 + (35 - 80) * local_t);
+                g = (uint8_t)(40 + (50 - 40) * local_t);
+                b = (uint8_t)(120 + (80 - 120) * local_t);
+            }
+
+            // Add subtle noise for depth (simple pattern)
+            uint8_t noise = ((x + y) % 3 == 0) ? 2 : 0;
+            r = (r + noise > 255) ? 255 : r + noise;
+            g = (g + noise > 255) ? 255 : g + noise;
+            b = (b + noise > 255) ? 255 : b + noise;
+
             wp[y * (fb->pitch / 4) + x] = RGB(r, g, b);
         }
     }

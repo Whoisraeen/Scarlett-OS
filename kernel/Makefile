@@ -34,7 +34,8 @@ LDFLAGS = -n \
           -T kernel.ld
 
 # Phase 1 sources
-ASM_SRCS = hal/x86_64/boot32.S \
+ASM_SRCS = hal/x86_64/multiboot2.S \
+           hal/x86_64/boot32.S \
            hal/x86_64/gdt_load.S \
            hal/x86_64/idt_load.S \
            hal/x86_64/exceptions.S \
@@ -49,6 +50,7 @@ C_SRCS = core/main.c \
          core/string.c \
          core/math.c \
          core/stdio.c \
+         core/multiboot_parser.c \
          hal/x86_64/serial.c \
          hal/x86_64/vga.c \
          hal/x86_64/gdt.c \

@@ -8,7 +8,7 @@
 #include "../../include/errors.h"
 #include "../../include/kprintf.h"
 #include "../../include/debug.h"
-#include "../../include/mm/vmm.h"
+// VMM headers not needed here - framebuffer uses identity mapping from bootloader
 
 // Global framebuffer instance
 static framebuffer_t g_framebuffer = {0};
@@ -40,19 +40,9 @@ error_code_t framebuffer_init(framebuffer_info_t* boot_fb_info) {
     g_framebuffer.reserved_mask = boot_fb_info->reserved_mask;
     g_framebuffer.initialized = true;
     
-    // Ensure framebuffer is mapped in kernel address space
-    // The bootloader should have already mapped it, but verify
-    address_space_t* kernel_as = vmm_get_kernel_address_space();
-    paddr_t fb_phys = (paddr_t)g_framebuffer.base_address;
-    vaddr_t fb_virt = (vaddr_t)g_framebuffer.base_address;
-    
-    // Check if already mapped (bootloader should have done this)
-    paddr_t mapped_phys = vmm_get_physical(kernel_as, fb_virt);
-    if (mapped_phys == 0) {
-        // Map framebuffer (assuming it's already identity mapped)
-        // For now, we'll assume the bootloader mapped it correctly
-        kwarn("Framebuffer: Physical address check failed, assuming identity mapped\n");
-    }
+    // Note: Framebuffer is assumed to be identity-mapped by the bootloader.
+    // VMM verification will happen later when VMM is initialized (Phase 2).
+    // For now, we trust the bootloader's memory mapping.
     
     kinfo("Framebuffer initialized successfully\n");
     return ERR_OK;
