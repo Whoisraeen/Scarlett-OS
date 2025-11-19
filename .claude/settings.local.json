@@ -7,7 +7,15 @@
       "Bash(make:*)",
       "Bash(wsl bash -c \"cd /mnt/c/Users/woisr/Downloads/OS/kernel && make clean && make 2>&1 | grep -E ''error:|Error|undefined reference'' | head -50\")",
       "Bash(wsl bash:*)",
-      "Bash(timeout 10 wsl bash:*)"
+      "Bash(timeout 10 wsl bash:*)",
+      "Bash(wsl make:*)",
+      "Bash(wsl ls:*)",
+      "Bash(wsl find:*)",
+      "Bash(wsl isoinfo:*)",
+      "Bash(wsl which:*)",
+      "Bash(wsl sgdisk:*)",
+      "Bash(wsl objdump:*)",
+      "Bash(wsl timeout 30s make disk)"
     ],
     "deny": [],
     "ask": []

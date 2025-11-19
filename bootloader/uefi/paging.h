@@ -6,8 +6,9 @@
 #ifndef PAGING_H
 #define PAGING_H
 
+#include <efi.h>
+#include <efilib.h>
 #include <stdint.h>
-#include "uefi.h"
 
 // Page table entry flags
 #define PAGE_PRESENT    (1ULL << 0)
@@ -32,4 +33,3 @@ EFI_STATUS setup_page_tables(uint64_t* pml4_addr,
                               EFI_BOOT_SERVICES* bs);
 
 #endif // PAGING_H
-

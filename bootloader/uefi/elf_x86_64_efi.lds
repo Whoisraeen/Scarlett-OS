@@ -3,6 +3,13 @@ OUTPUT_FORMAT("elf64-x86-64", "elf64-x86-64", "elf64-x86-64")
 OUTPUT_ARCH(i386:x86-64)
 ENTRY(efi_main)
 
+PHDRS
+{
+  text PT_LOAD;
+  data PT_LOAD;
+  dynamic PT_DYNAMIC;
+}
+
 SECTIONS
 {
   . = 0;
@@ -17,11 +24,26 @@ SECTIONS
     *(.gnu.linkonce.t.*)
     . = ALIGN(16);
     _etext = .;
-  }
+  } :text
 
   /* Relocation section - CRITICAL for UEFI */
   .reloc : {
     *(.reloc)
+    *(.rel)
+    *(.rel.*)
+    *(.rela)
+    *(.rela.*)
+    *(.rel.data)
+    *(.rel.data.*)
+    *(.rel.got)
+    *(.rel.stab)
+    *(.rela.text)
+    *(.rela.data)
+    *(.rela.data.*)
+    *(.rela.got)
+    *(.rela.stab)
+    *(.rela.dyn)
+    *(.rel.dyn)
   }
 
   /* Data sections */
@@ -35,24 +57,11 @@ SECTIONS
     /* EFI runtime services data */
     . = ALIGN(16);
     _edata = .;
-  }
+  } :data
 
-  .dynamic : { *(.dynamic) }
-  .dynsym : { *(.dynsym) }
-  .dynstr : { *(.dynstr) }
-  .rel : {
-    *(.rel.data)
-    *(.rel.data.*)
-    *(.rel.got)
-    *(.rel.stab)
-  }
-  .rela : {
-    *(.rela.text)
-    *(.rela.data)
-    *(.rela.data.*)
-    *(.rela.got)
-    *(.rela.stab)
-  }
+  .dynamic : { *(.dynamic) } :data :dynamic
+  .dynsym : { *(.dynsym) } :data
+  .dynstr : { *(.dynstr) } :data
 
   /* BSS section */
   .bss : {

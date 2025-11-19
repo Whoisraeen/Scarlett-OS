@@ -79,6 +79,27 @@ disk: setup bootloader kernel
 	@rm -f $(BUILD_DIR)/part.img
 	@echo "[DISK] GPT disk image created and populated"
 
+# Create ISO image (alternative boot method)
+iso: setup bootloader kernel
+	@echo "[ISO] Creating UEFI bootable ISO..."
+	@mkdir -p $(BUILD_DIR)/iso/EFI/BOOT
+	@cp $(BUILD_DIR)/boot/EFI/BOOT/BOOTX64.EFI $(BUILD_DIR)/iso/EFI/BOOT/
+	@cp $(BUILD_DIR)/kernel.elf $(BUILD_DIR)/iso/
+	@xorriso -as mkisofs -R -f -e EFI/BOOT/BOOTX64.EFI -no-emul-boot \
+		-o $(BUILD_DIR)/boot.iso $(BUILD_DIR)/iso >/dev/null 2>&1 || \
+		genisoimage -R -f -e EFI/BOOT/BOOTX64.EFI -no-emul-boot \
+		-o $(BUILD_DIR)/boot.iso $(BUILD_DIR)/iso >/dev/null 2>&1
+	@echo "[ISO] ISO image created: $(BUILD_DIR)/boot.iso"
+
+# Run from ISO
+run-iso: iso
+	@echo "[QEMU] Starting Scarlett OS from ISO..."
+	@if [ -f "$(OVMF_CODE)" ]; then \
+		$(QEMU) -bios $(OVMF_CODE) -cdrom $(BUILD_DIR)/boot.iso $(QEMU_FLAGS); \
+	else \
+		echo "[ERROR] OVMF firmware not found at $(OVMF_CODE)"; \
+	fi
+
 # Run in QEMU
 run: all
 	@echo "[QEMU] Starting Scarlett OS..."

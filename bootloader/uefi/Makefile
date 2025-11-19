@@ -1,80 +1,58 @@
-# UEFI Bootloader Makefile
+# UEFI Bootloader Makefile using GNU-EFI
 
 TARGET = BOOTX64.EFI
-ELF_TARGET = bootloader.elf
-CC = x86_64-w64-mingw32-gcc
-OBJCOPY = x86_64-w64-mingw32-objcopy
+GNUEFI_INC = /usr/include/efi
+GNUEFI_LIB = /usr/lib
 
-# Try MinGW first (native PE), fall back to GNU tools
-MINGW_AVAILABLE := $(shell which x86_64-w64-mingw32-gcc 2>/dev/null)
+CC = gcc
+LD = ld
+OBJCOPY = objcopy
 
-ifneq ($(MINGW_AVAILABLE),)
-    # Use MinGW for native PE compilation
-    CC = x86_64-w64-mingw32-gcc
-    LD = x86_64-w64-mingw32-gcc
-    OBJCOPY = x86_64-w64-mingw32-objcopy
+CFLAGS = -I$(GNUEFI_INC) \
+         -I$(GNUEFI_INC)/x86_64 \
+         -I$(GNUEFI_INC)/protocol \
+         -I. -I../common \
+         -ffreestanding \
+         -fno-stack-protector \
+         -fno-stack-check \
+         -fshort-wchar \
+         -mno-red-zone \
+         -maccumulate-outgoing-args \
+         -mno-sse \
+         -mno-mmx \
+         -mstackrealign \
+         -fpic \
+         -Wall -Wextra \
+         -DGNU_EFI_USE_MS_ABI
 
-    CFLAGS = -I. -I../common \
-             -ffreestanding \
-             -fno-stack-protector \
-             -fno-stack-check \
-             -fshort-wchar \
-             -mno-red-zone \
-             -DEFI_FUNCTION_WRAPPER \
-             -Wall -Wextra
+LDFLAGS = -nostdlib \
+          -znocombreloc \
+          -T $(GNUEFI_LIB)/elf_x86_64_efi.lds \
+          -shared \
+          -Bsymbolic \
+          -L $(GNUEFI_LIB) \
+          $(GNUEFI_LIB)/crt0-efi-x86_64.o
 
-    LDFLAGS = -nostdlib \
-              -Wl,-dll \
-              -Wl,--subsystem,10 \
-              -Wl,-e,efi_main \
-              -Wl,--image-base,0 \
-              -shared
-else
-    # Fall back to GCC + manual conversion
-    CC = gcc
-    LD = gcc
-    OBJCOPY = objcopy
-
-    CFLAGS = -I. -I../common \
-             -ffreestanding \
-             -fno-stack-protector \
-             -fpie \
-             -fshort-wchar \
-             -mno-red-zone \
-             -DEFI_FUNCTION_WRAPPER \
-             -fno-strict-aliasing \
-             -Wall -Wextra
-
-    LDFLAGS = -nostdlib \
-              -pie \
-              -Wl,-Bsymbolic \
-              -Wl,-T,elf_x86_64_efi.lds \
-              -Wl,--no-undefined
-endif
+LIBS = -lefi -lgnuefi
 
 SRCS = main.c elf.c paging.c
 OBJS = $(SRCS:.c=.o)
+SO_TARGET = bootloader.so
 
 all: $(TARGET)
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
-ifneq ($(MINGW_AVAILABLE),)
-# MinGW path - direct PE output
-$(TARGET): $(OBJS)
-	$(LD) $(LDFLAGS) $(OBJS) -o $@
-else
-# GNU path - ELF to PE conversion
-$(TARGET): $(OBJS)
-	$(LD) $(LDFLAGS) $(OBJS) -o $(ELF_TARGET)
-	$(OBJCOPY) -j .text -j .sdata -j .data -j .rodata \
-	           -j .dynamic -j .dynsym -j .rel -j .rela -j .reloc \
-	           --target=efi-app-x86_64 --subsystem=10 \
-	           $(ELF_TARGET) $@
-endif
+$(SO_TARGET): $(OBJS)
+	$(LD) $(LDFLAGS) $(OBJS) -o $@ $(LIBS)
+
+$(TARGET): $(SO_TARGET)
+	$(OBJCOPY) -j .text -j .sdata -j .data -j .dynamic -j .dynsym \
+	           -j .rel -j .rela -j .reloc \
+	           --target=efi-app-x86_64 --subsystem=10 $< $@
 
 clean:
-	rm -f $(OBJS) $(TARGET) $(ELF_TARGET)
+	rm -f $(OBJS) $(TARGET) $(SO_TARGET)
 
 .PHONY: all clean

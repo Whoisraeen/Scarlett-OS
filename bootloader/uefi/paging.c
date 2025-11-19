@@ -4,6 +4,8 @@
  */
 
 #include "paging.h"
+#include <efi.h>
+#include <efilib.h>
 
 // Page table structures
 typedef uint64_t pml4_entry_t;

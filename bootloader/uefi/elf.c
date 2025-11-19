@@ -4,7 +4,8 @@
  */
 
 #include "elf.h"
-#include "uefi.h"
+#include <efi.h>
+#include <efilib.h>
 
 /**
  * Verify ELF header
@@ -75,7 +76,6 @@ EFI_STATUS load_elf(void* elf_data, uint64_t* entry_point,
         
         // Calculate physical address
         uint64_t phys_addr = phdr->p_paddr;
-        uint64_t virt_addr = phdr->p_vaddr;
         
         // Track kernel bounds
         if (phys_addr < min_addr) {

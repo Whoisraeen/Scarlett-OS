@@ -40,6 +40,7 @@ ASM_SRCS = hal/x86_64/multiboot2.S \
            hal/x86_64/idt_load.S \
            hal/x86_64/exceptions.S \
            hal/x86_64/user_mode.S \
+           hal/x86_64/uefi_entry.S \
            hal/x86_64/interrupt_stubs.S
 
 C_SRCS = core/main.c \

@@ -1,428 +1,176 @@
 /**
  * @file main.c
- * @brief UEFI Bootloader main entry point
- * 
- * This is the main bootloader for Scarlett OS.
- * It loads the kernel, sets up page tables, and passes control to the kernel.
+ * @brief UEFI Bootloader main entry point (GNU-EFI version)
  */
 
-#include "uefi.h"
+#include <efi.h>
+#include <efilib.h>
 #include "../common/boot_info.h"
-
-// Global pointers
-static EFI_SYSTEM_TABLE* systab = NULL;
-static EFI_BOOT_SERVICES* bs = NULL;
-static EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL* cout = NULL;
 
 // Boot info to pass to kernel
 static boot_info_t boot_info = {0};
 
-/**
- * Print a string to UEFI console
- */
-static void print(const char* str) {
-    if (!cout) return;
-    
-    uint16_t buf[256];
-    for (int i = 0; i < 255 && str[i]; i++) {
-        buf[i] = str[i];
-        buf[i + 1] = 0;
-    }
-    
-    cout->OutputString(cout, buf);
-}
+// Forward declarations
+EFI_STATUS load_kernel_file(EFI_HANDLE ImageHandle, CHAR16 *FileName, VOID **Buffer, UINTN *Size);
+UINT64 load_elf(void *elf_data);
+void setup_page_tables(void);
 
 /**
- * Print a newline
+ * UEFI Application Entry Point (GNU-EFI)
  */
-static void println(const char* str) {
-    print(str);
-    print("\r\n");
-}
-
-/**
- * Convert number to hex string
- */
-static void print_hex(uint64_t num) {
-    char buf[20] = "0x";
-    char hex[] = "0123456789ABCDEF";
-    int i = 2;
+EFI_STATUS
+EFIAPI
+efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
+{
+    EFI_STATUS Status;
+    VOID *KernelBuffer = NULL;
+    UINTN KernelSize = 0;
+    UINT64 KernelEntry;
     
-    for (int shift = 60; shift >= 0; shift -= 4) {
-        buf[i++] = hex[(num >> shift) & 0xF];
+    // Initialize GNU-EFI library
+    InitializeLib(ImageHandle, SystemTable);
+    
+    // Clear screen and print banner
+    uefi_call_wrapper(ST->ConOut->ClearScreen, 1, ST->ConOut);
+    Print(L"Scarlett OS UEFI Bootloader\\n");
+    Print(L"===========================\\n\\n");
+    
+    // Load kernel.elf from disk
+    Print(L"Loading kernel.elf...\\n");
+    Status = load_kernel_file(ImageHandle, L"\\\\kernel.elf", &KernelBuffer, &KernelSize);
+    if (EFI_ERROR(Status)) {
+        Print(L"ERROR: Failed to load kernel.elf (Status: %r)\\n", Status);
+        while(1);
     }
-    buf[i] = 0;
+    Print(L"Kernel loaded: %d bytes\\n", KernelSize);
     
-    print(buf);
-}
-
-/**
- * Get memory map from UEFI
- */
-static EFI_STATUS get_memory_map(void) {
-    uint64_t mmap_size = sizeof(EFI_MEMORY_DESCRIPTOR) * MAX_MEMORY_REGIONS;
-    EFI_MEMORY_DESCRIPTOR* mmap = NULL;
-    uint64_t map_key = 0;
-    uint64_t desc_size = 0;
-    uint32_t desc_version = 0;
-    EFI_STATUS status;
-    
-    // Allocate buffer for memory map
-    status = bs->AllocatePool(EfiLoaderData, mmap_size, (void**)&mmap);
-    if (status != EFI_SUCCESS) {
-        println("ERROR: Failed to allocate memory for memory map");
-        return status;
+    // Parse ELF and get entry point
+    Print(L"Parsing ELF...\\n");
+    KernelEntry = load_elf(KernelBuffer);
+    if (KernelEntry == 0) {
+        Print(L"ERROR: Failed to parse ELF\\n");
+        while(1);
     }
+    Print(L"Kernel entry point: 0x%lx\\n", KernelEntry);
     
     // Get memory map
-    status = bs->GetMemoryMap(&mmap_size, mmap, &map_key, &desc_size, &desc_version);
-    if (status != EFI_SUCCESS) {
-        println("ERROR: Failed to get memory map");
-        bs->FreePool(mmap);
-        return status;
+    Print(L"Getting memory map...\\n");
+    UINTN MapKey;
+    UINTN DescriptorSize;
+    UINT32 DescriptorVersion;
+    UINTN MapSize = sizeof(boot_info.memory_map);
+    
+    Status = uefi_call_wrapper(BS->GetMemoryMap, 5,
+                               &MapSize,
+                               (EFI_MEMORY_DESCRIPTOR*)boot_info.memory_map,
+                               &MapKey,
+                               &DescriptorSize,
+                               &DescriptorVersion);
+    if (EFI_ERROR(Status)) {
+        Print(L"ERROR: Failed to get memory map (Status: %r)\\n", Status);
+        while(1);
+    }
+    boot_info.memory_map_count = MapSize / DescriptorSize;
+    
+    // Get framebuffer info
+    Print(L"Getting framebuffer info...\\n");
+    EFI_GRAPHICS_OUTPUT_PROTOCOL *Gop;
+    EFI_GUID GopGuid = EFI_GRAPHICS_OUTPUT_PROTOCOL_GUID;
+    Status = uefi_call_wrapper(BS->LocateProtocol, 3, &GopGuid, NULL, (VOID**)&Gop);
+    if (!EFI_ERROR(Status)) {
+        boot_info.framebuffer.base = Gop->Mode->FrameBufferBase;
+        boot_info.framebuffer.width = Gop->Mode->Info->HorizontalResolution;
+        boot_info.framebuffer.height = Gop->Mode->Info->VerticalResolution;
+        boot_info.framebuffer.pitch = Gop->Mode->Info->PixelsPerScanLine * 4;
+        boot_info.framebuffer.bpp = 32;
+        Print(L"Framebuffer: %dx%d @ 0x%lx\\n", 
+              boot_info.framebuffer.width, 
+              boot_info.framebuffer.height,
+              boot_info.framebuffer.base);
     }
     
-    // Copy memory map to boot info
-    uint32_t num_entries = mmap_size / desc_size;
-    if (num_entries > MAX_MEMORY_REGIONS) {
-        num_entries = MAX_MEMORY_REGIONS;
+    // Setup page tables
+    Print(L"Setting up page tables...\\n");
+    setup_page_tables();
+    
+    // Exit boot services
+    Print(L"Exiting boot services...\\n");
+    Status = uefi_call_wrapper(BS->ExitBootServices, 2, ImageHandle, MapKey);
+    if (EFI_ERROR(Status)) {
+        Print(L"ERROR: Failed to exit boot services (Status: %r)\\n", Status);
+        while(1);
     }
     
-    boot_info.memory_map_count = num_entries;
+    // Jump to kernel
+    typedef void (*kernel_entry_t)(boot_info_t*);
+    kernel_entry_t kernel_main = (kernel_entry_t)KernelEntry;
+    kernel_main(&boot_info);
     
-    for (uint32_t i = 0; i < num_entries; i++) {
-        EFI_MEMORY_DESCRIPTOR* desc = (EFI_MEMORY_DESCRIPTOR*)((uint8_t*)mmap + (i * desc_size));
-        
-        boot_info.memory_map[i].base = desc->PhysicalStart;
-        boot_info.memory_map[i].length = desc->NumberOfPages * 4096;
-        boot_info.memory_map[i].type = desc->Type;
-    }
-    
-    bs->FreePool(mmap);
-    
-    println("Memory map retrieved successfully");
+    // Should never reach here
+    while(1);
     return EFI_SUCCESS;
 }
 
 /**
- * Get framebuffer information
+ * Load a file from the EFI System Partition
  */
-static EFI_STATUS get_framebuffer_info(void) {
-    EFI_GUID gop_guid = EFI_GRAPHICS_OUTPUT_PROTOCOL_GUID;
-    EFI_GRAPHICS_OUTPUT_PROTOCOL* gop = NULL;
-    EFI_STATUS status;
-    
-    // Locate Graphics Output Protocol
-    status = bs->HandleProtocol(systab->ConsoleOutHandle, &gop_guid, (void**)&gop);
-    if (status != EFI_SUCCESS || !gop) {
-        println("WARNING: Graphics Output Protocol not found");
-        return status;
-    }
-    
-    // Get current mode information
-    EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE* mode = gop->Mode;
-    if (!mode || !mode->Info) {
-        println("WARNING: No graphics mode information");
-        return EFI_NOT_FOUND;
-    }
-    
-    // Fill in framebuffer info
-    boot_info.framebuffer.base = mode->FrameBufferBase;
-    boot_info.framebuffer.width = mode->Info->HorizontalResolution;
-    boot_info.framebuffer.height = mode->Info->VerticalResolution;
-    boot_info.framebuffer.pitch = mode->Info->PixelsPerScanLine * 4;
-    boot_info.framebuffer.bpp = 32;
-    
-    if (mode->Info->PixelFormat == PixelRedGreenBlueReserved8BitPerColor) {
-        boot_info.framebuffer.red_mask = 0x00FF0000;
-        boot_info.framebuffer.green_mask = 0x0000FF00;
-        boot_info.framebuffer.blue_mask = 0x000000FF;
-        boot_info.framebuffer.reserved_mask = 0xFF000000;
-    } else if (mode->Info->PixelFormat == PixelBlueGreenRedReserved8BitPerColor) {
-        boot_info.framebuffer.red_mask = 0x000000FF;
-        boot_info.framebuffer.green_mask = 0x0000FF00;
-        boot_info.framebuffer.blue_mask = 0x00FF0000;
-        boot_info.framebuffer.reserved_mask = 0xFF000000;
-    }
-    
-    print("Framebuffer: ");
-    print_hex(boot_info.framebuffer.base);
-    println("");
-    
-    return EFI_SUCCESS;
-}
-
-/**
- * Initialize boot info structure
- */
-static void init_boot_info(void) {
-    boot_info.magic = BOOT_INFO_MAGIC;
-    
-    // Set bootloader info
-    const char* name = "Scarlett UEFI Bootloader";
-    for (int i = 0; i < 63 && name[i]; i++) {
-        boot_info.bootloader_name[i] = name[i];
-    }
-    boot_info.bootloader_version = 0x00010000; // Version 1.0
-    
-    // Set kernel addresses (will be updated after loading kernel)
-    boot_info.kernel_physical_base = 0;
-    boot_info.kernel_virtual_base = 0xFFFFFFFF80000000ULL; // Higher half
-    boot_info.kernel_size = 0;
-    
-    // ACPI (RSDP address will be filled later)
-    boot_info.rsdp_address = 0;
-}
-
-/**
- * Main bootloader entry point
- */
-
-    
-/**
- * Load a file from disk into memory
- */
-static EFI_STATUS load_file(EFI_HANDLE image_handle, const uint16_t* filename, void** buffer, uint64_t* size) {
-    EFI_STATUS status;
-    EFI_LOADED_IMAGE_PROTOCOL* loaded_image;
-    EFI_GUID loaded_image_guid = EFI_LOADED_IMAGE_PROTOCOL_GUID;
+EFI_STATUS load_kernel_file(EFI_HANDLE ImageHandle, CHAR16 *FileName, VOID **Buffer, UINTN *Size)
+{
+    EFI_STATUS Status;
+    EFI_LOADED_IMAGE_PROTOCOL *LoadedImage;
+    EFI_SIMPLE_FILE_SYSTEM_PROTOCOL *FileSystem;
+    EFI_FILE_PROTOCOL *Root, *File;
+    EFI_FILE_INFO *FileInfo;
+    UINTN FileInfoSize;
     
     // Get loaded image protocol
-    status = bs->HandleProtocol(image_handle, &loaded_image_guid, (void**)&loaded_image);
-    if (status != EFI_SUCCESS) {
-        println("ERROR: Could not get loaded image protocol");
-        return status;
-    }
+    EFI_GUID LoadedImageGuid = EFI_LOADED_IMAGE_PROTOCOL_GUID;
+    Status = uefi_call_wrapper(BS->HandleProtocol, 3, ImageHandle, &LoadedImageGuid, (VOID**)&LoadedImage);
+    if (EFI_ERROR(Status)) return Status;
     
-    // Get simple file system protocol
-    EFI_SIMPLE_FILE_SYSTEM_PROTOCOL* fs;
-    EFI_GUID fs_guid = EFI_SIMPLE_FILE_SYSTEM_PROTOCOL_GUID;
-    status = bs->HandleProtocol(loaded_image->DeviceHandle, &fs_guid, (void**)&fs);
-    if (status != EFI_SUCCESS) {
-        println("ERROR: Could not get file system protocol");
-        return status;
-    }
+    // Get file system protocol
+    EFI_GUID FileSystemGuid = EFI_SIMPLE_FILE_SYSTEM_PROTOCOL_GUID;
+    Status = uefi_call_wrapper(BS->HandleProtocol, 3, LoadedImage->DeviceHandle, &FileSystemGuid, (VOID**)&FileSystem);
+    if (EFI_ERROR(Status)) return Status;
     
-    // Open volume
-    EFI_FILE_PROTOCOL* root;
-    status = fs->OpenVolume(fs, &root);
-    if (status != EFI_SUCCESS) {
-        println("ERROR: Could not open volume");
-        return status;
-    }
+    // Open root directory
+    Status = uefi_call_wrapper(FileSystem->OpenVolume, 2, FileSystem, &Root);
+    if (EFI_ERROR(Status)) return Status;
     
     // Open file
-    EFI_FILE_PROTOCOL* file;
-    status = root->Open(root, &file, (uint16_t*)filename, 1, 0); // 1 = Read mode
-    if (status != EFI_SUCCESS) {
-        print("ERROR: Could not open file: ");
-        // Simple string print for filename (assuming ASCII compatible)
-        for(int i=0; filename[i]; i++) {
-            char c[2] = {(char)filename[i], 0};
-            print(c);
-        }
-        println("");
-        return status;
+    Status = uefi_call_wrapper(Root->Open, 5, Root, &File, FileName, EFI_FILE_MODE_READ, 0);
+    if (EFI_ERROR(Status)) {
+        uefi_call_wrapper(Root->Close, 1, Root);
+        return Status;
     }
     
-    // Get file info to find size
-    uint64_t info_size = 0;
-    EFI_GUID info_guid = { 0x09576e92, 0x6d3f, 0x11d2, {0x8e, 0x39, 0x00, 0xa0, 0xc9, 0x69, 0x72, 0x3b} }; // EFI_FILE_INFO_ID
-    status = file->GetInfo(file, &info_guid, &info_size, NULL);
-    if (status == EFI_BUFFER_TOO_SMALL) {
-        status = bs->AllocatePool(EfiLoaderData, info_size, buffer); // Temp buffer for info
-        if (status != EFI_SUCCESS) return status;
-        status = file->GetInfo(file, &info_guid, &info_size, *buffer);
+    // Get file size
+    FileInfoSize = SIZE_OF_EFI_FILE_INFO + 256;
+    FileInfo = AllocatePool(FileInfoSize);
+    Status = uefi_call_wrapper(File->GetInfo, 4, File, &gEfiFileInfoGuid, &FileInfoSize, FileInfo);
+    if (EFI_ERROR(Status)) {
+        uefi_call_wrapper(File->Close, 1, File);
+        uefi_call_wrapper(Root->Close, 1, Root);
+        return Status;
     }
     
-    if (status != EFI_SUCCESS) {
-        println("ERROR: Could not get file info");
-        file->Close(file);
-        return status;
-    }
+    *Size = FileInfo->FileSize;
+    FreePool(FileInfo);
     
-    // Extract size from EFI_FILE_INFO (Size is at offset 8)
-    uint64_t file_size = *(uint64_t*)((uint8_t*)*buffer + 8);
-    bs->FreePool(*buffer); // Free info buffer
-    
-    *size = file_size;
-    
-    // Allocate buffer for file
-    status = bs->AllocatePool(EfiLoaderData, file_size, buffer);
-    if (status != EFI_SUCCESS) {
-        println("ERROR: Could not allocate memory for file");
-        file->Close(file);
-        return status;
+    // Allocate buffer
+    *Buffer = AllocatePool(*Size);
+    if (!*Buffer) {
+        uefi_call_wrapper(File->Close, 1, File);
+        uefi_call_wrapper(Root->Close, 1, Root);
+        return EFI_OUT_OF_RESOURCES;
     }
     
     // Read file
-    status = file->Read(file, &file_size, *buffer);
-    if (status != EFI_SUCCESS) {
-        println("ERROR: Could not read file");
-        bs->FreePool(*buffer);
-        file->Close(file);
-        return status;
-    }
+    Status = uefi_call_wrapper(File->Read, 3, File, Size, *Buffer);
     
-    file->Close(file);
-    root->Close(root);
+    // Close file and root
+    uefi_call_wrapper(File->Close, 1, File);
+    uefi_call_wrapper(Root->Close, 1, Root);
     
-    return EFI_SUCCESS;
+    return Status;
 }
-
-/**
- * Main bootloader entry point
- */
-EFI_STATUS EFIAPI efi_main(EFI_HANDLE image, EFI_SYSTEM_TABLE* system_table) {
-    EFI_STATUS status;
-    
-    // Save system table pointers
-    systab = system_table;
-    bs = systab->BootServices;
-    cout = systab->ConOut;
-    
-    // Clear screen
-    if (cout && cout->ClearScreen) {
-        cout->ClearScreen(cout);
-    }
-    
-    // Print banner
-    println("===========================================");
-    println("   Scarlett OS - UEFI Bootloader v1.0");
-    println("===========================================");
-    println("");
-    
-    // Initialize boot info
-    init_boot_info();
-    println("Boot info structure initialized");
-    
-    // Get memory map
-    status = get_memory_map();
-    if (status != EFI_SUCCESS) {
-        println("FATAL: Could not get memory map");
-        goto error;
-    }
-    
-    // Get framebuffer info
-    status = get_framebuffer_info();
-    // Non-fatal if this fails
-    
-    // Load kernel from disk
-    println("Loading kernel.elf...");
-    
-    void* kernel_buffer = NULL;
-    uint64_t kernel_size = 0;
-    uint16_t kernel_filename[] = {'k', 'e', 'r', 'n', 'e', 'l', '.', 'e', 'l', 'f', 0};
-    
-    status = load_file(image, kernel_filename, &kernel_buffer, &kernel_size);
-    if (status != EFI_SUCCESS) {
-        println("FATAL: Could not load kernel.elf");
-        goto error;
-    }
-    
-    print("Kernel loaded at: ");
-    print_hex((uint64_t)kernel_buffer);
-    print(" Size: ");
-    print_hex(kernel_size);
-    println("");
-    
-    // Parse and load ELF
-    uint64_t entry_point = 0;
-    uint64_t kernel_phys_start = 0;
-    uint64_t kernel_phys_end = 0;
-    
-    status = load_elf(kernel_buffer, &entry_point, &kernel_phys_start, &kernel_phys_end, bs);
-    if (status != EFI_SUCCESS) {
-        println("FATAL: Could not parse/load kernel ELF");
-        goto error;
-    }
-    
-    print("Kernel Entry: ");
-    print_hex(entry_point);
-    println("");
-    
-    // Update boot info
-    boot_info.kernel_physical_base = kernel_phys_start;
-    boot_info.kernel_size = kernel_phys_end - kernel_phys_start;
-    
-    // Set up page tables
-    println("Setting up page tables...");
-    
-    uint64_t pml4_addr = 0;
-    extern EFI_STATUS setup_page_tables(uint64_t*, uint64_t, uint64_t, 
-                                        uint64_t, uint64_t, EFI_BOOT_SERVICES*);
-    
-    status = setup_page_tables(&pml4_addr,
-                               kernel_phys_start,
-                               kernel_phys_end,
-                               boot_info.framebuffer.base,
-                               boot_info.framebuffer.height * boot_info.framebuffer.pitch,
-                               bs);
-    
-    if (status != EFI_SUCCESS) {
-        println("ERROR: Could not set up page tables");
-        goto error;
-    }
-    
-    print("Page tables at: ");
-    print_hex(pml4_addr);
-    println("");
-    
-    // Get final memory map and exit boot services
-    println("Exiting boot services...");
-    
-    uint64_t mmap_size = sizeof(EFI_MEMORY_DESCRIPTOR) * MAX_MEMORY_REGIONS;
-    EFI_MEMORY_DESCRIPTOR* mmap = NULL;
-    uint64_t map_key = 0;
-    uint64_t desc_size = 0;
-    uint32_t desc_version = 0;
-    
-    status = bs->AllocatePool(EfiLoaderData, mmap_size, (void**)&mmap);
-    if (status != EFI_SUCCESS) {
-        println("ERROR: Could not allocate memory for final memory map");
-        goto error;
-    }
-    
-    status = bs->GetMemoryMap(&mmap_size, mmap, &map_key, &desc_size, &desc_version);
-    if (status != EFI_SUCCESS) {
-        println("ERROR: Could not get final memory map");
-        goto error;
-    }
-    
-    // Exit boot services (point of no return!)
-    status = bs->ExitBootServices(image, map_key);
-    if (status != EFI_SUCCESS) {
-        // Try again with updated memory map
-        bs->GetMemoryMap(&mmap_size, mmap, &map_key, &desc_size, &desc_version);
-        status = bs->ExitBootServices(image, map_key);
-        if (status != EFI_SUCCESS) {
-            // Can't print anymore, just hang
-            while(1) __asm__ volatile("hlt");
-        }
-    }
-    
-    // Boot services are now unavailable!
-    // Load new page tables
-    __asm__ volatile("mov %0, %%cr3" :: "r"(pml4_addr));
-    
-    // Jump to kernel
-    void (*kernel_entry)(boot_info_t*) = (void*)entry_point;
-    
-    // Call kernel with boot info
-    kernel_entry(&boot_info);
-    
-    // Should never return
-    while (1) {
-        __asm__ volatile("hlt");
-    }
-    
-    return EFI_SUCCESS;
-    
-error:
-    println("Bootloader failed!");
-    while (1) {
-        __asm__ volatile("hlt");
-    }
-    return status;
-}
-
