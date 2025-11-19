@@ -6,10 +6,17 @@
  * Based on UEFI Specification 2.10
  */
 
+
 #ifndef UEFI_H
 #define UEFI_H
 
 #include <stdint.h>
+#include <stddef.h>
+
+typedef struct EFI_SYSTEM_TABLE_STRUCT EFI_SYSTEM_TABLE;
+
+// UEFI uses Microsoft ABI on x86_64
+#define EFIAPI __attribute__((ms_abi))
 
 // UEFI Status codes
 typedef uint64_t EFI_STATUS;
@@ -45,6 +52,22 @@ typedef struct {
 #define EFI_LOADED_IMAGE_PROTOCOL_GUID \
     { 0x5b1b31a1, 0x9562, 0x11d2, {0x8e, 0x3f, 0x00, 0xa0, 0xc9, 0x69, 0x72, 0x3b} }
 
+typedef struct {
+    uint32_t Revision;
+    EFI_HANDLE ParentHandle;
+    EFI_SYSTEM_TABLE* SystemTable;
+    EFI_HANDLE DeviceHandle;
+    void* FilePath;
+    void* Reserved;
+    uint32_t LoadOptionsSize;
+    void* LoadOptions;
+    void* ImageBase;
+    uint64_t ImageSize;
+    uint32_t ImageCodeType;
+    uint32_t ImageDataType;
+    void* Unload;
+} EFI_LOADED_IMAGE_PROTOCOL;
+
 // Simple File System Protocol GUID
 #define EFI_SIMPLE_FILE_SYSTEM_PROTOCOL_GUID \
     { 0x964e5b22, 0x6459, 0x11d2, {0x8e, 0x39, 0x00, 0xa0, 0xc9, 0x69, 0x72, 0x3b} }
@@ -67,6 +90,14 @@ typedef struct {
 #define EfiPersistentMemory            14
 #define EfiMaxMemoryType               15
 
+// Allocate types
+typedef enum {
+    AllocateAnyPages,
+    AllocateMaxAddress,
+    AllocateAddress,
+    MaxAllocateType
+} EFI_ALLOCATE_TYPE;
+
 // Memory descriptor
 typedef struct {
     uint32_t Type;
@@ -79,15 +110,15 @@ typedef struct {
 
 // Simple Text Output Protocol
 typedef struct EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL {
-    void* Reset;
-    EFI_STATUS (*OutputString)(struct EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL* This, uint16_t* String);
+    EFI_STATUS (EFIAPI *Reset)(struct EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL* This, uint8_t ExtendedVerification);
+    EFI_STATUS (EFIAPI *OutputString)(struct EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL* This, uint16_t* String);
     void* TestString;
-    void* QueryMode;
-    void* SetMode;
-    void* SetAttribute;
-    void* ClearScreen;
-    void* SetCursorPosition;
-    void* EnableCursor;
+    EFI_STATUS (EFIAPI *QueryMode)(struct EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL* This, uint64_t ModeNumber, uint64_t* Columns, uint64_t* Rows);
+    EFI_STATUS (EFIAPI *SetMode)(struct EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL* This, uint64_t ModeNumber);
+    EFI_STATUS (EFIAPI *SetAttribute)(struct EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL* This, uint64_t Attribute);
+    EFI_STATUS (EFIAPI *ClearScreen)(struct EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL* This);
+    EFI_STATUS (EFIAPI *SetCursorPosition)(struct EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL* This, uint64_t Column, uint64_t Row);
+    EFI_STATUS (EFIAPI *EnableCursor)(struct EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL* This, uint8_t Visible);
     void* Mode;
 } EFI_SIMPLE_TEXT_OUTPUT_PROTOCOL;
 
@@ -126,8 +157,8 @@ typedef struct {
 } EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE;
 
 typedef struct {
-    void* QueryMode;
-    void* SetMode;
+    EFI_STATUS (EFIAPI *QueryMode)(void* This, uint32_t ModeNumber, uint64_t* SizeOfInfo, EFI_GRAPHICS_OUTPUT_MODE_INFORMATION** Info);
+    EFI_STATUS (EFIAPI *SetMode)(void* This, uint32_t ModeNumber);
     void* Blt;
     EFI_GRAPHICS_OUTPUT_PROTOCOL_MODE* Mode;
 } EFI_GRAPHICS_OUTPUT_PROTOCOL;
@@ -136,12 +167,12 @@ typedef struct {
 typedef struct {
     void* RaiseTPL;
     void* RestoreTPL;
-    EFI_STATUS (*AllocatePages)(uint32_t Type, uint32_t MemoryType, uint64_t Pages, EFI_PHYSICAL_ADDRESS* Memory);
-    EFI_STATUS (*FreePages)(EFI_PHYSICAL_ADDRESS Memory, uint64_t Pages);
-    EFI_STATUS (*GetMemoryMap)(uint64_t* MemoryMapSize, EFI_MEMORY_DESCRIPTOR* MemoryMap,
+    EFI_STATUS (EFIAPI *AllocatePages)(uint32_t Type, uint32_t MemoryType, uint64_t Pages, EFI_PHYSICAL_ADDRESS* Memory);
+    EFI_STATUS (EFIAPI *FreePages)(EFI_PHYSICAL_ADDRESS Memory, uint64_t Pages);
+    EFI_STATUS (EFIAPI *GetMemoryMap)(uint64_t* MemoryMapSize, EFI_MEMORY_DESCRIPTOR* MemoryMap,
                                uint64_t* MapKey, uint64_t* DescriptorSize, uint32_t* DescriptorVersion);
-    EFI_STATUS (*AllocatePool)(uint32_t PoolType, uint64_t Size, void** Buffer);
-    EFI_STATUS (*FreePool)(void* Buffer);
+    EFI_STATUS (EFIAPI *AllocatePool)(uint32_t PoolType, uint64_t Size, void** Buffer);
+    EFI_STATUS (EFIAPI *FreePool)(void* Buffer);
     void* CreateEvent;
     void* SetTimer;
     void* WaitForEvent;
@@ -151,7 +182,7 @@ typedef struct {
     void* InstallProtocolInterface;
     void* ReinstallProtocolInterface;
     void* UninstallProtocolInterface;
-    EFI_STATUS (*HandleProtocol)(EFI_HANDLE Handle, EFI_GUID* Protocol, void** Interface);
+    EFI_STATUS (EFIAPI *HandleProtocol)(EFI_HANDLE Handle, EFI_GUID* Protocol, void** Interface);
     void* Reserved;
     void* RegisterProtocolNotify;
     void* LocateHandle;
@@ -159,9 +190,9 @@ typedef struct {
     void* InstallConfigurationTable;
     void* LoadImage;
     void* StartImage;
-    void* Exit;
+    EFI_STATUS (EFIAPI *Exit)(EFI_HANDLE ImageHandle, EFI_STATUS ExitStatus, uint64_t ExitDataSize, uint16_t* ExitData);
     void* UnloadImage;
-    EFI_STATUS (*ExitBootServices)(EFI_HANDLE ImageHandle, uint64_t MapKey);
+    EFI_STATUS (EFIAPI *ExitBootServices)(EFI_HANDLE ImageHandle, uint64_t MapKey);
     // ... more functions (simplified)
 } EFI_BOOT_SERVICES;
 
@@ -182,7 +213,7 @@ typedef struct {
 } EFI_RUNTIME_SERVICES;
 
 // System Table
-typedef struct {
+struct EFI_SYSTEM_TABLE_STRUCT {
     uint64_t Signature;
     uint32_t Revision;
     uint32_t HeaderSize;
@@ -200,29 +231,33 @@ typedef struct {
     EFI_BOOT_SERVICES* BootServices;
     uint64_t NumberOfTableEntries;
     void* ConfigurationTable;
-} EFI_SYSTEM_TABLE;
+};
 
 // EFI_FILE_PROTOCOL
 typedef struct EFI_FILE_PROTOCOL {
     uint64_t Revision;
-    EFI_STATUS (*Open)(struct EFI_FILE_PROTOCOL* This, struct EFI_FILE_PROTOCOL** NewHandle,
+    EFI_STATUS (EFIAPI *Open)(struct EFI_FILE_PROTOCOL* This, struct EFI_FILE_PROTOCOL** NewHandle,
                        uint16_t* FileName, uint64_t OpenMode, uint64_t Attributes);
-    EFI_STATUS (*Close)(struct EFI_FILE_PROTOCOL* This);
-    void* Delete;
-    EFI_STATUS (*Read)(struct EFI_FILE_PROTOCOL* This, uint64_t* BufferSize, void* Buffer);
-    void* Write;
-    void* GetPosition;
-    void* SetPosition;
-    void* GetInfo;
-    void* SetInfo;
-    void* Flush;
+    EFI_STATUS (EFIAPI *Close)(struct EFI_FILE_PROTOCOL* This);
+    EFI_STATUS (EFIAPI *Delete)(struct EFI_FILE_PROTOCOL* This);
+    EFI_STATUS (EFIAPI *Read)(struct EFI_FILE_PROTOCOL* This, uint64_t* BufferSize, void* Buffer);
+    EFI_STATUS (EFIAPI *Write)(struct EFI_FILE_PROTOCOL* This, uint64_t* BufferSize, void* Buffer);
+    EFI_STATUS (EFIAPI *GetPosition)(struct EFI_FILE_PROTOCOL* This, uint64_t* Position);
+    EFI_STATUS (EFIAPI *SetPosition)(struct EFI_FILE_PROTOCOL* This, uint64_t Position);
+    EFI_STATUS (EFIAPI *GetInfo)(struct EFI_FILE_PROTOCOL* This, EFI_GUID* InformationType, uint64_t* BufferSize, void* Buffer);
+    EFI_STATUS (EFIAPI *SetInfo)(struct EFI_FILE_PROTOCOL* This, EFI_GUID* InformationType, uint64_t BufferSize, void* Buffer);
+    EFI_STATUS (EFIAPI *Flush)(struct EFI_FILE_PROTOCOL* This);
 } EFI_FILE_PROTOCOL;
 
 // Simple File System Protocol
 typedef struct {
     uint64_t Revision;
-    EFI_STATUS (*OpenVolume)(void* This, EFI_FILE_PROTOCOL** Root);
+    EFI_STATUS (EFIAPI *OpenVolume)(void* This, EFI_FILE_PROTOCOL** Root);
 } EFI_SIMPLE_FILE_SYSTEM_PROTOCOL;
 
-#endif // UEFI_H
+// ELF loader
+EFI_STATUS load_elf(void* elf_data, uint64_t* entry_point, 
+                    uint64_t* kernel_start, uint64_t* kernel_end,
+                    EFI_BOOT_SERVICES* bs);
 
+#endif // UEFI_H

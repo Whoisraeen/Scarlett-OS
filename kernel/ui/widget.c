@@ -258,20 +258,27 @@ error_code_t widget_render(widget_t* widget, window_t* window) {
         // Default rendering based on widget type
         switch (widget->type) {
             case WIDGET_TYPE_BUTTON: {
-                // Draw button background
-                uint32_t bg = (widget->flags & WIDGET_FLAG_FOCUSED) ? 
-                    RGB(180, 200, 255) : widget->bg_color;
-                gfx_fill_rect(x, y, width, height, bg);
+                // Draw button background with gradient and rounded corners
+                uint32_t bg_top = (widget->flags & WIDGET_FLAG_FOCUSED) ? RGB(200, 220, 255) : RGB(250, 250, 250);
+                uint32_t bg_bottom = (widget->flags & WIDGET_FLAG_FOCUSED) ? RGB(160, 180, 240) : RGB(220, 220, 220);
+                
+                // We don't have a direct rounded gradient fill yet, so we'll fill a rounded rect with the average color
+                // or just use a solid color for now to keep it simple but rounded.
+                // Let's use a solid color but slightly different if focused.
+                uint32_t bg = (widget->flags & WIDGET_FLAG_FOCUSED) ? RGB(180, 200, 255) : RGB(240, 240, 240);
+                
+                gfx_fill_rounded_rect(x, y, width, height, 6, bg);
                 
                 // Draw button border
-                gfx_draw_rect(x, y, width, height, RGB(100, 100, 100));
+                uint32_t border = (widget->flags & WIDGET_FLAG_FOCUSED) ? RGB(0, 120, 215) : RGB(180, 180, 180);
+                gfx_draw_rounded_rect(x, y, width, height, 6, border);
                 
                 // Draw button text (centered)
                 if (widget->text[0]) {
                     uint32_t text_x = x + (width / 2) - (strlen(widget->text) * 4);
                     uint32_t text_y = y + (height / 2) - 4;
                     gfx_draw_string(text_x, text_y, widget->text, 
-                        widget->fg_color, 0xFFFFFFFF);
+                        widget->fg_color, 0); // Transparent bg
                 }
                 break;
             }
@@ -279,34 +286,34 @@ error_code_t widget_render(widget_t* widget, window_t* window) {
             case WIDGET_TYPE_LABEL: {
                 // Draw label text
                 if (widget->text[0]) {
-                    gfx_draw_string(x, y, widget->text, widget->fg_color, 0xFFFFFFFF);
+                    gfx_draw_string(x, y, widget->text, widget->fg_color, 0);
                 }
                 break;
             }
             
             case WIDGET_TYPE_TEXTBOX: {
                 // Draw textbox background
-                gfx_fill_rect(x, y, width, height, RGB(255, 255, 255));
+                gfx_fill_rounded_rect(x, y, width, height, 4, RGB(255, 255, 255));
                 
                 // Draw textbox border
                 uint32_t border_color = (widget->flags & WIDGET_FLAG_FOCUSED) ?
-                    RGB(0, 120, 215) : RGB(150, 150, 150);
-                gfx_draw_rect(x, y, width, height, border_color);
+                    RGB(0, 120, 215) : RGB(180, 180, 180);
+                gfx_draw_rounded_rect(x, y, width, height, 4, border_color);
                 
                 // Draw text
                 if (widget->text[0]) {
-                    gfx_draw_string(x + 2, y + 2, widget->text, 
-                        widget->fg_color, 0xFFFFFFFF);
+                    gfx_draw_string(x + 4, y + (height/2) - 4, widget->text, 
+                        widget->fg_color, 0);
                 } else if (widget->data) {  // Placeholder text
                     char* placeholder = (char*)widget->data;
-                    gfx_draw_string(x + 2, y + 2, placeholder, 
-                        RGB(150, 150, 150), 0xFFFFFFFF);
+                    gfx_draw_string(x + 4, y + (height/2) - 4, placeholder, 
+                        RGB(150, 150, 150), 0);
                 }
                 
                 // Draw cursor if focused
                 if (widget->flags & WIDGET_FLAG_FOCUSED) {
-                    uint32_t cursor_x = x + 2 + (strlen(widget->text) * 8);
-                    gfx_draw_line(cursor_x, y + 2, cursor_x, y + height - 2, 
+                    uint32_t cursor_x = x + 4 + (strlen(widget->text) * 8);
+                    gfx_draw_line(cursor_x, y + 4, cursor_x, y + height - 4, 
                         widget->fg_color);
                 }
                 break;
@@ -314,29 +321,30 @@ error_code_t widget_render(widget_t* widget, window_t* window) {
             
             case WIDGET_TYPE_CHECKBOX: {
                 // Draw checkbox box
-                gfx_fill_rect(x, y, 16, 16, RGB(255, 255, 255));
-                gfx_draw_rect(x, y, 16, 16, RGB(100, 100, 100));
+                gfx_fill_rounded_rect(x, y, 16, 16, 3, RGB(255, 255, 255));
+                gfx_draw_rounded_rect(x, y, 16, 16, 3, RGB(100, 100, 100));
                 
                 // Draw checkmark if checked
                 if (widget->data && *(bool*)widget->data) {
-                    gfx_draw_line(x + 3, y + 8, x + 7, y + 12, RGB(0, 0, 0));
-                    gfx_draw_line(x + 7, y + 12, x + 13, y + 4, RGB(0, 0, 0));
+                    gfx_draw_line(x + 3, y + 8, x + 7, y + 12, RGB(0, 120, 215));
+                    gfx_draw_line(x + 7, y + 12, x + 13, y + 4, RGB(0, 120, 215));
                 }
                 
                 // Draw label text
                 if (widget->text[0]) {
                     gfx_draw_string(x + 20, y + 4, widget->text, 
-                        widget->fg_color, 0xFFFFFFFF);
+                        widget->fg_color, 0);
                 }
                 break;
             }
             
             case WIDGET_TYPE_PANEL: {
-                // Draw panel background
-                gfx_fill_rect(x, y, width, height, widget->bg_color);
+                // Draw panel background with slight transparency if desired, or solid
+                // For now solid but rounded
+                gfx_fill_rounded_rect(x, y, width, height, 8, widget->bg_color);
                 
                 // Draw panel border
-                gfx_draw_rect(x, y, width, height, RGB(150, 150, 150));
+                gfx_draw_rounded_rect(x, y, width, height, 8, RGB(200, 200, 200));
                 break;
             }
             

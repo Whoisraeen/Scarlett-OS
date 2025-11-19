@@ -50,21 +50,34 @@ setup:
 	@mkdir -p $(BUILD_DIR)/boot/EFI/BOOT
 	@echo "[SETUP] Build directories created"
 
-# Bootloader build (placeholder for now)
+# Bootloader build
 bootloader: setup
 	@echo "[BUILD] Building UEFI bootloader..."
-	@echo "[INFO] Bootloader build target prepared"
+	@$(MAKE) -C $(BOOT_DIR)/uefi
+	@cp $(BOOT_DIR)/uefi/BOOTX64.EFI $(BUILD_DIR)/boot/EFI/BOOT/
+	@echo "[INFO] Bootloader built and copied"
 
-# Kernel build (placeholder for now)
+# Kernel build
 kernel: setup
 	@echo "[BUILD] Building kernel..."
-	@echo "[INFO] Kernel build target prepared"
+	@$(MAKE) -C $(KERNEL_DIR)
+	@cp $(KERNEL_DIR)/kernel.elf $(BUILD_DIR)/
+	@echo "[INFO] Kernel built and copied"
 
 # Create disk image
-disk: setup
-	@echo "[DISK] Creating disk image..."
+disk: setup bootloader kernel
+	@echo "[DISK] Creating GPT disk image..."
 	@dd if=/dev/zero of=$(DISK_IMG) bs=1M count=128 2>/dev/null || true
-	@echo "[DISK] Disk image created"
+	@sgdisk -n 1:2048:0 -t 1:ef00 -c 1:'EFI' $(DISK_IMG) >/dev/null 2>&1 || true
+	@dd if=/dev/zero of=$(BUILD_DIR)/part.img bs=512 count=260063 2>/dev/null || true
+	@mkfs.fat -F 32 -n 'EFI' $(BUILD_DIR)/part.img >/dev/null 2>&1 || true
+	@MTOOLS_SKIP_CHECK=1 mmd -i $(BUILD_DIR)/part.img ::/EFI 2>/dev/null || true
+	@MTOOLS_SKIP_CHECK=1 mmd -i $(BUILD_DIR)/part.img ::/EFI/BOOT 2>/dev/null || true
+	@MTOOLS_SKIP_CHECK=1 mcopy -i $(BUILD_DIR)/part.img $(BUILD_DIR)/boot/EFI/BOOT/BOOTX64.EFI ::/EFI/BOOT/ 2>/dev/null || true
+	@MTOOLS_SKIP_CHECK=1 mcopy -i $(BUILD_DIR)/part.img $(BUILD_DIR)/kernel.elf ::/ 2>/dev/null || true
+	@dd if=$(BUILD_DIR)/part.img of=$(DISK_IMG) bs=512 seek=2048 conv=notrunc 2>/dev/null || true
+	@rm -f $(BUILD_DIR)/part.img
+	@echo "[DISK] GPT disk image created and populated"
 
 # Run in QEMU
 run: all
@@ -90,6 +103,8 @@ debug: all
 clean:
 	@echo "[CLEAN] Removing build artifacts..."
 	@rm -rf $(BUILD_DIR)
+	@$(MAKE) -C $(BOOT_DIR)/uefi clean
+	@$(MAKE) -C $(KERNEL_DIR) clean
 	@echo "[CLEAN] Done"
 
 # Install verification

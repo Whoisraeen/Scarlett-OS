@@ -177,7 +177,103 @@ static void init_boot_info(void) {
 /**
  * Main bootloader entry point
  */
-EFI_STATUS efi_main(EFI_HANDLE image, EFI_SYSTEM_TABLE* system_table) {
+
+    
+/**
+ * Load a file from disk into memory
+ */
+static EFI_STATUS load_file(EFI_HANDLE image_handle, const uint16_t* filename, void** buffer, uint64_t* size) {
+    EFI_STATUS status;
+    EFI_LOADED_IMAGE_PROTOCOL* loaded_image;
+    EFI_GUID loaded_image_guid = EFI_LOADED_IMAGE_PROTOCOL_GUID;
+    
+    // Get loaded image protocol
+    status = bs->HandleProtocol(image_handle, &loaded_image_guid, (void**)&loaded_image);
+    if (status != EFI_SUCCESS) {
+        println("ERROR: Could not get loaded image protocol");
+        return status;
+    }
+    
+    // Get simple file system protocol
+    EFI_SIMPLE_FILE_SYSTEM_PROTOCOL* fs;
+    EFI_GUID fs_guid = EFI_SIMPLE_FILE_SYSTEM_PROTOCOL_GUID;
+    status = bs->HandleProtocol(loaded_image->DeviceHandle, &fs_guid, (void**)&fs);
+    if (status != EFI_SUCCESS) {
+        println("ERROR: Could not get file system protocol");
+        return status;
+    }
+    
+    // Open volume
+    EFI_FILE_PROTOCOL* root;
+    status = fs->OpenVolume(fs, &root);
+    if (status != EFI_SUCCESS) {
+        println("ERROR: Could not open volume");
+        return status;
+    }
+    
+    // Open file
+    EFI_FILE_PROTOCOL* file;
+    status = root->Open(root, &file, (uint16_t*)filename, 1, 0); // 1 = Read mode
+    if (status != EFI_SUCCESS) {
+        print("ERROR: Could not open file: ");
+        // Simple string print for filename (assuming ASCII compatible)
+        for(int i=0; filename[i]; i++) {
+            char c[2] = {(char)filename[i], 0};
+            print(c);
+        }
+        println("");
+        return status;
+    }
+    
+    // Get file info to find size
+    uint64_t info_size = 0;
+    EFI_GUID info_guid = { 0x09576e92, 0x6d3f, 0x11d2, {0x8e, 0x39, 0x00, 0xa0, 0xc9, 0x69, 0x72, 0x3b} }; // EFI_FILE_INFO_ID
+    status = file->GetInfo(file, &info_guid, &info_size, NULL);
+    if (status == EFI_BUFFER_TOO_SMALL) {
+        status = bs->AllocatePool(EfiLoaderData, info_size, buffer); // Temp buffer for info
+        if (status != EFI_SUCCESS) return status;
+        status = file->GetInfo(file, &info_guid, &info_size, *buffer);
+    }
+    
+    if (status != EFI_SUCCESS) {
+        println("ERROR: Could not get file info");
+        file->Close(file);
+        return status;
+    }
+    
+    // Extract size from EFI_FILE_INFO (Size is at offset 8)
+    uint64_t file_size = *(uint64_t*)((uint8_t*)*buffer + 8);
+    bs->FreePool(*buffer); // Free info buffer
+    
+    *size = file_size;
+    
+    // Allocate buffer for file
+    status = bs->AllocatePool(EfiLoaderData, file_size, buffer);
+    if (status != EFI_SUCCESS) {
+        println("ERROR: Could not allocate memory for file");
+        file->Close(file);
+        return status;
+    }
+    
+    // Read file
+    status = file->Read(file, &file_size, *buffer);
+    if (status != EFI_SUCCESS) {
+        println("ERROR: Could not read file");
+        bs->FreePool(*buffer);
+        file->Close(file);
+        return status;
+    }
+    
+    file->Close(file);
+    root->Close(root);
+    
+    return EFI_SUCCESS;
+}
+
+/**
+ * Main bootloader entry point
+ */
+EFI_STATUS EFIAPI efi_main(EFI_HANDLE image, EFI_SYSTEM_TABLE* system_table) {
     EFI_STATUS status;
     
     // Save system table pointers
@@ -212,30 +308,42 @@ EFI_STATUS efi_main(EFI_HANDLE image, EFI_SYSTEM_TABLE* system_table) {
     // Non-fatal if this fails
     
     // Load kernel from disk
-    println("Loading kernel...");
+    println("Loading kernel.elf...");
     
-    // Get loaded image protocol to access filesystem
-    EFI_GUID loaded_image_guid = EFI_LOADED_IMAGE_PROTOCOL_GUID;
-    void* loaded_image_proto;
-    status = bs->HandleProtocol(image, &loaded_image_guid, &loaded_image_proto);
+    void* kernel_buffer = NULL;
+    uint64_t kernel_size = 0;
+    uint16_t kernel_filename[] = {'k', 'e', 'r', 'n', 'e', 'l', '.', 'e', 'l', 'f', 0};
+    
+    status = load_file(image, kernel_filename, &kernel_buffer, &kernel_size);
     if (status != EFI_SUCCESS) {
-        println("ERROR: Could not get loaded image protocol");
+        println("FATAL: Could not load kernel.elf");
         goto error;
     }
     
-    // For now, kernel must be loaded by QEMU with -kernel flag
-    // Full UEFI filesystem loading would go here
-    println("Note: Using kernel loaded by QEMU -kernel flag");
+    print("Kernel loaded at: ");
+    print_hex((uint64_t)kernel_buffer);
+    print(" Size: ");
+    print_hex(kernel_size);
+    println("");
     
-    // In a full implementation, we would:
-    // 1. Get EFI_SIMPLE_FILE_SYSTEM_PROTOCOL
-    // 2. Open volume
-    // 3. Open file "kernel.elf"
-    // 4. Read file into memory
-    // 5. Parse and load ELF
+    // Parse and load ELF
+    uint64_t entry_point = 0;
+    uint64_t kernel_phys_start = 0;
+    uint64_t kernel_phys_end = 0;
     
-    // For now, assume kernel is already loaded by bootloader stub
-    // and we're just setting up the environment
+    status = load_elf(kernel_buffer, &entry_point, &kernel_phys_start, &kernel_phys_end, bs);
+    if (status != EFI_SUCCESS) {
+        println("FATAL: Could not parse/load kernel ELF");
+        goto error;
+    }
+    
+    print("Kernel Entry: ");
+    print_hex(entry_point);
+    println("");
+    
+    // Update boot info
+    boot_info.kernel_physical_base = kernel_phys_start;
+    boot_info.kernel_size = kernel_phys_end - kernel_phys_start;
     
     // Set up page tables
     println("Setting up page tables...");
@@ -243,10 +351,6 @@ EFI_STATUS efi_main(EFI_HANDLE image, EFI_SYSTEM_TABLE* system_table) {
     uint64_t pml4_addr = 0;
     extern EFI_STATUS setup_page_tables(uint64_t*, uint64_t, uint64_t, 
                                         uint64_t, uint64_t, EFI_BOOT_SERVICES*);
-    
-    // Assume kernel is at 0x100000 (1MB) and is about 2MB
-    uint64_t kernel_phys_start = 0x100000;
-    uint64_t kernel_phys_end = 0x300000;
     
     status = setup_page_tables(&pml4_addr,
                                kernel_phys_start,
@@ -302,8 +406,7 @@ EFI_STATUS efi_main(EFI_HANDLE image, EFI_SYSTEM_TABLE* system_table) {
     __asm__ volatile("mov %0, %%cr3" :: "r"(pml4_addr));
     
     // Jump to kernel
-    // Kernel entry point is at virtual address 0xFFFFFFFF80100000
-    void (*kernel_entry)(boot_info_t*) = (void*)0xFFFFFFFF80100000ULL;
+    void (*kernel_entry)(boot_info_t*) = (void*)entry_point;
     
     // Call kernel with boot info
     kernel_entry(&boot_info);

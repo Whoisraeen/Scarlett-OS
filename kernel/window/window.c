@@ -75,6 +75,9 @@ window_t* window_create(int32_t x, int32_t y, uint32_t width, uint32_t height, c
     window->height = height;
     window->flags = WINDOW_FLAG_VISIBLE | WINDOW_FLAG_FOCUSED;
     window->bg_color = RGB(240, 240, 240);  // Light gray
+    window->alpha = 240;                    // Slight transparency
+    window->blur_radius = 4;                // Moderate blur
+    window->corner_radius = 10;             // Modern rounded corners
     window->widget_root = NULL;  // No widgets initially
     window->next = NULL;
     window->prev = NULL;
@@ -303,69 +306,60 @@ error_code_t window_render(window_t* window) {
     if (!fb) {
         return ERR_DEVICE_NOT_FOUND;
     }
-    
-    // Clip to framebuffer bounds
-    int32_t src_x = 0;
-    int32_t src_y = 0;
-    int32_t dst_x = window->x;
-    int32_t dst_y = window->y;
-    uint32_t width = window->width;
-    uint32_t height = window->height;
-    
-    if (dst_x < 0) {
-        src_x = -dst_x;
-        width -= src_x;
-        dst_x = 0;
+
+    // 1. Draw Drop Shadow (Depth)
+    // We draw this *outside* the window bounds, so we might need to adjust clipping or logic if strict window bounds are enforced.
+    // For now, we assume the window manager repaints the background or handles damage rects correctly.
+    // Ideally, shadows are drawn by the compositor. Here we draw it as part of the window for simplicity.
+    gfx_draw_shadow(window->x, window->y, window->width, window->height, window->corner_radius, 100);
+
+    // 2. Apply Background Blur (Frosted Glass)
+    // This reads the current framebuffer content (what's behind the window) and blurs it.
+    // Note: This is expensive! In a real compositor, we'd optimize this.
+    if (window->blur_radius > 0) {
+        gfx_apply_blur_region(window->x, window->y, window->width, window->height, window->blur_radius);
     }
-    if (dst_y < 0) {
-        src_y = -dst_y;
-        height -= src_y;
-        dst_y = 0;
-    }
-    if (dst_x + width > fb->width) {
-        width = fb->width - dst_x;
-    }
-    if (dst_y + height > fb->height) {
-        height = fb->height - dst_y;
-    }
-    
-    if (width == 0 || height == 0) {
-        return ERR_OK;  // Window outside framebuffer
-    }
-    
-    // Copy window buffer to framebuffer
-    uint32_t* src = window->buffer + src_y * window->width + src_x;
-    uint8_t* dst = (uint8_t*)fb->base_address + dst_y * fb->pitch + dst_x * (fb->bpp / 8);
-    
-    for (uint32_t y = 0; y < height; y++) {
-        if (fb->bpp == 32) {
-            memcpy(dst, src, width * 4);
-        } else {
-            // Convert pixel by pixel for other formats
-            uint32_t* src_row = src;
-            uint32_t* dst_row = (uint32_t*)dst;
-            for (uint32_t x = 0; x < width; x++) {
-                framebuffer_set_pixel(dst_x + x, dst_y + y, src_row[x]);
-            }
-        }
-        src += window->width;
-        dst += fb->pitch;
-    }
-    
-    // Draw window border if focused
-    if (window->flags & WINDOW_FLAG_FOCUSED) {
-        gfx_draw_rect(window->x, window->y, window->width, window->height, RGB(0, 120, 215));
-    } else {
-        gfx_draw_rect(window->x, window->y, window->width, window->height, RGB(200, 200, 200));
-    }
-    
-    // Draw title bar
+
+    // 3. Draw Window Body (Semi-transparent Rounded Rect)
+    // We use the window's background color and alpha.
+    gfx_fill_rounded_rect_alpha(window->x, window->y, window->width, window->height, 
+                                window->corner_radius, window->bg_color, window->alpha);
+
+    // 4. Draw Window Border (Subtle)
+    uint32_t border_color = (window->flags & WINDOW_FLAG_FOCUSED) ? RGB(100, 100, 100) : RGB(150, 150, 150);
+    gfx_draw_rounded_rect(window->x, window->y, window->width, window->height, 
+                          window->corner_radius, border_color);
+
+    // 5. Draw Title Bar
     if (window->title[0]) {
-        gfx_fill_rect(window->x, window->y, window->width, 20, RGB(50, 50, 50));
-        gfx_draw_string(window->x + 5, window->y + 12, window->title, RGB(255, 255, 255), 0xFFFFFFFF);
+        // Draw title bar background (slightly darker/different alpha)
+        // We only round the top corners
+        uint32_t title_height = 24;
+        // Hack: Draw a rounded rect for the top part, and a normal rect for the bottom part of the title bar to flatten bottom corners
+        // Or just draw a rounded rect and clip? 
+        // Simpler: Just draw a rounded rect for the whole title bar area, but we need to handle the bottom flat edge.
+        // Let's just draw a rounded rect for the top, and fill the bottom half to square it off.
+        
+        uint32_t title_bg = RGB(30, 30, 30);
+        uint8_t title_alpha = 200;
+        
+        // Top rounded part
+        gfx_fill_rounded_rect_alpha(window->x, window->y, window->width, title_height + window->corner_radius, 
+                                    window->corner_radius, title_bg, title_alpha);
+        
+        // Square off the bottom of the title bar (so it connects to the window body)
+        // Actually, the window body is already drawn. We just want the title bar to sit on top.
+        // If we want the title bar to be distinct:
+        // gfx_fill_rect_alpha(window->x, window->y + window->corner_radius, window->width, title_height - window->corner_radius, title_bg, title_alpha);
+        
+        // Draw Title Text
+        // Center the text vertically
+        gfx_draw_string(window->x + 10, window->y + 8, window->title, RGB(255, 255, 255), 0); // 0 = transparent bg for text
     }
     
-    // Render widgets if any
+    // 6. Render Widgets
+    // Widgets need to be aware of the window's alpha/buffer? 
+    // For now, we assume widgets draw directly to the framebuffer on top of the window.
     if (window->widget_root) {
         extern error_code_t widget_render(void* widget, window_t* window);
         widget_render((void*)window->widget_root, window);

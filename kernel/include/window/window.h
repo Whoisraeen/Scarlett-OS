@@ -26,6 +26,9 @@ typedef struct window {
     char title[256];                // Window title
     uint32_t* buffer;               // Window buffer (for double buffering)
     uint32_t bg_color;              // Background color
+    uint8_t alpha;                  // Window transparency (0-255)
+    uint32_t blur_radius;           // Background blur radius
+    uint32_t corner_radius;         // Window corner radius
     void* widget_root;               // Root widget for this window
     struct window* next;             // Linked list
     struct window* prev;

@@ -6,22 +6,7 @@
  * We need to transition to 64-bit long mode.
  */
 
-.section .multiboot, "a"
-.align 8
 
-multiboot2_header_start:
-    .long 0xE85250D6                    # Multiboot2 magic
-    .long 0                             # Architecture (0 = i386)
-    .long multiboot2_header_end - multiboot2_header_start
-    .long -(0xE85250D6 + 0 + (multiboot2_header_end - multiboot2_header_start))
-
-    # End tag
-    .align 8
-    .short 0                            # Type: end
-    .short 0                            # Flags
-    .long 8                             # Size
-
-multiboot2_header_end:
 
 .section .boot, "ax"
 .code32
