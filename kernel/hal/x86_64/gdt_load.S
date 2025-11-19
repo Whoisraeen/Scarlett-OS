@@ -5,6 +5,7 @@
 
 .section .text
 .global gdt_load
+.global tss_load
 
 /**
  * Load GDT and reload segment registers
@@ -31,5 +32,13 @@ gdt_load:
     mov %ax, %fs
     mov %ax, %gs
     mov %ax, %ss
+    ret
+
+/**
+ * Load TSS
+ * @param rdi - TSS selector (should be 0x28 for entry 5)
+ */
+tss_load:
+    ltr %di
     ret
 

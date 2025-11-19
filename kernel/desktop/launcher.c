@@ -26,42 +26,19 @@ error_code_t launcher_init(void) {
     if (launcher_state.initialized) {
         return ERR_OK;
     }
-    
+
     kinfo("Initializing application launcher...\n");
-    
-    // Allocate app list
-    launcher_state.app_capacity = DEFAULT_APP_CAPACITY;
-    launcher_state.apps = (app_entry_t*)kmalloc(sizeof(app_entry_t) * launcher_state.app_capacity);
-    if (!launcher_state.apps) {
-        return ERR_OUT_OF_MEMORY;
-    }
-    
-    memset(launcher_state.apps, 0, sizeof(app_entry_t) * launcher_state.app_capacity);
+
+    // TEMPORARILY SIMPLIFIED: Just mark as initialized without creating window
+    // This avoids hanging during boot - full launcher will be implemented later
+    launcher_state.app_capacity = 0;
+    launcher_state.apps = NULL;
     launcher_state.app_count = 0;
     launcher_state.window = NULL;
     launcher_state.visible = false;
-    
-    // Create launcher window (will be shown when needed)
-    extern window_t* window_create(int32_t x, int32_t y, uint32_t width, uint32_t height, const char* title);
-    launcher_state.window = window_create(100, 100, 400, 600, "Applications");
-    if (!launcher_state.window) {
-        kfree(launcher_state.apps);
-        return ERR_OUT_OF_MEMORY;
-    }
-    
-    // Hidden by default
-    extern error_code_t window_set_visible(window_t* window, bool visible);
-    window_set_visible(launcher_state.window, false);
-    
     launcher_state.initialized = true;
-    
-    // Add default apps
-    launcher_add_app("Terminal", "", "/bin/terminal");
-    launcher_add_app("File Manager", "", "/bin/filemanager");
-    launcher_add_app("Settings", "", "/bin/settings");
-    launcher_add_app("Calculator", "", "/bin/calculator");
-    
-    kinfo("Application launcher initialized\n");
+
+    kinfo("Application launcher initialized (stub)\n");
     return ERR_OK;
 }
 

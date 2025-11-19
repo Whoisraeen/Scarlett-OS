@@ -51,25 +51,38 @@ static inline void pic_send_eoi(uint8_t irq) {
     outb(0x20, 0x20);  // Master PIC EOI
 }
 
+// Direct VGA debugging (write to VGA memory at 0xB8000)
+static void vga_putchar_at(int x, int y, char c, uint8_t color) {
+    volatile uint16_t* vga = (volatile uint16_t*)0xB8000;
+    vga[y * 80 + x] = (color << 8) | c;
+}
+
 /**
  * Common interrupt handler
  */
 void interrupt_handler_c(interrupt_frame_t* frame) {
+    static int irq_count = 0;
     uint64_t interrupt_num = frame->interrupt_num;
     uint8_t irq = (uint8_t)(interrupt_num - 32);
-    
+
     // Handle timer interrupt (IRQ 0 = interrupt 32)
     if (interrupt_num == 32) {
+        // Debug: Show that we're handling interrupts (top-right corner)
+        if (irq_count < 10) {
+            vga_putchar_at(79, 0, '0' + irq_count, 0x0F);
+            irq_count++;
+        }
+
         extern void timer_interrupt_handler(void);
         timer_interrupt_handler();
-        
+
         // Send EOI (End of Interrupt) to PIC
         pic_send_eoi(irq);
-        
+
         // Note: Preemptive scheduling will be handled by checking
         // the need_reschedule flag after returning from interrupt
         // For now, we just mark that rescheduling is needed
-        
+
         return;
     }
     

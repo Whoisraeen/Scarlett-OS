@@ -165,11 +165,14 @@ void kernel_main(boot_info_t* boot_info) {
     extern void scheduler_init(void);
     kinfo("Initializing Scheduler...\n");
     scheduler_init();
+    kinfo("Scheduler init returned\n");
 
     // Enable scheduler ticks in timer interrupt
-    extern void timer_enable_scheduler(void);
-    timer_enable_scheduler();
-    kinfo("Scheduler ticks enabled\n");
+    // TEMPORARILY DISABLED for debugging
+    // kinfo("Enabling scheduler ticks...\n");
+    // extern void timer_enable_scheduler(void);
+    // timer_enable_scheduler();
+    kinfo("Scheduler ticks DISABLED for debugging\n");
 
     // IPC System
     extern void ipc_init(void);

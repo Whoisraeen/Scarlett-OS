@@ -28,17 +28,15 @@ static paddr_t phys_map_max_addr = 0;
 
 /**
  * Convert physical address to virtual for page table access
- * Uses PHYS_MAP_BASE if available, otherwise uses recursive mapping
+ * Uses PHYS_MAP_BASE if available, otherwise uses identity mapping
  */
 static inline void* phys_to_virt_pt(paddr_t paddr) {
-    if (phys_map_ready && paddr < phys_map_max_addr) {
-        // Use PHYS_MAP_BASE if the page is within the mapped range
+    if (phys_map_ready) {
+        // After PHYS_MAP_BASE is ready, ALL physical memory is accessible via it
+        // We mapped all 511MB using 2MB huge pages
         return (void*)(paddr + PHYS_MAP_BASE);
     } else {
-        // Use identity mapping for:
-        // 1. Early boot (before PHYS_MAP_BASE is ready)
-        // 2. Pages beyond the mapped range (for page table access)
-        // This is safe for low memory < 2GB where page tables are allocated
+        // During early boot, use identity mapping (set up by bootloader)
         return (void*)paddr;
     }
 }
@@ -69,13 +67,6 @@ static uint64_t* get_page_table_entry(uint64_t* pml4, vaddr_t vaddr, int level, 
     } else if (!phys_map_ready) {
         // During early boot, PML4 is identity-mapped (physical == virtual)
         pml4_phys = (paddr_t)pml4;
-    }
-
-    if (first_call && phys_map_ready) {
-        first_call = false;
-        kinfo("get_page_table_entry: First call after PHYS_MAP_BASE ready\n");
-        kinfo("  pml4 virt = 0x%016lx, phys = 0x%016lx\n", (uint64_t)pml4, pml4_phys);
-        kinfo("  vaddr = 0x%016lx, level = %d, create = %d\n", vaddr, level, create);
     }
 
     uint64_t* table = phys_to_virt_pt(pml4_phys);
@@ -155,6 +146,13 @@ void vmm_init(void) {
     kinfo("VMM: kernel_address_space.pml4 = %p\n", kernel_address_space.pml4);
     kinfo("VMM: Setting up physical memory direct map at 0x%lx\n", PHYS_MAP_BASE);
 
+    // Enable PSE (Page Size Extension) in CR4 to support 2MB huge pages
+    uint64_t cr4;
+    __asm__ volatile("mov %%cr4, %0" : "=r"(cr4));
+    cr4 |= (1 << 4);  // Set PSE bit (bit 4)
+    __asm__ volatile("mov %0, %%cr4" :: "r"(cr4));
+    kinfo("VMM: Enabled PSE (Page Size Extension) for 2MB huge pages\n");
+
     // Map ALL usable physical memory at PHYS_MAP_BASE using 2MB huge pages
     // This drastically reduces page table overhead (512x less memory needed)
     size_t total_pages = pmm_get_total_pages();
@@ -210,8 +208,9 @@ void vmm_init(void) {
         }
 
         // Get PD and create 2MB huge page mapping
+        // Note: Not setting NX bit to avoid issues with NX support
         uint64_t* pd = (uint64_t*)(pdp[pdp_idx] & 0xFFFFFFFFF000ULL);
-        pd[pd_idx] = paddr | VMM_PRESENT | VMM_WRITE | VMM_PS | VMM_NX;
+        pd[pd_idx] = paddr | VMM_PRESENT | VMM_WRITE | VMM_PS;
 
         huge_pages_mapped++;
 

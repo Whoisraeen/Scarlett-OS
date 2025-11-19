@@ -99,11 +99,13 @@ void timer_enable_scheduler(void) {
     scheduler_ready = true;
 
     // Unmask IRQ 0 (timer) on PIC
+    // Note: Interrupts are already enabled, so first interrupt will fire immediately
     uint8_t mask = inb(0x21);
     mask &= ~(1 << 0);  // Clear bit 0 to unmask IRQ 0
     outb(0x21, mask);
 
-    kdebug("Timer IRQ unmasked, scheduler ticks enabled\n");
+    // Give the CPU a moment to process any pending interrupts
+    __asm__ volatile("nop; nop; nop;");
 }
 
 /**
@@ -112,11 +114,14 @@ void timer_enable_scheduler(void) {
 void timer_interrupt_handler(void) {
     timer_ticks++;
 
-    // Call scheduler to potentially switch threads (only if initialized)
+    // TEMPORARILY DISABLED: scheduler_tick() for testing
+    // Just increment ticks to verify interrupts work
+    /*
     if (scheduler_ready) {
         extern void scheduler_tick(void);
         scheduler_tick();
     }
+    */
 }
 
 /**
