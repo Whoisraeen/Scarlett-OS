@@ -19,7 +19,8 @@
       "Bash(wsl timeout:*)",
       "WebSearch",
       "Bash(wsl readelf:*)",
-      "Bash(wsl cat:*)"
+      "Bash(wsl cat:*)",
+      "Bash(wsl pkill:*)"
     ],
     "deny": [],
     "ask": []

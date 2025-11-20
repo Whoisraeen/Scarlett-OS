@@ -243,21 +243,28 @@ void gfx_draw_string(uint32_t x, uint32_t y, const char* str, uint32_t color, ui
  * Initialize double buffering
  */
 void gfx_init_double_buffer(void) {
+    kinfo("gfx_init_double_buffer() called\n");
     framebuffer_t* fb = framebuffer_get();
-    if (!fb || double_buffer_enabled) {
+    if (!fb) {
+        kwarn("Double buffering: framebuffer_get() returned NULL\n");
         return;
     }
-    
+    if (double_buffer_enabled) {
+        kinfo("Double buffering already enabled\n");
+        return;
+    }
+
     // Allocate back buffer
     size_t buffer_size = fb->height * fb->pitch;
+    kinfo("Allocating %lu bytes for back buffer...\n", buffer_size);
     back_buffer = kmalloc(buffer_size);
     if (back_buffer) {
         double_buffer_enabled = true;
+        kinfo("Double buffering enabled (%lu MB back buffer)\n", buffer_size / (1024 * 1024));
         // Clear back buffer
         memset(back_buffer, 0, buffer_size);
-        kinfo("Double buffering enabled\n");
     } else {
-        kwarn("Failed to allocate back buffer\n");
+        kwarn("Failed to allocate back buffer (%lu bytes)\n", buffer_size);
     }
 }
 
@@ -265,15 +272,16 @@ void gfx_init_double_buffer(void) {
  * Swap front and back buffers
  */
 void gfx_swap_buffers(void) {
+    // If double buffering is disabled, nothing to do (rendering happens directly to framebuffer)
     if (!double_buffer_enabled || !back_buffer) {
         return;
     }
-    
+
     framebuffer_t* fb = framebuffer_get();
     if (!fb) {
         return;
     }
-    
+
     // Copy back buffer to front buffer
     size_t buffer_size = fb->height * fb->pitch;
     memcpy(fb->base_address, back_buffer, buffer_size);

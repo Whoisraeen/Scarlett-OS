@@ -168,7 +168,7 @@ void kernel_main(boot_info_t* boot_info) {
     kinfo("Scheduler init returned\n");
 
     // Enable scheduler ticks in timer interrupt
-    // TEMPORARILY DISABLED for debugging
+    // TODO: Debug why this causes hang - disabled for now
     // kinfo("Enabling scheduler ticks...\n");
     // extern void timer_enable_scheduler(void);
     // timer_enable_scheduler();
