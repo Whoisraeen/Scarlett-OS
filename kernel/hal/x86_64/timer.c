@@ -114,14 +114,12 @@ void timer_enable_scheduler(void) {
 void timer_interrupt_handler(void) {
     timer_ticks++;
 
-    // TEMPORARILY DISABLED: scheduler_tick() for testing
-    // Just increment ticks to verify interrupts work
-    /*
+    // Call scheduler tick if scheduler is ready
+    // NOTE: Do NOT use kprintf/kinfo here - we're in interrupt context!
     if (scheduler_ready) {
         extern void scheduler_tick(void);
         scheduler_tick();
     }
-    */
 }
 
 /**

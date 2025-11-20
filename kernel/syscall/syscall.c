@@ -380,6 +380,25 @@ uint64_t syscall_handler(uint64_t syscall_num, uint64_t arg1, uint64_t arg2,
             return (uint64_t)ipc_receive(arg1, (ipc_message_t*)arg2);
         }
         
+        case SYS_DESKTOP_RENDER: {
+            // Render desktop from userspace
+            extern error_code_t desktop_render(void);
+            return (uint64_t)desktop_render();
+        }
+        
+        case SYS_TASKBAR_RENDER: {
+            // Render taskbar from userspace
+            extern error_code_t taskbar_render(void);
+            return (uint64_t)taskbar_render();
+        }
+        
+        case SYS_GFX_SWAP_BUFFERS: {
+            // Swap graphics buffers from userspace
+            extern void gfx_swap_buffers(void);
+            gfx_swap_buffers();
+            return 0;
+        }
+        
         default:
             kwarn("Unknown system call: %lu\n", syscall_num);
             return (uint64_t)ERR_INVALID_SYSCALL;

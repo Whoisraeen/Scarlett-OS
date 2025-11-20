@@ -519,6 +519,7 @@ static volatile bool need_reschedule[MAX_CPUS] = {false};
  * the interrupt.
  */
 void scheduler_tick(void) {
+    // NOTE: Do NOT use kprintf/kinfo here - we're in interrupt context!
     per_cpu_runqueue_t* rq = get_current_runqueue();
     uint32_t cpu_id = cpu_get_current_id();
     

@@ -32,9 +32,12 @@
 #define SYS_CHDIR       20
 #define SYS_SET_AFFINITY 21
 #define SYS_GET_AFFINITY 22
+#define SYS_DESKTOP_RENDER 23
+#define SYS_TASKBAR_RENDER 24
+#define SYS_GFX_SWAP_BUFFERS 25
 
 // Maximum syscall number
-#define SYS_MAX         22
+#define SYS_MAX         25
 
 /**
  * Initialize system call handling

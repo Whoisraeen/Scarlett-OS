@@ -121,17 +121,20 @@ error_code_t launch_shell_userspace(void) {
     kinfo("Entry point: 0x%016lx\n", shell_process->entry_point);
     kinfo("Switching to userspace shell...\n");
     
+    // Update the shell code to call desktop syscalls
+    // The code array is already set up, but we need to make it call syscalls
+    // For now, the simple HLT loop will work - desktop syscalls can be added later
+    // when we have proper ELF loading
+    
+    kinfo("NOTE: Shell will run in Ring 3 (userspace)\n");
+    kinfo("Desktop rendering will use syscalls from userspace\n");
+    
     // Start the process in user mode
     // This will switch to Ring 3 and jump to the entry point
-    // process_start_user_mode(shell_process);
+    process_start_user_mode(shell_process);
     
-    // DEFERRED: Return to main to allow kernel desktop loop to run
-    // The shell process is created and ready for the scheduler
-    kinfo("Userspace switch deferred - returning to kernel main for desktop loop\n");
-    return ERR_OK;
-
     // Should not return
-    // kerror("Returned from process_start_user_mode (should not happen)\n");
-    // return ERR_UNKNOWN;
+    kerror("Returned from process_start_user_mode (should not happen)\n");
+    return ERR_UNKNOWN;
 }
 

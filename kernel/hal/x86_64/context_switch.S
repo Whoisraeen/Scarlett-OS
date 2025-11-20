@@ -12,82 +12,73 @@
  * @param rsi - Pointer to new context (cpu_context_t*)
  */
 context_switch:
-    # Save old context
+    # Save old context (RDI points to old context)
     # Save general purpose registers
-    mov %rax, 0(%rdi)
-    mov %rbx, 8(%rdi)
-    mov %rcx, 16(%rdi)
-    mov %rdx, 24(%rdi)
-    mov %rsi, 32(%rdi)
-    mov %rdi, 40(%rdi)
-    mov %rbp, 48(%rdi)
-    mov %r8, 56(%rdi)
-    mov %r9, 64(%rdi)
-    mov %r10, 72(%rdi)
-    mov %r11, 80(%rdi)
-    mov %r12, 88(%rdi)
-    mov %r13, 96(%rdi)
-    mov %r14, 104(%rdi)
-    mov %r15, 112(%rdi)
+    movq %rax, 0(%rdi)
+    movq %rbx, 8(%rdi)
+    movq %rcx, 16(%rdi)
+    movq %rdx, 24(%rdi)
+    movq %rsi, 32(%rdi)
+    movq %rdi, 40(%rdi)
+    movq %rbp, 48(%rdi)
+    movq %r8, 56(%rdi)
+    movq %r9, 64(%rdi)
+    movq %r10, 72(%rdi)
+    movq %r11, 80(%rdi)
+    movq %r12, 88(%rdi)
+    movq %r13, 96(%rdi)
+    movq %r14, 104(%rdi)
+    movq %r15, 112(%rdi)
     
     # Save RIP (return address on stack)
-    mov (%rsp), %rax
-    mov %rax, 120(%rdi)
+    movq (%rsp), %rax
+    movq %rax, 120(%rdi)
     
     # Save CS
-    mov $0x08, 128(%rdi)
+    movq $0x08, 128(%rdi)
     
     # Save RFLAGS
     pushfq
-    pop %rax
-    mov %rax, 136(%rdi)
+    popq %rax
+    movq %rax, 136(%rdi)
     
     # Save RSP (add 8 for return address)
-    mov %rsp, %rax
-    add $8, %rax
-    mov %rax, 144(%rdi)
+    movq %rsp, %rax
+    addq $8, %rax
+    movq %rax, 144(%rdi)
     
     # Save SS
-    mov $0x10, 152(%rdi)
+    movq $0x10, 152(%rdi)
     
     # Load new context from RSI
-    # Restore general purpose registers
-    mov 0(%rsi), %rax
-    mov 8(%rsi), %rbx
-    mov 16(%rsi), %rcx
-    mov 24(%rsi), %rdx
-    # Skip RSI and RDI for now
-    mov 48(%rsi), %rbp
-    mov 56(%rsi), %r8
-    mov 64(%rsi), %r9
-    mov 72(%rsi), %r10
-    mov 80(%rsi), %r11
-    mov 88(%rsi), %r12
-    mov 96(%rsi), %r13
-    mov 104(%rsi), %r14
-    mov 112(%rsi), %r15
-    
-    # Restore RSP
-    mov 144(%rsi), %rsp
+    # Restore RSP first
+    movq 144(%rsi), %rsp
     
     # Push new RIP (for return)
-    push 120(%rsi)
-    
-    # Push RFLAGS
-    push 136(%rsi)
-    
-    # Restore RSI and RDI
-    mov 32(%rsi), %rax
-    push %rax
-    mov 40(%rsi), %rax
-    push %rax
+    pushq 120(%rsi)
     
     # Restore RFLAGS
+    pushq 136(%rsi)
     popfq
     
-    # Restore RSI and RDI
-    pop %rdi
-    pop %rsi
+    # Restore general purpose registers
+    movq 0(%rsi), %rax
+    movq 8(%rsi), %rbx
+    movq 16(%rsi), %rcx
+    movq 24(%rsi), %rdx
+    movq 48(%rsi), %rbp
+    movq 56(%rsi), %r8
+    movq 64(%rsi), %r9
+    movq 72(%rsi), %r10
+    movq 80(%rsi), %r11
+    movq 88(%rsi), %r12
+    movq 96(%rsi), %r13
+    movq 104(%rsi), %r14
+    movq 112(%rsi), %r15
+    
+    # Restore RSI and RDI last
+    movq 40(%rsi), %rdi
+    movq 32(%rsi), %rsi
     
     # Return to new thread
     ret

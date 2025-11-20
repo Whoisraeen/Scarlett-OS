@@ -12,8 +12,8 @@
 
 // Error recovery stack (per-thread, but simplified for now)
 #define MAX_RECOVERY_STACK 16
-static error_recovery_ctx_t recovery_stack[MAX_RECOVERY_STACK];
-static int recovery_stack_top = -1;
+static __thread error_recovery_ctx_t recovery_stack[MAX_RECOVERY_STACK];
+static __thread int recovery_stack_top = -1;
 
 /**
  * Push error recovery context

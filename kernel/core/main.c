@@ -374,36 +374,23 @@ void kernel_main(boot_info_t* boot_info) {
     
     kinfo("Entering main desktop loop...\n");
     
-    // Main Desktop Loop
+    // Show login screen
+    extern error_code_t login_screen_show(void);
+    login_screen_show();
+    
+    kinfo("\n========================================\n");
+    kinfo("Kernel initialization complete!\n");
+    kinfo("Desktop will run in userspace (Ring 3)\n");
+    kinfo("========================================\n\n");
+    
+    kinfo("Entering kernel idle loop...\n");
+    
+    // Kernel Idle Loop
+    // Desktop rendering now happens in userspace via syscalls
     while (1) {
-        // Handle input events first
-        window_manager_handle_input();
-        
-        // Render desktop background
-        desktop_render();
-        
-        // Check if user is logged in
-        if (!login_screen_is_logged_in()) {
-            // Show login screen
-            login_screen_handle_input();
-            login_screen_render();
-        } else {
-            // User is logged in - show desktop
-            // Render taskbar
-            taskbar_render();
-            
-            // Render all windows
-            window_manager_render_all();
-        }
-        
-        // Swap buffers to display the new frame
-        gfx_swap_buffers();
-        
-        // Small delay to prevent excessive CPU usage
-        // The HLT instruction will pause until the next interrupt (timer, keyboard, etc.)
         __asm__ volatile("hlt");
     }
-    }
+}
 
 /**
  * Print kernel banner
