@@ -1,0 +1,17 @@
+[package]
+name = "device_manager"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "device_manager"
+crate-type = ["staticlib"]
+
+[[bin]]
+name = "device_manager"
+path = "src/main.rs"
+
+[dependencies]
+# Core OS bindings will be added here
+# For now, we'll use no_std
+

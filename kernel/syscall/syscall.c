@@ -14,6 +14,12 @@
 #include "../include/errors.h"
 #include "../include/kprintf.h"
 #include "../include/debug.h"
+#include "../include/security/capability.h"
+#include "../drivers/pci/pci.h"
+#include "../include/hal/irq_handler.h"
+#include "../include/mm/pmm.h"
+#include "../include/mm/vmm.h"
+#include "../include/process.h"
 
 /**
  * Initialize system calls
@@ -397,6 +403,190 @@ uint64_t syscall_handler(uint64_t syscall_num, uint64_t arg1, uint64_t arg2,
             extern void gfx_swap_buffers(void);
             gfx_swap_buffers();
             return 0;
+        }
+        
+        case SYS_IPC_CREATE_PORT: {
+            // Create IPC port
+            uint64_t port_id = ipc_create_port();
+            return (uint64_t)port_id;
+        }
+        
+        case SYS_IPC_DESTROY_PORT: {
+            // Destroy IPC port
+            uint64_t port_id = arg1;
+            return (uint64_t)ipc_destroy_port(port_id);
+        }
+        
+        case SYS_PCI_READ_CONFIG: {
+            // Read PCI configuration space (for device manager)
+            extern uint32_t pci_read_config(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset);
+            uint8_t bus = (uint8_t)arg1;
+            uint8_t device = (uint8_t)arg2;
+            uint8_t function = (uint8_t)arg3;
+            uint8_t offset = (uint8_t)arg4;
+            return (uint64_t)pci_read_config(bus, device, function, offset);
+        }
+        
+        case SYS_PCI_WRITE_CONFIG: {
+            // Write PCI configuration space
+            extern void pci_write_config(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset, uint32_t value);
+            uint8_t bus = (uint8_t)arg1;
+            uint8_t device = (uint8_t)arg2;
+            uint8_t function = (uint8_t)arg3;
+            uint8_t offset = (uint8_t)arg4;
+            uint32_t value = (uint32_t)arg5;
+            pci_write_config(bus, device, function, offset, value);
+            return 0;
+        }
+        
+        case SYS_IRQ_REGISTER: {
+            // Register IRQ handler
+            extern int irq_register(uint8_t irq, void (*handler)(void*), void* context);
+            uint8_t irq = (uint8_t)arg1;
+            void (*handler)(void*) = (void (*)(void*))arg2;
+            void* context = (void*)arg3;
+            return (uint64_t)irq_register(irq, handler, context);
+        }
+        
+        case SYS_IRQ_UNREGISTER: {
+            // Unregister IRQ handler
+            extern int irq_unregister(uint8_t irq, void (*handler)(void*));
+            uint8_t irq = (uint8_t)arg1;
+            void (*handler)(void*) = (void (*)(void*))arg2;
+            return (uint64_t)irq_unregister(irq, handler);
+        }
+        
+        case SYS_IRQ_ENABLE: {
+            // Enable IRQ
+            extern void irq_enable(uint8_t irq);
+            uint8_t irq = (uint8_t)arg1;
+            irq_enable(irq);
+            return 0;
+        }
+        
+        case SYS_IRQ_DISABLE: {
+            // Disable IRQ
+            extern void irq_disable(uint8_t irq);
+            uint8_t irq = (uint8_t)arg1;
+            irq_disable(irq);
+            return 0;
+        }
+        
+        case SYS_DMA_ALLOC: {
+            // Allocate DMA buffer (contiguous physical memory)
+            extern paddr_t pmm_alloc_pages(size_t count);
+            size_t size = (size_t)arg1;
+            size_t pages = (size + 4095) / 4096;  // Round up to pages
+            paddr_t paddr = pmm_alloc_pages(pages);
+            if (paddr == 0) {
+                return 0;  // Allocation failed
+            }
+            // Map to user-space virtual address
+            extern int vmm_map_pages(address_space_t* as, vaddr_t vaddr, paddr_t paddr, size_t count, uint64_t flags);
+            extern address_space_t* process_get_address_space(process_t* proc);
+            extern process_t* process_get_current(void);
+            process_t* proc = process_get_current();
+            if (!proc) {
+                return 0;
+            }
+            address_space_t* as = process_get_address_space(proc);
+            if (!as) {
+                return 0;
+            }
+            // Allocate virtual address (simplified - would use proper allocator)
+            vaddr_t vaddr = 0x40000000;  // User-space DMA region
+            uint64_t flags = VMM_PRESENT | VMM_WRITE | VMM_USER | VMM_NOCACHE;
+            if (vmm_map_pages(as, vaddr, paddr, pages, flags) != 0) {
+                return 0;
+            }
+            return (uint64_t)vaddr;
+        }
+        
+        case SYS_DMA_FREE: {
+            // Free DMA buffer
+            vaddr_t vaddr = (vaddr_t)arg1;
+            size_t size = (size_t)arg2;
+            size_t pages = (size + 4095) / 4096;
+            extern address_space_t* process_get_address_space(process_t* proc);
+            extern process_t* process_get_current(void);
+            extern paddr_t vmm_get_physical(address_space_t* as, vaddr_t vaddr);
+            extern void pmm_free_pages(paddr_t base, size_t count);
+            extern int vmm_unmap_pages(address_space_t* as, vaddr_t vaddr, size_t count);
+            process_t* proc = process_get_current();
+            if (!proc) {
+                return (uint64_t)-1;
+            }
+            address_space_t* as = process_get_address_space(proc);
+            if (!as) {
+                return (uint64_t)-1;
+            }
+            paddr_t paddr = vmm_get_physical(as, vaddr);
+            if (paddr == 0) {
+                return (uint64_t)-1;
+            }
+            vmm_unmap_pages(as, vaddr, pages);
+            pmm_free_pages(paddr, pages);
+            return 0;
+        }
+        
+        case SYS_MMIO_MAP: {
+            // Map MMIO region to user-space
+            paddr_t paddr = (paddr_t)arg1;
+            size_t size = (size_t)arg2;
+            size_t pages = (size + 4095) / 4096;
+            extern int vmm_map_pages(address_space_t* as, vaddr_t vaddr, paddr_t paddr, size_t count, uint64_t flags);
+            extern address_space_t* process_get_address_space(process_t* proc);
+            extern process_t* process_get_current(void);
+            process_t* proc = process_get_current();
+            if (!proc) {
+                return 0;
+            }
+            address_space_t* as = process_get_address_space(proc);
+            if (!as) {
+                return 0;
+            }
+            vaddr_t vaddr = 0x50000000;  // User-space MMIO region
+            uint64_t flags = VMM_PRESENT | VMM_WRITE | VMM_USER | VMM_NOCACHE | VMM_WRITETHROUGH;
+            if (vmm_map_pages(as, vaddr, paddr, pages, flags) != 0) {
+                return 0;
+            }
+            return (uint64_t)vaddr;
+        }
+        
+        case SYS_MMIO_UNMAP: {
+            // Unmap MMIO region
+            vaddr_t vaddr = (vaddr_t)arg1;
+            size_t size = (size_t)arg2;
+            size_t pages = (size + 4095) / 4096;
+            extern address_space_t* process_get_address_space(process_t* proc);
+            extern process_t* process_get_current(void);
+            extern int vmm_unmap_pages(address_space_t* as, vaddr_t vaddr, size_t count);
+            process_t* proc = process_get_current();
+            if (!proc) {
+                return (uint64_t)-1;
+            }
+            address_space_t* as = process_get_address_space(proc);
+            if (!as) {
+                return (uint64_t)-1;
+            }
+            return (uint64_t)vmm_unmap_pages(as, vaddr, pages);
+        }
+        
+        case SYS_CAPABILITY_CREATE: {
+            // Create capability
+            extern uint64_t capability_create(uint32_t type, uint64_t resource_id, uint32_t rights);
+            uint32_t type = (uint32_t)arg1;
+            uint64_t resource_id = arg2;
+            uint32_t rights = (uint32_t)arg3;
+            return capability_create(type, resource_id, rights);
+        }
+        
+        case SYS_CAPABILITY_CHECK: {
+            // Check capability right
+            extern bool capability_check(uint64_t cap_id, uint32_t right);
+            uint64_t cap_id = arg1;
+            uint32_t right = (uint32_t)arg2;
+            return (uint64_t)capability_check(cap_id, right);
         }
         
         default:

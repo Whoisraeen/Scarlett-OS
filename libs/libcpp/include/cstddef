@@ -1,0 +1,18 @@
+/**
+ * @file cstddef
+ * @brief C++ standard definitions
+ */
+
+#ifndef CSTDDEF_H
+#define CSTDDEF_H
+
+#include <stddef.h>
+
+namespace std {
+    using size_t = ::size_t;
+    using ptrdiff_t = ::ptrdiff_t;
+    using nullptr_t = decltype(nullptr);
+}
+
+#endif // CSTDDEF_H
+

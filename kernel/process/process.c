@@ -274,6 +274,16 @@ process_t* process_get_current(void) {
 }
 
 /**
+ * Get address space for a process
+ */
+address_space_t* process_get_address_space(process_t* process) {
+    if (!process) {
+        return NULL;
+    }
+    return process->address_space;
+}
+
+/**
  * Set current process
  */
 void process_set_current(process_t* process) {

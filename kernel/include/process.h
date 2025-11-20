@@ -98,6 +98,9 @@ void process_init(void);
 void process_start_user_mode(process_t* process);
 int process_setup_user_stack(process_t* process, int argc, const char** argv, const char** envp);
 
+// Address space access
+address_space_t* process_get_address_space(process_t* process);
+
 // Process operations
 pid_t process_fork(process_t* parent);
 error_code_t process_exec(process_t* process, const char* path, char* const* argv, char* const* envp);

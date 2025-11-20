@@ -91,11 +91,28 @@ error_code_t launch_shell_userspace(void) {
     // syscall
     // jmp loop
     
-    // Simple version: just yield in a loop
-    // mov $5, %rax (SYS_YIELD = 5)
-    code[0] = 0x48; code[1] = 0xc7; code[2] = 0xc0; code[3] = 0x05; code[4] = 0x00; code[5] = 0x00; code[6] = 0x00;  // mov $5, %rax
-    code[7] = 0x0f; code[8] = 0x05;  // syscall
-    code[9] = 0xeb; code[10] = 0xfb;  // jmp -5 (infinite loop)
+    // Desktop rendering loop: call syscalls to render desktop from userspace
+    // Loop: SYS_DESKTOP_RENDER -> SYS_TASKBAR_RENDER -> SYS_GFX_SWAP_BUFFERS -> SYS_YIELD -> repeat
+    int i = 0;
+    
+    // syscall(SYS_DESKTOP_RENDER) = 23
+    code[i++] = 0x48; code[i++] = 0xC7; code[i++] = 0xC0; code[i++] = 0x17; code[i++] = 0x00; code[i++] = 0x00; code[i++] = 0x00;  // mov rax, 23
+    code[i++] = 0x0F; code[i++] = 0x05;  // syscall
+    
+    // syscall(SYS_TASKBAR_RENDER) = 24
+    code[i++] = 0x48; code[i++] = 0xC7; code[i++] = 0xC0; code[i++] = 0x18; code[i++] = 0x00; code[i++] = 0x00; code[i++] = 0x00;  // mov rax, 24
+    code[i++] = 0x0F; code[i++] = 0x05;  // syscall
+    
+    // syscall(SYS_GFX_SWAP_BUFFERS) = 25
+    code[i++] = 0x48; code[i++] = 0xC7; code[i++] = 0xC0; code[i++] = 0x19; code[i++] = 0x00; code[i++] = 0x00; code[i++] = 0x00;  // mov rax, 25
+    code[i++] = 0x0F; code[i++] = 0x05;  // syscall
+    
+    // syscall(SYS_YIELD) = 6
+    code[i++] = 0x48; code[i++] = 0xC7; code[i++] = 0xC0; code[i++] = 0x06; code[i++] = 0x00; code[i++] = 0x00; code[i++] = 0x00;  // mov rax, 6
+    code[i++] = 0x0F; code[i++] = 0x05;  // syscall
+    
+    // jmp to start (relative jump back)
+    code[i++] = 0xEB; code[i++] = 0xD8;  // jmp -40 (back to start of loop)
     
     // After writing code, we should make the page executable and not writable
     // For now, we'll leave it writable (security issue, but functional)

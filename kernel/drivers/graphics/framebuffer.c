@@ -62,9 +62,10 @@ error_code_t framebuffer_init(framebuffer_info_t* boot_fb_info) {
  * Get framebuffer instance
  */
 framebuffer_t* framebuffer_get(void) {
-    if (!g_framebuffer.initialized) {
-        kwarn("framebuffer_get: g_framebuffer at %p is NOT initialized (val=%d)\n", 
-              &g_framebuffer, g_framebuffer.initialized);
+    // Check both initialized flag and base_address to be more robust
+    if (!g_framebuffer.initialized || !g_framebuffer.base_address) {
+        kwarn("framebuffer_get: g_framebuffer at %p is NOT initialized (initialized=%d, base=%p)\n", 
+              &g_framebuffer, g_framebuffer.initialized, g_framebuffer.base_address);
         return NULL;
     }
     return &g_framebuffer;

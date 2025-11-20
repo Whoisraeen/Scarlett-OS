@@ -103,9 +103,9 @@ This document outlines the comprehensive plan for developing a production-grade,
 ```
 Firmware (UEFI/BIOS)
     ↓
-First Stage Bootloader (Assembly)
+Firmware (UEFI/BIOS)
     ↓
-Second Stage Bootloader (C)
+Limine Bootloader (UEFI/BIOS)
     ↓
 Kernel Initialization
     ↓
@@ -182,21 +182,19 @@ Desktop Environment
 
 ## 3. Core System Components
 
-### 3.1 Bootloader
+### 3.1 Bootloader (Limine)
 
 **Requirements:**
-- UEFI and legacy BIOS support
-- Multi-architecture support (abstract early init)
-- Kernel loading and relocation
-- Initial memory map setup
-- Framebuffer initialization
-- Device tree / ACPI parsing
+- Use Limine bootloader for x86_64 (UEFI/BIOS)
+- Support for Multiboot2 or Limine boot protocol
+- Kernel loading and relocation (handled by Limine)
+- Framebuffer initialization (handled by Limine)
+- Module loading (for initrd/drivers)
 
 **Components:**
-- Stage 1: Minimal assembly code (512 bytes for BIOS)
-- Stage 2: C-based loader with file system support
-- Configuration parser
-- Boot menu interface
+- Limine Bootloader (binary)
+- `limine.cfg` configuration file
+- Kernel entry point (Limine-compliant)
 
 ### 3.2 Kernel Core
 
@@ -375,8 +373,8 @@ Desktop Environment
 - Minimal kernel functioning
 
 **Deliverables:**
-- [ ] UEFI bootloader
-- [ ] Legacy BIOS bootloader (optional)
+- [x] UEFI bootloader (Limine)
+- [x] Legacy BIOS bootloader (Limine)
 - [ ] Kernel entry point and initialization
 - [ ] Physical memory manager
 - [ ] Virtual memory manager (paging)

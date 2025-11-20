@@ -20,7 +20,9 @@
       "WebSearch",
       "Bash(wsl readelf:*)",
       "Bash(wsl cat:*)",
-      "Bash(wsl pkill:*)"
+      "Bash(wsl pkill:*)",
+      "Bash(wsl chmod:*)",
+      "Bash(wsl sudo losetup -a)"
     ],
     "deny": [],
     "ask": []

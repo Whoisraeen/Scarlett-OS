@@ -34,13 +34,11 @@ LDFLAGS = -n \
           -T kernel.ld
 
 # Phase 1 sources
-ASM_SRCS = hal/x86_64/multiboot2.S \
-           hal/x86_64/boot32.S \
+ASM_SRCS = hal/x86_64/entry.S \
            hal/x86_64/gdt_load.S \
            hal/x86_64/idt_load.S \
            hal/x86_64/exceptions.S \
            hal/x86_64/user_mode.S \
-           hal/x86_64/uefi_entry.S \
            hal/x86_64/interrupt_stubs.S
 
 C_SRCS = core/main.c \
@@ -95,6 +93,8 @@ C_SRCS += sched/scheduler.c \
           auth/user.c \
           auth/password_hash.c \
           security/memory_protection.c \
+          security/capability.c \
+          hal/x86_64/irq_handler.c \
           mm/mmap.c \
           core/test.c \
           core/userspace_launch.c \

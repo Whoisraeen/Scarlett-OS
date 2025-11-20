@@ -1,0 +1,15 @@
+[workspace]
+members = [
+    "device_manager",
+    "init",
+    "vfs",
+    "network",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Scarlett OS Team"]
+
+[workspace.dependencies]
+# Common dependencies for all services

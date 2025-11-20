@@ -1,0 +1,15 @@
+[package]
+name = "ahci_driver"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "ahci_driver"
+crate-type = ["staticlib"]
+
+[[bin]]
+name = "ahci_driver"
+path = "src/main.rs"
+
+[dependencies]
+

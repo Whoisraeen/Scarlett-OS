@@ -10,6 +10,7 @@
 #include "../include/kprintf.h"
 #include "../include/debug.h"
 #include "../include/sync/spinlock.h"
+#include "../include/security/capability.h"
 
 #define MAX_PORTS 256
 #define MAX_QUEUE_SIZE 32
@@ -171,6 +172,24 @@ int ipc_send(uint64_t port_id, ipc_message_t* msg) {
         return -1;
     }
     
+    // Capability check: verify sender has capability to send to this port
+    // TODO: Look up capability for this port in sender's capability table
+    // For now, we'll check if port owner matches or if there's a capability
+    // This is a simplified check - real implementation would use capability system
+    extern uint64_t capability_find_for_port(uint64_t port_id);
+    uint64_t cap_id = capability_find_for_port(port_id);
+    if (cap_id == 0) {
+        // No capability found - check if sender is port owner
+        if (port->owner_tid != thread_current()->tid) {
+            return -1;  // Not authorized
+        }
+    } else {
+        // Check if capability grants write right
+        if (!capability_check(cap_id, CAP_RIGHT_WRITE)) {
+            return -1;  // No write right
+        }
+    }
+    
     spinlock_lock(&port->lock);
     
     // Check if queue is full
@@ -242,6 +261,22 @@ int ipc_receive(uint64_t port_id, ipc_message_t* msg) {
     
     if (!port) {
         return -1;
+    }
+    
+    // Capability check: verify receiver has capability to receive from this port
+    // TODO: Look up capability for this port in receiver's capability table
+    extern uint64_t capability_find_for_port(uint64_t port_id);
+    uint64_t cap_id = capability_find_for_port(port_id);
+    if (cap_id == 0) {
+        // No capability found - check if receiver is port owner
+        if (port->owner_tid != thread_current()->tid) {
+            return -1;  // Not authorized
+        }
+    } else {
+        // Check if capability grants read right
+        if (!capability_check(cap_id, CAP_RIGHT_READ)) {
+            return -1;  // No read right
+        }
     }
     
     spinlock_lock(&port->lock);

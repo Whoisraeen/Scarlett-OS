@@ -1,7 +1,7 @@
 /**
  * @file main.c
  * @brief Kernel main entry point
- * 
+ *
  * This is where the kernel begins execution after the bootloader
  * hands control over to us.
  */
@@ -22,6 +22,35 @@
 #include "../include/desktop/desktop.h"
 #include "../include/desktop/taskbar.h"
 #include "../include/graphics/graphics.h"
+#include "../../bootloader/limine/limine.h"
+
+// Limine requests - these MUST be in the .limine_requests section
+__attribute__((used, section(".limine_requests")))
+static volatile LIMINE_BASE_REVISION(2);
+
+__attribute__((used, section(".limine_requests")))
+static volatile struct limine_framebuffer_request framebuffer_request = {
+    .id = LIMINE_FRAMEBUFFER_REQUEST,
+    .revision = 0
+};
+
+__attribute__((used, section(".limine_requests")))
+static volatile struct limine_memmap_request memmap_request = {
+    .id = LIMINE_MEMMAP_REQUEST,
+    .revision = 0
+};
+
+__attribute__((used, section(".limine_requests")))
+static volatile struct limine_kernel_address_request kernel_address_request = {
+    .id = LIMINE_KERNEL_ADDRESS_REQUEST,
+    .revision = 0
+};
+
+__attribute__((used, section(".limine_requests_start_marker")))
+static volatile LIMINE_REQUESTS_START_MARKER;
+
+__attribute__((used, section(".limine_requests_end_marker")))
+static volatile LIMINE_REQUESTS_END_MARKER;
 
 // External symbols from linker script
 extern uint8_t _kernel_start[];
@@ -221,6 +250,11 @@ void kernel_main(boot_info_t* boot_info) {
     kinfo("Initializing PCI subsystem...\n");
     pci_init();
     
+    // Network stack (needed before ethernet driver registration)
+    extern error_code_t network_init(void);
+    kinfo("Initializing Network Stack...\n");
+    network_init();
+    
     // Ethernet driver (probes PCI for network cards)
     extern error_code_t ethernet_driver_init(void);
     kinfo("Initializing Ethernet driver...\n");
@@ -298,11 +332,7 @@ void kernel_main(boot_info_t* boot_info) {
     // In QEMU, VirtIO devices appear as PCI devices that can be detected
     // The acceleration layer will use software fallback if no GPU is found
     
-    // Network Stack
-    extern error_code_t network_init(void);
-    kinfo("Initializing Network Stack...\n");
-    network_init();
-    
+    // Network Stack (already initialized earlier, before ethernet driver)
     extern error_code_t arp_init(void);
     kinfo("Initializing ARP...\n");
     arp_init();
@@ -448,8 +478,6 @@ static void print_memory_map(boot_info_t* boot_info) {
         memory_region_t* region = &boot_info->memory_map[i];
         uint64_t pages = region->length / 4096;
         
-        kprintf("Region %u: base=0x%016lx, len=0x%016lx, type=%u\n", i, region->base, region->length, region->type);
-
         const char* type_name = "Unknown";
         switch (region->type) {
             case MEMORY_TYPE_CONVENTIONAL:
@@ -484,8 +512,8 @@ static void print_memory_map(boot_info_t* boot_info) {
                 break;
         }
         
-        kprintf("  0x%016lx 0x%016lx %-12lu %s\n",
-                region->base, region->length, pages, type_name);
+        kprintf("Region %u: 0x%016lx 0x%016lx %-12lu %s\n",
+                i, region->base, region->length, pages, type_name);
         
         total_memory += region->length;
     }

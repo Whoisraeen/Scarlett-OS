@@ -81,35 +81,61 @@ int kvprintf(const char* fmt, va_list args) {
         if (*fmt == '%') {
             fmt++;
             
-            // Handle width and padding
-            int width = 0;
+            // Handle flags
+            bool left_align = false;
             bool zero_pad = false;
+            if (*fmt == '-') {
+                left_align = true;
+                fmt++;
+            }
             if (*fmt == '0') {
                 zero_pad = true;
                 fmt++;
             }
+            
+            // Handle width
+            int width = 0;
             while (*fmt >= '0' && *fmt <= '9') {
                 width = width * 10 + (*fmt - '0');
                 fmt++;
             }
 
-            // Handle long modifier
+            // Handle long modifier (single or double)
             bool is_long = false;
+            bool is_long_long = false;
             if (*fmt == 'l') {
-                is_long = true;
                 fmt++;
+                if (*fmt == 'l') {
+                    is_long_long = true;
+                    fmt++;
+                } else {
+                    is_long = true;
+                }
             }
             
             switch (*fmt) {
                 case 's': {
                     // String
                     const char* str = va_arg(args, const char*);
-                    if (str) {
-                        kputs(str);
-                        count += strlen(str);
-                    } else {
-                        kputs("(null)");
-                        count += 6;
+                    if (!str) {
+                        str = "(null)";
+                    }
+                    int len = strlen(str);
+                    if (width > len && !left_align) {
+                        // Right align: pad with spaces
+                        for (int i = 0; i < width - len; i++) {
+                            kputc(' ');
+                            count++;
+                        }
+                    }
+                    kputs(str);
+                    count += len;
+                    if (width > len && left_align) {
+                        // Left align: pad with spaces after
+                        for (int i = 0; i < width - len; i++) {
+                            kputc(' ');
+                            count++;
+                        }
                     }
                     break;
                 }
@@ -133,26 +159,65 @@ int kvprintf(const char* fmt, va_list args) {
                 
                 case 'u': {
                     // Unsigned decimal
-                    uint64_t val = is_long ? va_arg(args, uint64_t) : va_arg(args, unsigned int);
+                    uint64_t val;
+                    if (is_long_long) {
+                        val = va_arg(args, uint64_t);
+                    } else if (is_long) {
+                        val = va_arg(args, unsigned long);
+                    } else {
+                        val = va_arg(args, unsigned int);
+                    }
                     uitoa(val, buf, 10);
+                    int len = strlen(buf);
+                    if (width > len && !left_align) {
+                        // Pad with zeros or spaces
+                        char pad_char = zero_pad ? '0' : ' ';
+                        for (int i = 0; i < width - len; i++) {
+                            kputc(pad_char);
+                            count++;
+                        }
+                    }
                     kputs(buf);
-                    count += strlen(buf);
+                    count += len;
+                    if (width > len && left_align) {
+                        // Left align: pad with spaces after
+                        for (int i = 0; i < width - len; i++) {
+                            kputc(' ');
+                            count++;
+                        }
+                    }
                     break;
                 }
                 
                 case 'x': {
                     // Hexadecimal
-                    uint64_t val = is_long ? va_arg(args, uint64_t) : va_arg(args, unsigned int);
+                    uint64_t val;
+                    if (is_long_long) {
+                        val = va_arg(args, uint64_t);
+                    } else if (is_long) {
+                        val = va_arg(args, unsigned long);
+                    } else {
+                        val = va_arg(args, unsigned int);
+                    }
                     uitoa(val, buf, 16);
                     int len = strlen(buf);
-                    if (width > len && zero_pad) {
+                    if (width > len && !left_align) {
+                        // Pad with zeros or spaces
+                        char pad_char = zero_pad ? '0' : ' ';
                         for (int i = 0; i < width - len; i++) {
-                            kputc('0');
+                            kputc(pad_char);
                             count++;
                         }
                     }
                     kputs(buf);
-                    count += strlen(buf);
+                    count += len;
+                    if (width > len && left_align) {
+                        // Left align: pad with spaces after
+                        for (int i = 0; i < width - len; i++) {
+                            kputc(' ');
+                            count++;
+                        }
+                    }
                     break;
                 }
                 
@@ -182,11 +247,23 @@ int kvprintf(const char* fmt, va_list args) {
                 default:
                     // Unknown format, print as-is
                     kputc('%');
+                    if (left_align) kputc('-');
                     if (zero_pad) kputc('0');
-                    // This part is tricky, would need to print the width digits too
-                    if (is_long) kputc('l');
+                    if (width > 0) {
+                        char width_buf[16];
+                        uitoa(width, width_buf, 10);
+                        kputs(width_buf);
+                        count += strlen(width_buf);
+                    }
+                    if (is_long_long) {
+                        kputs("ll");
+                        count += 2;
+                    } else if (is_long) {
+                        kputc('l');
+                        count++;
+                    }
                     kputc(*fmt);
-                    count += 2 + (is_long ? 1 : 0) + (zero_pad ? 1 : 0);
+                    count += 1 + (left_align ? 1 : 0) + (zero_pad ? 1 : 0);
                     break;
             }
         } else {

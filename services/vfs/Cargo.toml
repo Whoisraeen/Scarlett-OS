@@ -1,0 +1,15 @@
+[package]
+name = "vfs"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "vfs"
+crate-type = ["staticlib"]
+
+[[bin]]
+name = "vfs"
+path = "src/main.rs"
+
+[dependencies]
+

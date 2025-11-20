@@ -6,41 +6,20 @@
 
 OUTPUT_FORMAT(elf64-x86-64)
 OUTPUT_ARCH(i386:x86-64)
-ENTRY(multiboot2_entry)
+ENTRY(_start)
 
 PHDRS
 {
-    boot PT_LOAD FLAGS(5);  /* RX - Executable */
     text PT_LOAD FLAGS(5);  /* RX - Executable */
+    rodata PT_LOAD FLAGS(4);  /* R - Read only */
     data PT_LOAD FLAGS(6);  /* RW - Writable */
 }
 
 SECTIONS
 {
-    /* Start at 1MB - this is where GRUB loads us */
-    . = 0x100000;
+    /* Start at 2MB - standard kernel load address for Limine */
+    . = 0x200000;
 
-    _boot_start = .;
-
-    /* Multiboot2 header - MUST be in first LOAD segment and early in file */
-    .multiboot ALIGN(8) : AT(ADDR(.multiboot))
-    {
-        KEEP(*(.multiboot))
-    } :boot
-
-    /* 32-bit boot code immediately after */
-    .boot ALIGN(16) :
-    {
-        *(.boot)
-    } :boot
-
-    /* Boot data (page tables, stack) */
-    .boot.data ALIGN(4096) :
-    {
-        *(.boot.data)
-    } :boot
-
-    _boot_end = .;
     _kernel_start = .;
 
     /* 64-bit kernel code */
@@ -55,7 +34,12 @@ SECTIONS
     {
         *(.rodata)
         *(.rodata.*)
-    } :text
+
+        /* Limine requests */
+        KEEP(*(.limine_requests_start_marker))
+        KEEP(*(.limine_requests))
+        KEEP(*(.limine_requests_end_marker))
+    } :rodata
 
     /* Initialized data */
     .data ALIGN(4096) :

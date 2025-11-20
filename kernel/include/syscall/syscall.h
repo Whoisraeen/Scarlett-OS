@@ -35,9 +35,23 @@
 #define SYS_DESKTOP_RENDER 23
 #define SYS_TASKBAR_RENDER 24
 #define SYS_GFX_SWAP_BUFFERS 25
+#define SYS_IPC_CREATE_PORT 26
+#define SYS_IPC_DESTROY_PORT 27
+#define SYS_PCI_READ_CONFIG 28
+#define SYS_PCI_WRITE_CONFIG 29
+#define SYS_IRQ_REGISTER 30
+#define SYS_IRQ_UNREGISTER 31
+#define SYS_IRQ_ENABLE 32
+#define SYS_IRQ_DISABLE 33
+#define SYS_DMA_ALLOC 34
+#define SYS_DMA_FREE 35
+#define SYS_MMIO_MAP 36
+#define SYS_MMIO_UNMAP 37
+#define SYS_CAPABILITY_CREATE 38
+#define SYS_CAPABILITY_CHECK 39
 
 // Maximum syscall number
-#define SYS_MAX         25
+#define SYS_MAX         39
 
 /**
  * Initialize system call handling
