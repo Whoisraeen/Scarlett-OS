@@ -508,8 +508,8 @@ Efficient multi-core operation with proper synchronization.
 - [x] Refactor x86_64 code into HAL
 - [x] ARM64 HAL implementation (basic)
 - [x] Architecture detection framework
-- [ ] Build system for multi-arch
-- [ ] Boot on ARM64 (Raspberry Pi or QEMU)
+- [x] Build system for multi-arch
+- [x] Boot on ARM64 (Raspberry Pi or QEMU) - Basic boot working in QEMU
 
 **Success Criteria:**
 Same kernel code runs on x86_64 and ARM64 with HAL abstraction.
@@ -522,8 +522,8 @@ Same kernel code runs on x86_64 and ARM64 with HAL abstraction.
 - Essential drivers
 
 **Deliverables:**
-- [ ] Device manager service
-- [ ] PCI bus driver
+- [x] Device manager service
+- [x] PCI bus driver
 - [ ] USB stack (XHCI)
 - [ ] Keyboard driver (PS/2 and USB)
 - [ ] Mouse driver

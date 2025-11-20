@@ -40,6 +40,11 @@
 #define PCI_CLASS_NETWORK        0x02
 #define PCI_SUBCLASS_ETHERNET    0x00
 
+// BAR types
+#define PCI_BAR_TYPE_MEMORY    0
+#define PCI_BAR_TYPE_IO        1
+#define PCI_BAR_TYPE_64BIT     4
+
 // PCI device structure
 typedef struct {
     uint8_t bus;
@@ -52,7 +57,18 @@ typedef struct {
     uint8_t prog_if;
     uint8_t header_type;
     uint64_t bars[6];  // Base Address Registers
+    uint8_t irq_line;  // IRQ line
+    uint8_t irq_pin;   // IRQ pin
 } pci_device_t;
+
+// BAR information structure
+typedef struct {
+    uint64_t base_address;
+    uint64_t size;
+    bool is_io;
+    bool is_64bit;
+    bool is_prefetchable;
+} pci_bar_info_t;
 
 // Maximum PCI devices
 #define MAX_PCI_DEVICES 256
@@ -66,6 +82,17 @@ uint32_t pci_read_config(uint8_t bus, uint8_t device, uint8_t function, uint8_t 
 void pci_write_config(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset, uint32_t value);
 uint32_t pci_get_device_count(void);
 pci_device_t* pci_get_device(uint32_t index);
+
+// BAR decoding
+error_code_t pci_decode_bar(pci_device_t* dev, uint8_t bar_index, pci_bar_info_t* info);
+uint64_t pci_get_bar_size(pci_device_t* dev, uint8_t bar_index);
+
+// PCI Express detection
+bool pci_is_pcie(pci_device_t* dev);
+
+// IRQ management
+uint8_t pci_get_irq_line(pci_device_t* dev);
+uint8_t pci_get_irq_pin(pci_device_t* dev);
 
 #endif // KERNEL_DRIVERS_PCI_H
 

@@ -1,0 +1,65 @@
+/**
+ * Kernel Linker Script for RISC-V 64-bit
+ */
+
+OUTPUT_FORMAT(elf64-littleriscv)
+OUTPUT_ARCH(riscv)
+ENTRY(_start)
+
+PHDRS
+{
+    text PT_LOAD FLAGS(5);  /* RX - Executable */
+    rodata PT_LOAD FLAGS(4);  /* R - Read only */
+    data PT_LOAD FLAGS(6);  /* RW - Writable */
+}
+
+SECTIONS
+{
+    /* Start at 0x80200000 - typical RISC-V kernel load address */
+    . = 0x80200000;
+
+    _kernel_start = .;
+
+    /* Kernel entry point */
+    .text ALIGN(4096) :
+    {
+        *(.text.start)
+        *(.text)
+        *(.text.*)
+    } :text
+
+    /* Read-only data */
+    .rodata ALIGN(4096) :
+    {
+        *(.rodata)
+        *(.rodata.*)
+    } :rodata
+
+    /* Initialized data */
+    .data ALIGN(4096) :
+    {
+        *(.data)
+        *(.data.*)
+    } :data
+
+    /* Uninitialized data */
+    .bss ALIGN(4096) :
+    {
+        _bss_start = .;
+        *(.bss)
+        *(.bss.*)
+        *(COMMON)
+        _bss_end = .;
+    } :data
+
+    _kernel_end = .;
+
+    /* Discard sections */
+    /DISCARD/ :
+    {
+        *(.comment)
+        *(.eh_frame)
+        *(.note.*)
+    }
+}
+

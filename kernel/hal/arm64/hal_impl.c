@@ -275,21 +275,11 @@ void hal_cache_flush_invalidate(void* addr, size_t size) {
 // Serial/Console
 // ============================================================================
 
-error_code_t hal_serial_init(void) {
-    // TODO: Initialize UART (device-specific)
-    kinfo("ARM64 serial initialization (placeholder)\n");
-    return ERR_OK;
-}
-
-void hal_serial_write_char(char c) {
-    // TODO: Write to UART
-    (void)c;
-}
-
-int hal_serial_read_char(void) {
-    // TODO: Read from UART
-    return -1;
-}
+// Serial functions are implemented in hal/arm64/serial.c
+// These are just wrappers to maintain HAL interface consistency
+extern error_code_t hal_serial_init(void);
+extern void hal_serial_write_char(char c);
+extern int hal_serial_read_char(void);
 
 // ============================================================================
 // Boot & Initialization

@@ -1,0 +1,260 @@
+# Architecture-specific build configuration
+# This file is included by the main Makefile
+# ARCH should be set by the calling Makefile or via command line
+
+# Default architecture if not set
+ifeq ($(ARCH),)
+    ARCH = x86_64
+endif
+
+# Architecture-specific toolchain prefixes
+ifeq ($(ARCH),x86_64)
+    TARGET_TRIPLE = x86_64-elf
+    CC = $(TARGET_TRIPLE)-gcc
+    AS = $(TARGET_TRIPLE)-as
+    LD = $(TARGET_TRIPLE)-ld
+    OBJCOPY = $(TARGET_TRIPLE)-objcopy
+    OBJDUMP = $(TARGET_TRIPLE)-objdump
+    
+    # x86_64 specific compiler flags
+    ARCH_CFLAGS = -m64 \
+                  -mno-red-zone \
+                  -mno-mmx \
+                  -mno-sse \
+                  -mno-sse2 \
+                  -mcmodel=large \
+                  -mno-80387 \
+                  -mno-fp-ret-in-387
+    
+    # x86_64 specific assembler flags
+    ARCH_ASFLAGS = --64
+    
+    # x86_64 linker script
+    LINKER_SCRIPT = kernel.ld
+    
+    # x86_64 specific sources
+    ARCH_ASM_SRCS = hal/x86_64/multiboot2.S \
+                    hal/x86_64/entry.S \
+                    hal/x86_64/gdt_load.S \
+                    hal/x86_64/idt_load.S \
+                    hal/x86_64/exceptions.S \
+                    hal/x86_64/user_mode.S \
+                    hal/x86_64/interrupt_stubs.S \
+                    hal/x86_64/ap_startup.S \
+                    hal/x86_64/context_switch.S \
+                    hal/x86_64/syscall_entry.S
+    
+    ARCH_C_SRCS = hal/x86_64/hal_impl.c \
+                  hal/x86_64/serial.c \
+                  hal/x86_64/vga.c \
+                  hal/x86_64/gdt.c \
+                  hal/x86_64/idt.c \
+                  hal/x86_64/timer.c \
+                  hal/x86_64/interrupts.c \
+                  hal/x86_64/apic.c \
+                  hal/x86_64/cpu.c \
+                  hal/x86_64/irq_handler.c \
+                  hal/x86_64/ap_startup.c
+    
+    # x86_64 Rust target
+    RUST_TARGET = x86_64-unknown-none
+    
+    # x86_64 QEMU
+    QEMU_ARCH = qemu-system-x86_64
+    
+else ifeq ($(ARCH),arm64)
+    TARGET_TRIPLE = aarch64-elf
+    CC = $(TARGET_TRIPLE)-gcc
+    AS = $(TARGET_TRIPLE)-as
+    LD = $(TARGET_TRIPLE)-ld
+    OBJCOPY = $(TARGET_TRIPLE)-objcopy
+    OBJDUMP = $(TARGET_TRIPLE)-objdump
+    
+    # ARM64 specific compiler flags
+    ARCH_CFLAGS = -march=armv8-a \
+                  -mstrict-align \
+                  -mgeneral-regs-only \
+                  -fno-omit-frame-pointer
+    
+    # ARM64 specific assembler flags
+    ARCH_ASFLAGS = -march=armv8-a
+    
+    # ARM64 linker script
+    LINKER_SCRIPT = kernel.ld.arm64
+    
+    # ARM64 specific sources
+    ARCH_ASM_SRCS = hal/arm64/entry.S \
+                    hal/arm64/context_switch.S \
+                    hal/arm64/syscall_entry.S
+    
+    ARCH_C_SRCS = hal/arm64/hal_impl.c \
+                  hal/arm64/serial.c \
+                  hal/arm64/cpu.c \
+                  hal/arm64/gdt.c \
+                  hal/arm64/idt.c
+    
+    # ARM64 Rust target
+    RUST_TARGET = aarch64-unknown-none
+    
+    # ARM64 QEMU
+    QEMU_ARCH = qemu-system-aarch64
+    
+else ifeq ($(ARCH),riscv64)
+    TARGET_TRIPLE = riscv64-elf
+    CC = $(TARGET_TRIPLE)-gcc
+    AS = $(TARGET_TRIPLE)-as
+    LD = $(TARGET_TRIPLE)-ld
+    OBJCOPY = $(TARGET_TRIPLE)-objcopy
+    OBJDUMP = $(TARGET_TRIPLE)-objdump
+    
+    # RISC-V specific compiler flags
+    ARCH_CFLAGS = -march=rv64imafdc \
+                  -mabi=lp64d \
+                  -mcmodel=medany \
+                  -fno-omit-frame-pointer
+    
+    # RISC-V specific assembler flags
+    ARCH_ASFLAGS = -march=rv64imafdc -mabi=lp64d
+    
+    # RISC-V linker script
+    LINKER_SCRIPT = kernel.ld.riscv64
+    
+    # RISC-V specific sources
+    ARCH_ASM_SRCS = hal/riscv/entry.S \
+                    hal/riscv/context_switch.S \
+                    hal/riscv/syscall_entry.S
+    
+    ARCH_C_SRCS = hal/riscv/hal_impl.c \
+                  hal/riscv/cpu.c \
+                  hal/riscv/gdt.c \
+                  hal/riscv/idt.c
+    
+    # RISC-V Rust target
+    RUST_TARGET = riscv64gc-unknown-none-elf
+    
+    # RISC-V QEMU
+    QEMU_ARCH = qemu-system-riscv64
+    
+else
+    $(error Unsupported architecture: $(ARCH). Supported: x86_64, arm64, riscv64)
+endif
+
+# Common compiler flags
+COMMON_CFLAGS = -std=c11 \
+                -ffreestanding \
+                -nostdlib \
+                -fno-builtin \
+                -fno-stack-protector \
+                -Wall \
+                -Wextra \
+                -O2 \
+                -g \
+                -I./include \
+                -DARCH_$(shell echo $(ARCH) | tr a-z A-Z)
+
+# Combine flags
+CFLAGS = $(COMMON_CFLAGS) $(ARCH_CFLAGS)
+ASFLAGS = $(ARCH_ASFLAGS)
+
+# Linker flags
+LDFLAGS = -n \
+          -nostdlib \
+          -T $(LINKER_SCRIPT)
+
+# Common sources (architecture-independent)
+COMMON_C_SRCS = core/main.c \
+                core/kprintf.c \
+                core/exceptions.c \
+                core/errors.c \
+                core/error_recovery.c \
+                core/string.c \
+                core/math.c \
+                core/stdio.c \
+                core/multiboot2_parser.c \
+                hal/hal_common.c \
+                hal/hal_wrapper.c \
+                hal/arch_detect.c \
+                mm/pmm.c \
+                mm/bootstrap.c \
+                mm/vmm.c \
+                mm/heap.c \
+                mm/slab.c \
+                mm/dma.c \
+                sched/scheduler.c \
+                sched/load_balance.c \
+                sched/cpu_affinity.c \
+                sched/work_stealing.c \
+                ipc/ipc.c \
+                ipc/shared_memory.c \
+                syscall/syscall.c \
+                syscall/registry.c \
+                process/process.c \
+                process/user_mode.c \
+                process/fork_exec.c \
+                loader/elf.c \
+                shell/shell.c \
+                fs/vfs.c \
+                fs/block.c \
+                fs/fat32.c \
+                fs/fat32_file.c \
+                fs/fat32_vfs.c \
+                fs/fat32_create.c \
+                fs/fat32_dir.c \
+                fs/fat32_utils.c \
+                fs/permissions.c \
+                drivers/ata/ata.c \
+                drivers/ahci/ahci.c \
+                drivers/pci/pci.c \
+                drivers/ethernet/ethernet.c \
+                auth/user.c \
+                auth/password_hash.c \
+                security/memory_protection.c \
+                security/capability.c \
+                mm/mmap.c \
+                core/test.c \
+                core/userspace_launch.c \
+                sync/spinlock.c \
+                sync/mutex.c \
+                sync/semaphore.c \
+                sync/rwlock.c \
+                sync/lockfree.c \
+                drivers/graphics/framebuffer.c \
+                graphics/graphics.c \
+                graphics/font.c \
+                drivers/ps2/ps2.c \
+                drivers/ps2/keyboard.c \
+                drivers/ps2/mouse.c \
+                drivers/virtio/virtio.c \
+                drivers/virtio/virtio_gpu.c \
+                graphics/accel.c \
+                input/input.c \
+                window/window.c \
+                ui/widget.c \
+                ui/layout.c \
+                ui/theme.c \
+                net/network.c \
+                net/ethernet.c \
+                net/ip.c \
+                net/udp.c \
+                net/tcp.c \
+                net/arp.c \
+                net/icmp.c \
+                net/socket.c \
+                desktop/desktop.c \
+                desktop/taskbar.c \
+                desktop/launcher.c \
+                desktop/login.c \
+                desktop/bootsplash.c
+
+# Combine architecture-specific and common sources
+ASM_SRCS = $(ARCH_ASM_SRCS)
+C_SRCS = $(COMMON_C_SRCS) $(ARCH_C_SRCS)
+
+# Object files
+ASM_OBJS = $(ASM_SRCS:.S=.o)
+C_OBJS = $(C_SRCS:.c=.o)
+OBJS = $(ASM_OBJS) $(C_OBJS)
+
+# Architecture-specific target name
+TARGET = kernel-$(ARCH).elf
+

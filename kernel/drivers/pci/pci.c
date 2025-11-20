@@ -160,9 +160,14 @@ error_code_t pci_enumerate(void) {
                     dev->bars[i] = pci_read_config_dword(bus, device, function, PCI_CONFIG_BAR0 + (i * 4));
                 }
                 
-                kinfo("PCI: %02x:%02x.%x - Vendor: %04x Device: %04x Class: %02x:%02x:%02x\n",
+                // Read IRQ line and pin
+                uint32_t irq_reg = pci_read_config_dword(bus, device, function, 0x3C);
+                dev->irq_line = irq_reg & 0xFF;
+                dev->irq_pin = (irq_reg >> 8) & 0xFF;
+                
+                kinfo("PCI: %02x:%02x.%x - Vendor: %04x Device: %04x Class: %02x:%02x:%02x IRQ: %u\n",
                       bus, device, function, dev->vendor_id, dev->device_id,
-                      dev->class_code, dev->subclass, dev->prog_if);
+                      dev->class_code, dev->subclass, dev->prog_if, dev->irq_line);
                 
                 pci_device_count++;
             }
@@ -230,5 +235,156 @@ pci_device_t* pci_get_device(uint32_t index) {
         return NULL;
     }
     return &pci_devices[index];
+}
+
+/**
+ * Decode BAR (Base Address Register) information
+ */
+error_code_t pci_decode_bar(pci_device_t* dev, uint8_t bar_index, pci_bar_info_t* info) {
+    if (!dev || !info || bar_index >= 6) {
+        return ERR_INVALID_PARAM;
+    }
+    
+    uint32_t bar = (uint32_t)dev->bars[bar_index];
+    
+    // Check if BAR is unused
+    if (bar == 0 || bar == 0xFFFFFFFF) {
+        return ERR_NOT_FOUND;
+    }
+    
+    // Determine BAR type
+    if (bar & 0x1) {
+        // I/O space BAR
+        info->is_io = true;
+        info->is_64bit = false;
+        info->base_address = bar & 0xFFFFFFFC;  // 32-bit I/O address
+        info->is_prefetchable = false;
+    } else {
+        // Memory space BAR
+        info->is_io = false;
+        info->is_64bit = (bar & 0x6) == 0x4;  // 64-bit if bits 2-3 = 010
+        
+        if (info->is_64bit && bar_index < 5) {
+            // 64-bit BAR uses two consecutive BARs
+            uint32_t bar_upper = (uint32_t)dev->bars[bar_index + 1];
+            info->base_address = ((uint64_t)bar_upper << 32) | (bar & 0xFFFFFFF0);
+        } else {
+            info->base_address = bar & 0xFFFFFFF0;  // 32-bit memory address
+        }
+        
+        info->is_prefetchable = (bar & 0x8) != 0;
+    }
+    
+    // Calculate BAR size by writing all 1s and reading back
+    uint8_t bus = dev->bus;
+    uint8_t device = dev->device;
+    uint8_t function = dev->function;
+    uint8_t offset = PCI_CONFIG_BAR0 + (bar_index * 4);
+    
+    // Save original value
+    uint32_t original = pci_read_config_dword(bus, device, function, offset);
+    
+    // Write all 1s
+    pci_write_config_dword(bus, device, function, offset, 0xFFFFFFFF);
+    
+    // Read back
+    uint32_t size_mask = pci_read_config_dword(bus, device, function, offset);
+    
+    // Restore original
+    pci_write_config_dword(bus, device, function, offset, original);
+    
+    // Calculate size
+    if (info->is_io) {
+        size_mask &= 0xFFFFFFFC;
+        info->size = (~size_mask) + 1;
+    } else {
+        size_mask &= 0xFFFFFFF0;
+        if (info->is_64bit) {
+            // For 64-bit, also check upper BAR
+            if (bar_index < 5) {
+                uint32_t original_upper = pci_read_config_dword(bus, device, function, offset + 4);
+                pci_write_config_dword(bus, device, function, offset + 4, 0xFFFFFFFF);
+                uint32_t size_mask_upper = pci_read_config_dword(bus, device, function, offset + 4);
+                pci_write_config_dword(bus, device, function, offset + 4, original_upper);
+                info->size = ((uint64_t)(~size_mask_upper) << 32) | ((~size_mask) + 1);
+            } else {
+                info->size = (~size_mask) + 1;
+            }
+        } else {
+            info->size = (~size_mask) + 1;
+        }
+    }
+    
+    return ERR_OK;
+}
+
+/**
+ * Get BAR size
+ */
+uint64_t pci_get_bar_size(pci_device_t* dev, uint8_t bar_index) {
+    pci_bar_info_t info;
+    if (pci_decode_bar(dev, bar_index, &info) == ERR_OK) {
+        return info.size;
+    }
+    return 0;
+}
+
+/**
+ * Check if device is PCI Express
+ */
+bool pci_is_pcie(pci_device_t* dev) {
+    if (!dev) {
+        return false;
+    }
+    
+    // Check for PCI Express capability
+    // PCIe devices have a capability list starting at offset 0x34
+    uint8_t cap_ptr = pci_read_config(dev->bus, dev->device, dev->function, 0x34) & 0xFF;
+    
+    if (cap_ptr == 0 || cap_ptr == 0xFF) {
+        return false;  // No capability list
+    }
+    
+    // Walk capability list looking for PCIe capability (ID 0x10)
+    uint8_t current = cap_ptr;
+    int iterations = 0;
+    
+    while (current != 0 && iterations < 48) {  // Max 48 capabilities
+        uint8_t cap_id = pci_read_config(dev->bus, dev->device, dev->function, current) & 0xFF;
+        
+        if (cap_id == 0x10) {
+            return true;  // Found PCIe capability
+        }
+        
+        // Move to next capability
+        uint8_t next = pci_read_config(dev->bus, dev->device, dev->function, current + 1) & 0xFF;
+        if (next == 0 || next == 0xFF) {
+            break;
+        }
+        current = next;
+        iterations++;
+    }
+    
+    return false;
+}
+
+/**
+ * Get IRQ line
+ */
+uint8_t pci_get_irq_line(pci_device_t* dev) {
+    if (!dev) {
+        return 0;
+    }
+    return dev->irq_line;
+}
+
+/**
+ * Get IRQ pin
+ */
+uint8_t pci_get_irq_pin(pci_device_t* dev) {
+    if (!dev) {
+        return 0;
+    }
+    return dev->irq_pin;
 }
 

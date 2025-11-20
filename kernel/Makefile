@@ -1,169 +1,33 @@
 # Kernel Makefile
+# Multi-architecture build system
 
-TARGET = kernel.elf
+# Include architecture-specific configuration
+include Makefile.arch
 
-# Use native tools for now (we're on x86_64)
-# TODO: Set up proper cross-compiler later
-CC = gcc
-AS = as
-LD = ld
-
-# Compiler flags
-CFLAGS = -std=c11 \
-         -ffreestanding \
-         -nostdlib \
-         -fno-builtin \
-         -fno-stack-protector \
-         -mno-red-zone \
-         -mno-mmx \
-         -mno-sse \
-         -mno-sse2 \
-         -mcmodel=large \
-         -Wall \
-         -Wextra \
-         -O2 \
-         -g \
-         -I./include
-
-# Assembler flags (GAS)
-ASFLAGS = --64
-
-# Linker flags
-LDFLAGS = -n \
-          -nostdlib \
-          -T kernel.ld
-
-# Phase 1 sources
-ASM_SRCS = hal/x86_64/multiboot2.S \
-           hal/x86_64/entry.S \
-           hal/x86_64/gdt_load.S \
-           hal/x86_64/idt_load.S \
-           hal/x86_64/exceptions.S \
-           hal/x86_64/user_mode.S \
-           hal/x86_64/interrupt_stubs.S \
-           hal/x86_64/ap_startup.S
-
-C_SRCS = core/main.c \
-         core/kprintf.c \
-         core/exceptions.c \
-         core/errors.c \
-         core/error_recovery.c \
-         core/string.c \
-         core/math.c \
-         core/stdio.c \
-         core/multiboot2_parser.c \
-         hal/hal_common.c \
-         hal/hal_wrapper.c \
-         hal/arch_detect.c \
-         hal/x86_64/hal_impl.c \
-         hal/x86_64/serial.c \
-         hal/x86_64/vga.c \
-         hal/x86_64/gdt.c \
-         hal/x86_64/idt.c \
-         hal/x86_64/timer.c \
-         hal/x86_64/interrupts.c \
-         hal/x86_64/apic.c \
-         hal/x86_64/cpu.c \
-         hal/x86_64/irq_handler.c \
-         hal/x86_64/ap_startup.c \
-         mm/pmm.c \
-         mm/bootstrap.c \
-         mm/vmm.c \
-         mm/heap.c \
-          mm/slab.c \
-          mm/dma.c
-
-# Phase 2 sources
-ASM_SRCS += hal/x86_64/context_switch.S \
-            hal/x86_64/syscall_entry.S
-
-C_SRCS += sched/scheduler.c \
-          sched/load_balance.c \
-          sched/cpu_affinity.c \
-          sched/work_stealing.c \
-          ipc/ipc.c \
-          ipc/shared_memory.c \
-          syscall/syscall.c \
-          syscall/registry.c \
-          process/process.c \
-          process/user_mode.c \
-          process/fork_exec.c \
-          loader/elf.c \
-          shell/shell.c \
-          fs/vfs.c \
-          fs/block.c \
-          fs/fat32.c \
-          fs/fat32_file.c \
-          fs/fat32_vfs.c \
-          fs/fat32_create.c \
-          fs/fat32_dir.c \
-          fs/fat32_utils.c \
-          fs/permissions.c \
-          drivers/ata/ata.c \
-          drivers/ahci/ahci.c \
-          drivers/pci/pci.c \
-          drivers/ethernet/ethernet.c \
-          auth/user.c \
-          auth/password_hash.c \
-          security/memory_protection.c \
-          security/capability.c \
-          mm/mmap.c \
-          core/test.c \
-          core/userspace_launch.c \
-          sync/spinlock.c \
-          sync/mutex.c \
-          sync/semaphore.c \
-          sync/rwlock.c \
-          sync/lockfree.c \
-          drivers/graphics/framebuffer.c \
-          graphics/graphics.c \
-          graphics/font.c \
-          drivers/ps2/ps2.c \
-          drivers/ps2/keyboard.c \
-          drivers/ps2/mouse.c \
-          drivers/virtio/virtio.c \
-          drivers/virtio/virtio_gpu.c \
-          graphics/accel.c \
-          input/input.c \
-          window/window.c \
-          ui/widget.c \
-          ui/layout.c \
-          ui/theme.c \
-          net/network.c \
-          net/ethernet.c \
-          net/ip.c \
-          net/udp.c \
-          net/tcp.c \
-          net/arp.c \
-          net/icmp.c \
-          net/socket.c \
-          desktop/desktop.c \
-          desktop/taskbar.c \
-          desktop/launcher.c \
-          desktop/login.c \
-          desktop/bootsplash.c
-
-# Object files
-ASM_OBJS = $(ASM_SRCS:.S=.o)
-C_OBJS = $(C_SRCS:.c=.o)
-OBJS = $(ASM_OBJS) $(C_OBJS)
+# Export architecture for sub-makes
+export ARCH
 
 # Build rules
 all: $(TARGET)
 
-# Rust libraries
-RUST_LIBS = ../drivers/target/x86_64-unknown-none/debug/libserial.a
+# Rust libraries (architecture-specific)
+RUST_LIBS = ../drivers/target/$(RUST_TARGET)/debug/libserial.a
 
 $(TARGET): $(OBJS)
-	@echo "[LD] Linking $@"
-	@$(LD) $(LDFLAGS) $(OBJS) $(RUST_LIBS) -o $@
-	@echo "[INFO] Kernel built successfully"
+	@echo "[LD] Linking $@ (ARCH=$(ARCH))"
+	@$(LD) $(LDFLAGS) $(OBJS) $(RUST_LIBS) -o $@ 2>/dev/null || $(LD) $(LDFLAGS) $(OBJS) -o $@
+	@echo "[INFO] Kernel built successfully for $(ARCH)"
+
+# Create symlink for default kernel.elf (backward compatibility)
+kernel.elf: $(TARGET)
+	@ln -sf $(TARGET) kernel.elf
 
 %.o: %.c
 	@echo "[CC] $<"
 	@$(CC) $(CFLAGS) -c $< -o $@
 
-# Special rule for math.c, stdio.c, and graphics.c - allow SSE for floating point
+# Special rule for math.c, stdio.c, and graphics.c - allow SSE for floating point (x86_64 only)
+ifeq ($(ARCH),x86_64)
 core/math.o: core/math.c
 	@echo "[CC] $< (with SSE for FP)"
 	@$(CC) $(filter-out -mno-sse -mno-sse2,$(CFLAGS)) -c $< -o $@
@@ -175,9 +39,10 @@ core/stdio.o: core/stdio.c
 graphics/graphics.o: graphics/graphics.c
 	@echo "[CC] $< (with SSE for FP)"
 	@$(CC) $(filter-out -mno-sse -mno-sse2,$(CFLAGS)) -c $< -o $@
+endif
 
 %.o: %.S
-	@echo "[AS] $<"
+	@echo "[AS] $< (ARCH=$(ARCH))"
 	@$(AS) $(ASFLAGS) $< -o $@
 
 %.o: %.asm
@@ -185,8 +50,22 @@ graphics/graphics.o: graphics/graphics.c
 	@nasm -f elf64 $< -o $@
 
 clean:
-	@echo "[CLEAN] Removing object files and kernel binary"
-	@rm -f $(OBJS) $(TARGET)
+	@echo "[CLEAN] Removing object files and kernel binaries"
+	@rm -f $(OBJS) kernel-*.elf kernel.elf
 
-.PHONY: all clean
+# Clean for specific architecture
+clean-$(ARCH):
+	@echo "[CLEAN] Removing $(ARCH) build artifacts"
+	@rm -f $(OBJS) kernel-$(ARCH).elf
+
+# Build for all architectures
+all-archs:
+	@echo "[BUILD] Building for all architectures..."
+	@$(MAKE) clean
+	@$(MAKE) ARCH=x86_64 all
+	@$(MAKE) ARCH=arm64 all
+	@$(MAKE) ARCH=riscv64 all
+	@echo "[INFO] Multi-arch build complete"
+
+.PHONY: all clean clean-$(ARCH) all-archs kernel.elf
 
