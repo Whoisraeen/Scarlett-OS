@@ -40,8 +40,8 @@ ASM_SRCS = hal/x86_64/multiboot2.S \
            hal/x86_64/idt_load.S \
            hal/x86_64/exceptions.S \
            hal/x86_64/user_mode.S \
-           hal/x86_64/interrupt_stubs.S
-           # hal/x86_64/ap_startup.S  # Disabled: conflicts with ap_startup.c
+           hal/x86_64/interrupt_stubs.S \
+           hal/x86_64/ap_startup.S
 
 C_SRCS = core/main.c \
          core/kprintf.c \
