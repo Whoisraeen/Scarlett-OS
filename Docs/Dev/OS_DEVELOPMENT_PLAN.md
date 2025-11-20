@@ -6,17 +6,17 @@ This document outlines the comprehensive plan for developing a production-grade,
 
 ### Project Overview
 - **Project Type:** Production Desktop Operating System
-- **Architecture Style:** Microkernel
+- **Architecture Style:** Pragmatic Microkernel (Hybrid Performance / Microkernel Safety, with a formally verified minimal TCB and user-space drivers/services)
 - **Target Platforms:** Cross-platform (initial: x86_64, future: ARM64, RISC-V)
 - **Team Size:** 15+ expert developers
-- **Development Approach:** Pure scratch implementation
+- **Development Approach:** Scratch implementation with hybrid performance optimizations
 - **Primary Language Strategy:** Mixed kernel (C/Assembly for critical components, Rust/C++ for services)
 - **API Standard:** New custom standard (non-POSIX)
 
 ### Core Objectives
 1. Modern desktop/workstation operating system with integrated graphics
 2. Advanced security through hybrid capability-based and ACL model
-3. High performance with low latency and efficient resource management
+3. High performance via hybrid-style fast paths (Direct GPU access, Shared Memory I/O)
 4. Broad hardware support through comprehensive driver ecosystem
 5. Cross-platform portability from the ground up
 
@@ -24,26 +24,29 @@ This document outlines the comprehensive plan for developing a production-grade,
 
 ## 1. Technical Architecture
 
-### 1.1 Microkernel Design Philosophy
+### 1.1 Pragmatic Microkernel Design Philosophy
 
 **Core Principles:**
-- Minimal kernel footprint (only essential services in kernel space)
-- Maximum isolation and fault tolerance
-- IPC-based communication between components
-- User-space drivers and services
+- **Microkernel Safety:** Drivers and services run in userspace (Ring 3) for isolation.
+- **Hybrid Performance:** Critical paths (Graphics, Audio, High-throughput I/O) use direct hardware access or shared memory to bypass IPC overhead.
+- **Minimal TCB:** Only essential security and scheduling logic remains in Ring 0.
+- **Formal Verification:** Mandatory formal verification for kernel primitives, IPC, and scheduling to prove absence of bugs.
+- **Restartable Microservices:** All system services (input, FS, network, audio) are isolated, restartable processes.
+- **Deterministic Scheduling:** Real-time guarantees for audio/video and critical workloads.
 
-**Kernel-Space Components (Minimal TCB):**
+**Kernel-Space Components (Ring 0):**
 - Address space management
-- Thread scheduling and synchronization
-- IPC primitives
+- Thread scheduling and synchronization (High-performance, O(1))
+- IPC primitives (Zero-copy optimized)
 - Interrupt handling
 - Basic hardware abstraction
+- *Performance Fast-Paths:* Graphics command submission, Audio buffer mapping
 
-**User-Space Components:**
-- Device drivers
+**User-Space Components (Ring 3):**
+- Device drivers (Rust) - *Can map MMIO directly for performance*
 - File systems
 - Network stack
-- GUI subsystem
+- GUI subsystem (Compositor drives GPU directly)
 - System services
 
 ### 1.2 Language Allocation Strategy
@@ -98,11 +101,16 @@ This document outlines the comprehensive plan for developing a production-grade,
 - Atomic operations
 - Cache management
 
+### 1.5 Formal Verification Strategy
+
+* **Scope:** Microkernel core (scheduling, IPC, memory management, capability enforcement)
+* **Model:** Machine-checked proofs for safety properties (no buffer overflows, no null dereferences, no privilege escalation within TCB)
+* **Approach:** Keep kernel small, use a verification-friendly subset of C and clear specifications for each primitive
+* **Long-term:** Extend formal methods to critical user-space services (e.g., capability server, SFS metadata layer)
+
 ### 1.4 Boot Process Architecture
 
 ```
-Firmware (UEFI/BIOS)
-    ↓
 Firmware (UEFI/BIOS)
     ↓
 Limine Bootloader (UEFI/BIOS)
@@ -178,6 +186,14 @@ Desktop Environment
 - Audit logging subsystem
 - Exploit mitigation (stack canaries, CFI, SafeStack)
 
+### 2.4 Application Sandbox Model
+
+* **Isolated Execution:** Each GUI application runs in an isolated sandbox with a unique capability set.
+* **No Ambient Authority:** No ambient access to filesystem, network, or devices.
+* **User-Facing Permissions:** Permission model (e.g., "Access Camera") mapped directly to capabilities.
+* **SFS Integration:** Per-app data directories and SFS-backed sandboxes (snapshots & rollback per app).
+* **Runtime Revocation:** Revocable permissions at runtime without restarting the app.
+
 ---
 
 ## 3. Core System Components
@@ -215,6 +231,7 @@ Desktop Environment
 - CPU affinity
 - Load balancing
 - Power-aware scheduling
+- **Deterministic Scheduling:** Real-time scheduling classes and deterministic mode for low-latency audio/video/gaming.
 
 **IPC Subsystem:**
 - Synchronous message passing
@@ -243,6 +260,8 @@ Desktop Environment
 - Atomic operations
 - Cache control
 - Power management (ACPI/DT)
+- **ML-Based Hardware Profiling:** Auto-profiling layer to optimize scheduler and I/O settings for specific hardware.
+- **Capability-Aware DMA:** IOMMU protection to prevent drivers from accessing arbitrary memory.
 
 ### 3.4 Device Manager & Driver Framework
 
@@ -259,7 +278,9 @@ Desktop Environment
 - Device class abstractions
 - DMA API
 - Interrupt handling API
+- Interrupt handling API
 - Power management hooks
+- **Sandbox Guarantees:** Drivers run in sandboxed processes with explicit capabilities; no ambient kernel privileges.
 
 **Priority Drivers:**
 1. Display drivers (framebuffer, GPU)
@@ -279,13 +300,13 @@ Desktop Environment
 - Caching layer
 - Support for multiple file systems
 
-**Native File System:**
-- Modern features (CoW, snapshots, compression)
-- Extent-based allocation
-- B-tree or similar efficient indexing
-- Journaling or log-structured
-- Extended attributes
-- Encryption support
+**SFS (Scarlett File System):**
+- Next-gen Copy-on-Write (CoW) file system
+- "Instant Rollback" OS-level snapshots
+- Native deduplication and compression
+- Per-app sandboxes integrated directly into FS
+- Logical volumes and RAID support
+- Tiered caching (NVMe -> RAM -> Disk)
 
 **Compatibility File Systems:**
 - FAT32 (boot compatibility)
@@ -328,7 +349,9 @@ Desktop Environment
 ```
 
 **Core Services:**
-- Display server (integrated with OS)
+- Display server core
+- **Universal GPU Abstraction Layer (UGAL):** Unified API for all GPUs (NVIDIA, AMD, Intel, Apple).
+- **Crashless Compositor:** Isolated process with state checkpointing; restarts instantly if crashed.
 - Window management
 - Compositing (GPU-accelerated)
 - Input event handling
@@ -342,6 +365,37 @@ Desktop Environment
 - Resource management
 - Event loop
 - Accessibility features
+
+- Accessibility features
+
+### 3.8 System Intelligence Layer
+*Lightweight, on-device ML integration for OS optimization.*
+- **Predictive Scheduler:** Predicts CPU bursts and I/O patterns.
+- **Smart Prefetcher:** Learns app launch patterns to preload data.
+- **Adaptive Power Management:** Optimizes battery usage based on user behavior.
+- **Privacy-First:** All learning happens locally on-device.
+
+### 3.9 Universal Software Deployment
+*Secure and deterministic software management.*
+- **Deterministic Builds:** Bit-for-bit reproducible binaries.
+- **Atomic Updates:** System updates are transactional and rollback-capable.
+- **App Bundles:** Self-contained applications with versioned libraries (No DLL Hell).
+- **Nix-like Package Management:** Functional package management for system components.
+
+### 3.10 Persona Modes
+*System-wide configuration presets enforced at the kernel/scheduler level.*
+- **Gaming Mode:** CPU/GPU tuned for max throughput, background tasks suppressed.
+- **Creator Mode:** Low-latency audio/video scheduling, priority for creative apps.
+- **Workstation Mode:** Balanced throughput for compilation/rendering.
+- Server Mode: Deterministic scheduling, low jitter, optimized for high concurrency.
+
+### 3.11 Observability & Telemetry
+*Unified infrastructure for debugging and performance analysis.*
+- **Unified Tracing:** Infrastructure covering kernel + services + apps.
+- **Structured Logging:** Per-service log streams with structured data.
+- **Low-Overhead Tracing:** Event tracing for scheduler, IPC, and I/O.
+- **System-Wide Correlation:** Time-synchronized traces for cross-component debugging.
+- **Privacy-Respecting Telemetry:** Optional, anonymized performance tuning data.
 
 ---
 
@@ -404,7 +458,23 @@ Boot to a kernel that can print to serial console and manage memory.
 - [ ] User-space transition
 
 **Success Criteria:**
+**Success Criteria:**
 Run multiple user-space processes with IPC communication.
+
+### Phase 3.5: Formal Methods & Kernel Proofs (Months 9-11)
+
+**Objectives:**
+- Establish formal spec for kernel primitives
+- Prove safety properties for core kernel
+
+**Deliverables:**
+- [ ] Formal model of IPC, scheduler, and memory manager
+- [ ] Machine-checked proofs for key invariants (no dangling capabilities, no privilege escalation)
+- [ ] CI integration: regression checks on verified components
+
+**Success Criteria:**
+- Verified subset of kernel remains stable and small
+- All changes to this subset require proof updates
 
 ### Phase 3: Multi-core & Advanced Memory (Months 7-10)
 
@@ -477,14 +547,14 @@ Display graphics, receive keyboard/mouse input, read from disk.
 - [ ] File descriptor management
 - [ ] Path resolution
 - [ ] Mount management
-- [ ] Native file system implementation
+- [ ] **SFS v1 implementation (snapshots, CoW, per-app sandboxes)**
 - [ ] FAT32 driver
 - [ ] Block I/O layer
 - [ ] Caching layer
 - [ ] Persistent storage of user data
 
 **Success Criteria:**
-Read/write files persistently, mount multiple file systems.
+Read/write files persistently, mount multiple file systems. Snapshots/rollback of system volume and per-app data.
 
 ### Phase 7: Network Stack (Months 18-21)
 
@@ -547,6 +617,7 @@ Secure system with enforced access controls and encryption.
 - [ ] Font rendering (FreeType-like or custom)
 - [ ] Input server
 - [ ] Cursor rendering
+- [ ] **Crashless compositor architecture (separate process, basic state restore on crash)**
 
 **Success Criteria:**
 Multiple windows can be displayed and moved, GPU acceleration works.
@@ -591,6 +662,10 @@ Usable desktop environment with essential applications.
 - [ ] Power management (ACPI advanced)
 - [ ] Laptop-specific drivers (battery, backlight)
 - [ ] Printer support
+- [ ] **Universal GPU Abstraction Layer (UGAL) v1**
+- [ ] GPU driver backend for at least one vendor (e.g., AMD) using UGAL
+- [ ] Hardware-accelerated compositor migrated to UGAL
+- [ ] Early 3D API mapping to UGAL (Vulkan-like frontend)
 
 **Success Criteria:**
 Broad hardware compatibility, works on modern laptops and desktops.
@@ -615,6 +690,21 @@ Broad hardware compatibility, works on modern laptops and desktops.
 **Success Criteria:**
 Competitive performance with existing desktop OSes.
 
+### Phase 12.5: System Intelligence & Persona Modes (Months 40-42)
+
+**Objectives:**
+- Integrate System Intelligence Layer and persona modes into the live system
+
+**Deliverables:**
+- [ ] Predictive scheduler hooks wired into kernel/IPC metrics
+- [ ] Smart prefetcher integrated with SFS and app launch data
+- [ ] Adaptive power management policies based on actual hardware profiles
+- [ ] Persona modes (Gaming / Creator / Workstation / Server) implemented
+
+**Success Criteria:**
+- Switching persona modes measurably changes latency/throughput characteristics
+- No user data leaves device in the process
+
 ### Phase 13: Developer Tools & SDK (Months 40-44)
 
 **Objectives:**
@@ -632,6 +722,10 @@ Competitive performance with existing desktop OSes.
 - [ ] IDE integration
 - [ ] Package manager
 - [ ] Build tools for applications
+- [ ] **Deterministic build pipeline for core system packages**
+- [ ] **Content-addressed storage for packages**
+- [ ] **Atomic system upgrade mechanism with rollback**
+- [ ] **Developer tooling for app bundles**
 
 **Success Criteria:**
 External developers can create applications easily.

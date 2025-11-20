@@ -6,7 +6,7 @@
 
 OUTPUT_FORMAT(elf64-x86-64)
 OUTPUT_ARCH(i386:x86-64)
-ENTRY(_start)
+ENTRY(multiboot2_entry)
 
 PHDRS
 {
@@ -17,10 +17,16 @@ PHDRS
 
 SECTIONS
 {
-    /* Start at 2MB - standard kernel load address for Limine */
-    . = 0x200000;
+    /* Start at 1MB - standard for multiboot2 */
+    . = 0x100000;
 
     _kernel_start = .;
+
+    /* Multiboot2 header MUST be early in the file */
+    .multiboot ALIGN(8) :
+    {
+        *(.multiboot)
+    } :text
 
     /* 64-bit kernel code */
     .text ALIGN(4096) :

@@ -34,7 +34,8 @@ LDFLAGS = -n \
           -T kernel.ld
 
 # Phase 1 sources
-ASM_SRCS = hal/x86_64/entry.S \
+ASM_SRCS = hal/x86_64/multiboot2.S \
+           hal/x86_64/entry.S \
            hal/x86_64/gdt_load.S \
            hal/x86_64/idt_load.S \
            hal/x86_64/exceptions.S \
@@ -49,7 +50,7 @@ C_SRCS = core/main.c \
          core/string.c \
          core/math.c \
          core/stdio.c \
-         core/multiboot_parser.c \
+         core/multiboot2_parser.c \
          hal/x86_64/serial.c \
          hal/x86_64/vga.c \
          hal/x86_64/gdt.c \
@@ -141,9 +142,12 @@ OBJS = $(ASM_OBJS) $(C_OBJS)
 # Build rules
 all: $(TARGET)
 
+# Rust libraries
+RUST_LIBS = ../drivers/target/x86_64-unknown-none/debug/libserial.a
+
 $(TARGET): $(OBJS)
 	@echo "[LD] Linking $@"
-	@$(LD) $(LDFLAGS) $(OBJS) -o $@
+	@$(LD) $(LDFLAGS) $(OBJS) $(RUST_LIBS) -o $@
 	@echo "[INFO] Kernel built successfully"
 
 %.o: %.c

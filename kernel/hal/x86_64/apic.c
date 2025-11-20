@@ -116,7 +116,22 @@ error_code_t apic_init(void) {
     }
 
     // Map physical APIC address to virtual address using PHYS_MAP_BASE
+    // Note: We must ensure this page is mapped in the VMM
+    // Even though we use PHYS_MAP_BASE, if the physical address is beyond RAM,
+    // it might not be mapped by the huge page mapping in vmm_init.
+    // So we explicitly map it here to be safe.
     lapic_base = lapic_phys + PHYS_MAP_BASE;
+    
+    // Map the page (disable caching for MMIO)
+    extern int vmm_map_page(void* as, uint64_t vaddr, uint64_t paddr, uint64_t flags);
+    extern void* vmm_get_kernel_address_space(void);
+    
+    // Flags: Present | Write | NoCache | Global | NX
+    // Using raw values from vmm.h to avoid circular dependency issues if header not included
+    // VMM_PRESENT(1) | VMM_WRITE(2) | VMM_NOCACHE(16) | VMM_GLOBAL(256) | VMM_NX(1<<63)
+    uint64_t flags = 1 | 2 | 16 | 256 | (1ULL << 63);
+    
+    vmm_map_page(vmm_get_kernel_address_space(), lapic_base, lapic_phys, flags);
 
     kinfo("Local APIC physical base: 0x%016lx\n", lapic_phys);
     kinfo("Local APIC virtual base: 0x%016lx\n", lapic_base);

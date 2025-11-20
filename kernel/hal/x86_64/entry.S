@@ -12,24 +12,27 @@
 .extern kernel_main
 
 _start:
-    # Limine loads us in 64-bit mode with:
-    # - Paging enabled
-    # - Interrupts disabled
-    # - We're already in long mode
+    # Can be called from Limine (64-bit) or Multiboot2 (via our transition code)
+    # RDI contains boot_info pointer (or NULL from Limine)
 
     # Disable interrupts (just to be safe)
     cli
 
-    # Set up kernel stack
-    lea stack_top(%rip), %rsp
+    # Save boot_info pointer (RDI) to R15 (callee-saved register)
+    mov %rdi, %r15
 
     # Early serial output - write 'K' to indicate kernel entry
     mov $0x3F8, %dx          # COM1 base
     mov $'K', %al
     out %al, %dx
 
-    # Clear BSS section
+    # Set up kernel stack (use RIP-relative addressing)
+    lea stack_top(%rip), %rsp
+
+    # Clear BSS section (but skip page tables at the start)
+    # Page tables (pml4, pdpt, pd) are first 12KB of BSS - DON'T clear them!
     lea _bss_start(%rip), %rdi
+    add $12288, %rdi              # Skip first 12KB (3x 4KB page tables)
     lea _bss_end(%rip), %rcx
     sub %rdi, %rcx
     xor %rax, %rax
@@ -44,8 +47,8 @@ _start:
     pushq $0
     popfq
 
-    # Pass NULL as boot_info for now (Limine uses its own protocol)
-    xor %rdi, %rdi
+    # Restore boot_info pointer to RDI (first argument to kernel_main)
+    mov %r15, %rdi
 
     # Write 'C' to indicate calling kernel_main
     mov $0x3F8, %dx

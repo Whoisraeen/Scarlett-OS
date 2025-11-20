@@ -1,9 +1,10 @@
 [workspace]
 members = [
-    "input/keyboard",
-    "input/mouse",
-    "storage/ahci",
-    "storage/ata",
+    # "input/keyboard",
+    # "input/mouse",
+    # "storage/ahci",
+    # "storage/ata",
+    "serial",
 ]
 
 [workspace.package]
@@ -11,10 +12,7 @@ version = "0.1.0"
 edition = "2021"
 authors = ["Scarlett OS Team"]
 
-[workspace.package]
-version = "0.1.0"
-edition = "2021"
-authors = ["Scarlett OS Team"]
+
 
 [workspace.dependencies]
 # Common dependencies for all drivers

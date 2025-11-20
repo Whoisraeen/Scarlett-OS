@@ -63,30 +63,93 @@ static void print_banner(void);
 static void verify_boot_info(boot_info_t* boot_info);
 static void print_memory_map(boot_info_t* boot_info);
 
+// x86 I/O port functions
+static inline void __outb(uint16_t port, uint8_t val) {
+    __asm__ volatile ("outb %0, %1" : : "a"(val), "Nd"(port));
+}
+
+static inline uint8_t __inb(uint16_t port) {
+    uint8_t ret;
+    __asm__ volatile ("inb %1, %0" : "=a"(ret) : "Nd"(port));
+    return ret;
+}
+
+// Initialize serial port for early debug output
+static void early_serial_init(void) {
+    __outb(0x3F8 + 1, 0x00);    // Disable all interrupts
+    __outb(0x3F8 + 3, 0x80);    // Enable DLAB (set baud rate divisor)
+    __outb(0x3F8 + 0, 0x03);    // Set divisor to 3 (lo byte) 38400 baud
+    __outb(0x3F8 + 1, 0x00);    //                  (hi byte)
+    __outb(0x3F8 + 3, 0x03);    // 8 bits, no parity, one stop bit
+    __outb(0x3F8 + 2, 0xC7);    // Enable FIFO, clear them, with 14-byte threshold
+    __outb(0x3F8 + 4, 0x0B);    // IRQs enabled, RTS/DSR set
+}
+
+// Simple early serial write (before serial_init)
+// Just write directly like entry.S does - no waiting
+static void early_serial_write(const char* str) {
+    while (*str) {
+        __outb(0x3F8, *str);
+        str++;
+    }
+}
+
 /**
  * Main kernel entry point
  */
 void kernel_main(boot_info_t* boot_info) {
+    // VERY FIRST: Initialize serial port for debug output
+    early_serial_init();
+
+    // Print to serial to confirm we reached C code
+    early_serial_write("MAIN\r\n");
+
     // Initialize VGA first for visual debugging
     extern void vga_init(void);
     extern void vga_writestring(const char*);
     vga_init();
     vga_writestring("Scarlett OS - Booting...\n");
-    
+
+    early_serial_write("VGA_INIT\r\n");
+
     // Initialize serial console for debugging
     extern void serial_init(void);
     serial_init();
-    
+
+    early_serial_write("SERIAL_INIT\r\n");
+
     // Print kernel banner
     print_banner();
     vga_writestring("Serial initialized\n");
+
+    // Handle Multiboot2 boot info (passed in RDI/EBX)
+    // If we were booted by Limine, RDI would be NULL (as we cleared it in entry.S for now)
+    // But wait! We need to pass the Multiboot2 info pointer from entry.S
     
-    // Handle NULL boot_info (when booted via Multiboot2 without our bootloader)
-    if (!boot_info) {
-        kpanic("Boot info is NULL! The bootloader failed to pass boot information.");
+    // Define a static boot_info structure for Multiboot2
+    static boot_info_t mb2_boot_info;
+    
+    // If the pointer looks like a valid physical address (not NULL), try to parse it
+    if (boot_info != NULL) {
+        // Check if it's likely a Multiboot2 structure (starts with size)
+        // For now, we assume if it's not NULL, it's what we passed from entry.S
+        
+        extern void multiboot2_parse(uint64_t addr, boot_info_t* info);
+        multiboot2_parse((uint64_t)boot_info, &mb2_boot_info);
+        
+        // Use our parsed info
+        boot_info = &mb2_boot_info;
+    } else {
+        early_serial_write("WARNING: boot_info is NULL\r\n");
+        vga_writestring("WARNING: Running without boot info\n");
+        // We can't really proceed safely without memory map, but we'll try
     }
-    
-    verify_boot_info(boot_info);
+
+    if (boot_info) {
+        verify_boot_info(boot_info);
+    }
+
+skip_boot_info:
     
     // Print system information
     kinfo("Kernel loaded at: 0x%016lx - 0x%016lx\n",
@@ -182,11 +245,11 @@ void kernel_main(boot_info_t* boot_info) {
     kinfo("[MAIN] vmm_init() returned, continuing...\n");
 
     // Initialize APIC after VMM (needs physical memory mapping)
-    // TEMPORARILY DISABLED - PHYS_MAP_BASE mapping is not working yet
-    // extern error_code_t apic_init(void);
-    // kinfo("Initializing APIC...\n");
-    // apic_init();
-    kinfo("APIC initialization skipped (PHYS_MAP_BASE not available)\n");
+    // Initialize APIC after VMM (needs physical memory mapping)
+    extern error_code_t apic_init(void);
+    kinfo("Initializing APIC...\n");
+    apic_init();
+    // kinfo("APIC initialization skipped (PHYS_MAP_BASE not available)\n");
 
     // Skip VMM mapping test - causes hangs with kprintf formatting
     // TODO: Fix kprintf %016lx formatting issue
@@ -413,6 +476,10 @@ void kernel_main(boot_info_t* boot_info) {
     kinfo("Desktop will run in userspace (Ring 3)\n");
     kinfo("========================================\n\n");
     
+    // Launch userspace shell (which drives the desktop)
+    extern error_code_t launch_shell_userspace(void);
+    launch_shell_userspace();
+
     kinfo("Entering kernel idle loop...\n");
     
     // Kernel Idle Loop

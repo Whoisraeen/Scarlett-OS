@@ -58,51 +58,27 @@ static void serial_wait_transmit(void) {
 /**
  * Initialize serial port
  */
+/**
+ * Initialize serial port
+ */
+extern void rust_serial_init(void);
+
 void serial_init(void) {
-    // Disable interrupts
-    outb(COM1_PORT + COM_IER_REG, 0x00);
-    
-    // Enable DLAB (set baud rate divisor)
-    outb(COM1_PORT + COM_LCR_REG, 0x80);
-    
-    // Set divisor to 3 (38400 baud)
-    outb(COM1_PORT + COM_DATA_REG, 0x03);
-    outb(COM1_PORT + COM_IER_REG, 0x00);
-    
-    // 8 bits, no parity, one stop bit
-    outb(COM1_PORT + COM_LCR_REG, 0x03);
-    
-    // Enable FIFO, clear them, with 14-byte threshold
-    outb(COM1_PORT + COM_IIR_REG, 0xC7);
-    
-    // IRQs enabled, RTS/DSR set
-    outb(COM1_PORT + COM_MCR_REG, 0x0B);
-    
-    // Test serial port (loopback test)
-    outb(COM1_PORT + COM_MCR_REG, 0x1E);
-    outb(COM1_PORT + COM_DATA_REG, 0xAE);
-    
-    if (inb(COM1_PORT + COM_DATA_REG) != 0xAE) {
-        // Serial port is faulty, but we'll continue anyway
-        // In a real OS, you might want to disable serial output
-    }
-    
-    // Set normal operation mode
-    outb(COM1_PORT + COM_MCR_REG, 0x0F);
+    rust_serial_init();
 }
 
 /**
  * Write a character to serial port
  */
+extern void rust_serial_write(uint8_t c);
+
 void serial_putc(char c) {
     // Convert \n to \r\n for proper terminal display
     if (c == '\n') {
-        serial_wait_transmit();
-        outb(COM1_PORT + COM_DATA_REG, '\r');
+        rust_serial_write('\r');
     }
     
-    serial_wait_transmit();
-    outb(COM1_PORT + COM_DATA_REG, c);
+    rust_serial_write((uint8_t)c);
 }
 
 /**

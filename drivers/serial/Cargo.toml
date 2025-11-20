@@ -1,0 +1,11 @@
+[package]
+name = "serial"
+version = "0.1.0"
+edition = "2021"
+authors = ["Scarlett OS Team"]
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+# We'll add dependencies later as needed (e.g., volatile, spin)

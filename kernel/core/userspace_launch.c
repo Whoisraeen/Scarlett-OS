@@ -95,6 +95,8 @@ error_code_t launch_shell_userspace(void) {
     // Loop: SYS_DESKTOP_RENDER -> SYS_TASKBAR_RENDER -> SYS_GFX_SWAP_BUFFERS -> SYS_YIELD -> repeat
     int i = 0;
     
+    // Label: loop_start
+    
     // syscall(SYS_DESKTOP_RENDER) = 23
     code[i++] = 0x48; code[i++] = 0xC7; code[i++] = 0xC0; code[i++] = 0x17; code[i++] = 0x00; code[i++] = 0x00; code[i++] = 0x00;  // mov rax, 23
     code[i++] = 0x0F; code[i++] = 0x05;  // syscall
@@ -112,7 +114,19 @@ error_code_t launch_shell_userspace(void) {
     code[i++] = 0x0F; code[i++] = 0x05;  // syscall
     
     // jmp to start (relative jump back)
-    code[i++] = 0xEB; code[i++] = 0xD8;  // jmp -40 (back to start of loop)
+    // We need to calculate the offset correctly.
+    // The loop body is:
+    // mov rax, 23 (7 bytes) + syscall (2 bytes) = 9
+    // mov rax, 24 (7 bytes) + syscall (2 bytes) = 9
+    // mov rax, 25 (7 bytes) + syscall (2 bytes) = 9
+    // mov rax, 6  (7 bytes) + syscall (2 bytes) = 9
+    // Total = 36 bytes
+    // Jump instruction itself is 2 bytes (EB xx)
+    // So we need to jump back 36 bytes + 2 bytes = 38 bytes? No, jump is relative to next instruction.
+    // So jump back 36 bytes.
+    // -36 in hex is DC
+    
+    code[i++] = 0xEB; code[i++] = 0xDC;  // jmp -36 (back to start of loop)
     
     // After writing code, we should make the page executable and not writable
     // For now, we'll leave it writable (security issue, but functional)
