@@ -8,11 +8,13 @@
 
 mod ipc;
 mod lib;
+mod block_device;
 
 use core::panic::PanicInfo;
 use lib::{init_ipc, init, handle_open, handle_read, handle_write, handle_close, handle_mount, 
           VFS_OP_OPEN, VFS_OP_READ, VFS_OP_WRITE, VFS_OP_CLOSE, VFS_OP_MOUNT};
 use ipc::{IpcMessage, sys_ipc_receive, sys_ipc_send};
+use block_device::{set_block_device_port, read_blocks, write_blocks};
 
 /// Panic handler for the VFS service
 #[panic_handler]
@@ -31,11 +33,13 @@ pub extern "C" fn _start() -> ! {
 fn vfs_init() {
     // Initialize IPC
     if let Ok(port) = init_ipc() {
-        let _ = port;
+        // Register with device manager
+        // TODO: In real implementation, send registration message to device manager
+        // For now, we'll discover the block device driver port when needed
+        
+        // Initialize VFS
+        let _ = init();
     }
-    
-    // Initialize VFS
-    let _ = init();
 }
 
 /// Main service loop - handles file system requests via IPC
