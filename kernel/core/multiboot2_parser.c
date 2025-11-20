@@ -23,7 +23,7 @@ void multiboot2_parse(uint64_t addr, boot_info_t* boot_info) {
     // Skip the fixed part
     tag = (struct multiboot_tag *)(addr + 8);
 
-    kinfo("Parsing Multiboot2 info at 0x%016lx (size: %u)\n", addr, total_size);
+    // kinfo("Parsing Multiboot2 info at 0x%016lx (size: %u)\n", addr, total_size);
 
     while (tag->type != MULTIBOOT_TAG_TYPE_END) {
         // kinfo("Tag type: %u, size: %u\n", tag->type, tag->size);

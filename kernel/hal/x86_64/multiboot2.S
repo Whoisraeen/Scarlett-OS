@@ -44,12 +44,13 @@ multiboot2_header_end:
 
 multiboot2_entry:
     # Save multiboot2 info (EAX = magic, EBX = info structure address)
-    # Save EBX to R12 (preserved through mode transition)
-    # For now, push it to stack since we're in 32-bit mode
-    push %ebx                           # Save Multiboot2 info address
+    # We need to save EBX before it gets clobbered
 
-    # Set up stack
+    # Set up stack FIRST
     mov $stack_top, %esp
+
+    # Now push EBX to our new stack
+    push %ebx                           # Save Multiboot2 info address
 
     # Clear page tables (they're in BSS which is uninitialized)
     mov $pml4, %edi
