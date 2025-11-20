@@ -16,7 +16,10 @@
       "Bash(wsl sgdisk:*)",
       "Bash(wsl objdump:*)",
       "Bash(wsl timeout 30s make disk)",
-      "Bash(wsl timeout:*)"
+      "Bash(wsl timeout:*)",
+      "WebSearch",
+      "Bash(wsl readelf:*)",
+      "Bash(wsl cat:*)"
     ],
     "deny": [],
     "ask": []

@@ -103,10 +103,19 @@ error_code_t pci_enumerate(void) {
     memset(pci_devices, 0, sizeof(pci_devices));
     
     // Scan all buses, devices, and functions
-    for (uint8_t bus = 0; bus < 256; bus++) {
+    for (uint16_t bus = 0; bus < 256; bus++) {
+        // Skip bus if device 0:0 doesn't exist (optimization for single-bus systems)
+        if (!pci_device_exists(bus, 0, 0)) {
+            // If this is not bus 0 and device 0:0 doesn't exist, skip remaining buses
+            if (bus > 0) {
+                break;  // No more buses
+            }
+            continue;  // Bus 0 might have devices at other slots
+        }
+
         for (uint8_t device = 0; device < 32; device++) {
             uint8_t functions = 1;  // Start with 1 function
-            
+
             // Check if device exists
             if (!pci_device_exists(bus, device, 0)) {
                 continue;  // Device doesn't exist

@@ -17,9 +17,10 @@ void setup_page_tables(void);
 
 /**
  * UEFI Application Entry Point (GNU-EFI)
+ * Explicitly use MS ABI calling convention
  */
 EFI_STATUS
-EFIAPI
+__attribute__((ms_abi))
 efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
 {
     EFI_STATUS Status;
@@ -27,10 +28,7 @@ efi_main(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable)
     UINTN KernelSize = 0;
     UINT64 KernelEntry;
     
-    // Initialize GNU-EFI library
-    InitializeLib(ImageHandle, SystemTable);
-
-    // Manually ensure ST and BS are set (GNU-EFI workaround)
+    // Skip InitializeLib and manually set globals to avoid corruption
     ST = SystemTable;
     BS = SystemTable->BootServices;
 

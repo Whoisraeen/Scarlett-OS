@@ -1,12 +1,12 @@
 /**
  * @file multiboot2.S
  * @brief Multiboot2 header for QEMU testing
- * 
+ *
  * This allows the kernel to boot with QEMU's -kernel flag
  * without needing a full UEFI bootloader.
  */
 
-.section .multiboot
+.section .multiboot, "a"
 .align 8
 
 multiboot2_header_start:

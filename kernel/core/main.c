@@ -333,16 +333,19 @@ void kernel_main(boot_info_t* boot_info) {
     run_all_tests();
     
     // Launch shell as userspace process
-    kinfo("Launching shell as userspace process...\n");
-    extern error_code_t launch_shell_userspace(void);
-    error_code_t err = launch_shell_userspace();
-    if (err != ERR_OK) {
-        kerror("Failed to launch shell in userspace: %s\n", error_to_string(err));
-        // Fall back to kernel-mode shell for now
-        extern void shell_run(void);
-        kinfo("Falling back to kernel-mode shell...\n");
-        shell_run();
-    }
+    // TEMPORARILY DISABLED - userspace switching not fully functional yet
+    // kinfo("Launching shell as userspace process...\n");
+    // extern error_code_t launch_shell_userspace(void);
+    // error_code_t err = launch_shell_userspace();
+    // if (err != ERR_OK) {
+    //     kerror("Failed to launch shell in userspace: %s\n", error_to_string(err));
+    //     // Fall back to kernel-mode shell for now
+    //     extern void shell_run(void);
+    //     kinfo("Falling back to kernel-mode shell...\n");
+    //     shell_run();
+    // }
+
+    kinfo("Skipping userspace shell launch (desktop mode)...\n");
     
     // Test exception handling (uncomment to test)
     // kinfo("Testing divide by zero exception...\n");
