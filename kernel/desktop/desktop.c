@@ -96,8 +96,14 @@ error_code_t desktop_render(void) {
         return ERR_INVALID_STATE;
     }
     
+    // Get target buffer (back buffer if enabled, otherwise front buffer)
+    void* target_buffer = gfx_get_back_buffer();
+    if (!target_buffer) {
+        target_buffer = fb->base_address;
+    }
+    
     // Draw wallpaper
-    memcpy(fb->base_address, desktop_state.wallpaper_buffer, fb->height * fb->pitch);
+    memcpy(target_buffer, desktop_state.wallpaper_buffer, fb->height * fb->pitch);
     
     return ERR_OK;
 }

@@ -44,7 +44,8 @@ error_code_t framebuffer_init(framebuffer_info_t* boot_fb_info) {
     // VMM verification will happen later when VMM is initialized (Phase 2).
     // For now, we trust the bootloader's memory mapping.
     
-    kinfo("Framebuffer initialized successfully\n");
+    kinfo("Framebuffer initialized successfully. g_framebuffer at %p, initialized=%d\n", 
+          &g_framebuffer, g_framebuffer.initialized);
     return ERR_OK;
 }
 
@@ -53,6 +54,8 @@ error_code_t framebuffer_init(framebuffer_info_t* boot_fb_info) {
  */
 framebuffer_t* framebuffer_get(void) {
     if (!g_framebuffer.initialized) {
+        kwarn("framebuffer_get: g_framebuffer at %p is NOT initialized (val=%d)\n", 
+              &g_framebuffer, g_framebuffer.initialized);
         return NULL;
     }
     return &g_framebuffer;

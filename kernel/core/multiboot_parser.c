@@ -1,6 +1,7 @@
 #include "../include/multiboot2.h"
 #include "../../bootloader/common/boot_info.h"
 #include "../include/kprintf.h"
+#include "../include/debug.h"
 #include "../include/string.h"
 
 void parse_multiboot_info(boot_info_t* boot_info, void* multiboot_info_ptr) {
@@ -14,6 +15,7 @@ void parse_multiboot_info(boot_info_t* boot_info, void* multiboot_info_ptr) {
     multiboot_tag_t* tag = (multiboot_tag_t*)(multiboot_info_ptr + 8);
 
     while (tag->type != MULTIBOOT_TAG_TYPE_END) {
+        // kinfo("Multiboot tag: %u, size: %u\n", tag->type, tag->size);
         switch (tag->type) {
             case MULTIBOOT_TAG_TYPE_MMAP: {
                 multiboot_tag_mmap_t* mmap_tag = (multiboot_tag_mmap_t*)tag;
@@ -37,15 +39,30 @@ void parse_multiboot_info(boot_info_t* boot_info, void* multiboot_info_ptr) {
             }
             case MULTIBOOT_TAG_TYPE_FRAMEBUFFER: {
                 multiboot_tag_framebuffer_t* fb_tag = (multiboot_tag_framebuffer_t*)tag;
+                kinfo("Found Framebuffer tag: type=%u, addr=0x%016lx, %ux%u @ %u\n", 
+                      fb_tag->framebuffer_type, fb_tag->framebuffer_addr,
+                      fb_tag->framebuffer_width, fb_tag->framebuffer_height,
+                      fb_tag->framebuffer_bpp);
+                      
                 if (fb_tag->framebuffer_type == MULTIBOOT_FRAMEBUFFER_TYPE_RGB) {
                     boot_info->framebuffer.base = fb_tag->framebuffer_addr;
                     boot_info->framebuffer.width = fb_tag->framebuffer_width;
                     boot_info->framebuffer.height = fb_tag->framebuffer_height;
                     boot_info->framebuffer.pitch = fb_tag->framebuffer_pitch;
                     boot_info->framebuffer.bpp = fb_tag->framebuffer_bpp;
+                    
+                    // Color masks
+                    boot_info->framebuffer.red_mask = (fb_tag->framebuffer_type == 1) ? 16 : 0; // Assuming standard 32-bit
+                    boot_info->framebuffer.green_mask = (fb_tag->framebuffer_type == 1) ? 8 : 0;
+                    boot_info->framebuffer.blue_mask = (fb_tag->framebuffer_type == 1) ? 0 : 0;
+                } else {
+                    kwarn("Framebuffer type %u not supported (only RGB=1 supported)\n", fb_tag->framebuffer_type);
                 }
                 break;
             }
+            default:
+                // kinfo("Ignored tag type %u\n", tag->type);
+                break;
         }
         tag = (multiboot_tag_t*)((uint8_t*)tag + ((tag->size + 7) & ~7));
     }

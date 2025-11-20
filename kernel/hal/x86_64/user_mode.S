@@ -18,42 +18,35 @@
  * 3. Switches to Ring 3
  * 4. Jumps to user entry point
  */
-.global enter_user_mode
-enter_user_mode:
-    # Function signature:
+.global enter_user_mode                                                                                                                                                     
+enter_user_mode:                                                                                                                                                            
     # rdi = entry_point
     # rsi = user_stack
     # rdx = rflags
-    
-    # Save kernel stack pointer (we'll need it for syscalls)
-    mov %rsp, %rax
-    push %rax
-    
-    # Set up user stack
-    mov %rsi, %rsp
-    
-    # Set up segment registers for user mode
-    # User data segment (Ring 3): 0x23 (GDT entry 4, RPL 3)
-    # User code segment (Ring 3): 0x1B (GDT entry 3, RPL 3)
-    mov $0x23, %ax  # User data segment
+
+    # Set the user data segment selector for DS, ES.
+    # The 0x23 selector corresponds to the user data segment (GDT entry 4) with RPL=3.
+    # We don't set SS here; `iretq` will set SS and CS atomically.
+    mov $0x23, %ax
     mov %ax, %ds
     mov %ax, %es
+
+    # It's good practice to zero out fs and gs when entering userspace,
+    # unless they are specifically used for user-accessible data (like TLS).
+    xor %eax, %eax
     mov %ax, %fs
     mov %ax, %gs
-    mov %ax, %ss
-    
-    # Push user stack segment and stack pointer (for iretq)
-    push $0x23      # SS (user data segment)
-    push %rsp       # RSP (user stack pointer)
-    
-    # Push RFLAGS
-    push %rdx       # RFLAGS (passed as parameter)
-    
-    # Push user code segment and entry point (for iretq)
-    push $0x1B      # CS (user code segment)
-    push %rdi       # RIP (entry point)
-    
-    # Clear some registers (security)
+
+    # Prepare the iretq stack frame on the KERNEL stack
+    # The order is critical: SS, RSP, RFLAGS, CS, RIP
+    pushq $0x23     # SS: User Data Segment (RPL 3)
+    pushq %rsi      # RSP: User Stack Pointer
+    pushq %rdx      # RFLAGS: The flags for the user process
+    pushq $0x1B     # CS: User Code Segment (RPL 3)
+    pushq %rdi      # RIP: Instruction Pointer (entry point)
+
+    # Zero out all general-purpose registers before entering user mode
+    # to prevent leaking kernel data to the user process.
     xor %rax, %rax
     xor %rbx, %rbx
     xor %rcx, %rcx
@@ -69,12 +62,10 @@ enter_user_mode:
     xor %r13, %r13
     xor %r14, %r14
     xor %r15, %r15
-    
-    # Use iretq to switch to user mode
-    # This will pop: RIP, CS, RFLAGS, RSP, SS
-    # and switch to Ring 3
-    iretq
 
+    # Atomically switch to Ring 3, load all the pushed registers,
+    # and jump to the user-mode entry point.
+    iretq
 /**
  * Return to user mode after syscall
  * 

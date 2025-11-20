@@ -168,79 +168,103 @@ error_code_t taskbar_render(void) {
         return ERR_INVALID_STATE;
     }
 
-    // Modern glassmorphism taskbar design
-    uint32_t corner_radius = 0;  // No corner radius for taskbar (spans full width)
-
+    // Modern glassmorphism taskbar design (Windows 11 style)
+    // Full width bar, but content centered
+    
     // Draw subtle shadow above taskbar for depth
-    gfx_draw_shadow(taskbar_state.x, taskbar_state.y - 3,
-                   taskbar_state.width, taskbar_state.height, 0, 20);
+    gfx_draw_shadow(taskbar_state.x, taskbar_state.y - 2,
+                   taskbar_state.width, taskbar_state.height, 0, 15);
 
     // Draw frosted glass taskbar background
+    // Windows 11 uses a very subtle, light/dark acrylic
     gfx_fill_rounded_rect_alpha(taskbar_state.x, taskbar_state.y,
                                 taskbar_state.width, taskbar_state.height,
-                                corner_radius, RGB(30, 38, 55), 220);  // Semi-transparent
+                                0, RGB(32, 32, 32), 200);  // Darker, more neutral
 
     // Draw subtle top border (glass reflection effect)
-    uint32_t border_x = taskbar_state.x;
     uint32_t border_y = taskbar_state.y;
-    gfx_draw_line(border_x, border_y, border_x + taskbar_state.width - 1, border_y,
-                 RGBA(255, 255, 255, 60));
+    gfx_draw_line(taskbar_state.x, border_y, taskbar_state.x + taskbar_state.width - 1, border_y,
+                 RGBA(255, 255, 255, 40));
 
-    // Draw start button with modern glassmorphism
-    uint32_t start_btn_x = 12;
-    uint32_t start_btn_y = taskbar_state.y + 8;
-    uint32_t start_btn_w = 36;
-    uint32_t start_btn_h = 32;
-    uint32_t btn_radius = 12;  // Heavily rounded corners
-
-    // Start button with glass effect and rounded corners
-    gfx_fill_rounded_rect_alpha(start_btn_x, start_btn_y, start_btn_w, start_btn_h,
-                                btn_radius, RGB(80, 95, 125), 200);
-
-    // Start button border (subtle glow)
-    gfx_draw_rounded_rect(start_btn_x, start_btn_y, start_btn_w, start_btn_h,
-                         btn_radius, RGBA(255, 255, 255, 80));
-
-    // Start button icon (modern grid icon)
-    gfx_draw_string(start_btn_x + 10, start_btn_y + 12, ":::",
-                   RGB(255, 255, 255), 0);
-
-    // Render window items with glassmorphism
+    // Calculate total width of content to center it
+    uint32_t start_btn_w = 40;
+    uint32_t item_spacing = 8;
+    uint32_t content_width = start_btn_w;
+    
     spinlock_lock(&taskbar_lock);
-
-    uint32_t item_x = start_btn_x + start_btn_w + 12;
     taskbar_item_t* item = taskbar_state.items;
-
     while (item) {
-        uint32_t item_width = strlen(item->title) * 8 + 20;  // Padding
-        uint32_t item_y = taskbar_state.y + 8;
-        uint32_t item_h = 32;
-        uint32_t item_radius = 10;  // Rounded corners for items
-
-        // Item background with glass effect (brighter if active)
-        if (item->active) {
-            // Active window - brighter glass with accent color
-            gfx_draw_shadow(item_x - 1, item_y - 1, item_width + 2, item_h + 2, item_radius, 15);
-            gfx_fill_rounded_rect_alpha(item_x, item_y, item_width, item_h,
-                                       item_radius, RGB(100, 120, 160), 230);
-            gfx_draw_rounded_rect(item_x, item_y, item_width, item_h,
-                                 item_radius, RGBA(120, 160, 255, 150));
-        } else {
-            // Inactive window - subtle glass
-            gfx_fill_rounded_rect_alpha(item_x, item_y, item_width, item_h,
-                                       item_radius, RGB(60, 70, 95), 180);
-            gfx_draw_rounded_rect(item_x, item_y, item_width, item_h,
-                                 item_radius, RGBA(255, 255, 255, 40));
-        }
-
-        // Item text with proper contrast
-        gfx_draw_string(item_x + 10, item_y + 12, item->title,
-                       RGB(255, 255, 255), 0);
-
-        item_x += item_width + 8;
+        uint32_t item_width = 40; // Icons only for Windows 11 style, or fixed width with text?
+        // Let's stick to icon-like buttons for now, or small pills
+        // Windows 11 has icon-only taskbar buttons by default
+        // But our system might not have icons yet, so let's use text but compact
+        uint32_t text_width = strlen(item->title) * 8;
+        item_width = text_width + 24; // Padding
+        
+        content_width += item_spacing + item_width;
         item = item->next;
     }
+    spinlock_unlock(&taskbar_lock);
 
+    // Calculate starting X for centered layout
+    uint32_t start_x = (taskbar_state.width - content_width) / 2;
+    
+    // Draw Start Button (Centered)
+    uint32_t start_btn_x = start_x;
+    uint32_t start_btn_y = taskbar_state.y + 6;
+    uint32_t start_btn_h = 36;
+    uint32_t btn_radius = 8;
+
+    // Start button background (Windows 11 logo blue-ish)
+    gfx_fill_rounded_rect_alpha(start_btn_x, start_btn_y, start_btn_w, start_btn_h,
+                                btn_radius, RGB(0, 120, 215), 220);
+    
+    // Start button icon (Four squares)
+    uint32_t icon_x = start_btn_x + 12;
+    uint32_t icon_y = start_btn_y + 10;
+    uint32_t sq_size = 7;
+    uint32_t gap = 2;
+    uint32_t logo_col = RGB(255, 255, 255);
+    
+    gfx_fill_rect(icon_x, icon_y, sq_size, sq_size, logo_col);
+    gfx_fill_rect(icon_x + sq_size + gap, icon_y, sq_size, sq_size, logo_col);
+    gfx_fill_rect(icon_x, icon_y + sq_size + gap, sq_size, sq_size, logo_col);
+    gfx_fill_rect(icon_x + sq_size + gap, icon_y + sq_size + gap, sq_size, sq_size, logo_col);
+
+    // Render window items
+    spinlock_lock(&taskbar_lock);
+    uint32_t current_x = start_btn_x + start_btn_w + item_spacing;
+    item = taskbar_state.items;
+
+    while (item) {
+        uint32_t text_width = strlen(item->title) * 8;
+        uint32_t item_width = text_width + 24;
+        uint32_t item_y = taskbar_state.y + 6;
+        uint32_t item_h = 36;
+        uint32_t item_radius = 6;
+
+        // Item background
+        if (item->active) {
+            // Active: lighter background, bottom indicator
+            gfx_fill_rounded_rect_alpha(current_x, item_y, item_width, item_h,
+                                       item_radius, RGB(255, 255, 255), 30);
+            
+            // Bottom indicator line
+            gfx_fill_rect(current_x + item_width/2 - 8, taskbar_state.y + taskbar_state.height - 3, 
+                         16, 2, RGB(0, 120, 215));
+        } else {
+            // Inactive: very subtle hover effect (simulated) or transparent
+            gfx_fill_rounded_rect_alpha(current_x, item_y, item_width, item_h,
+                                       item_radius, RGB(255, 255, 255), 10);
+        }
+
+        // Item text
+        gfx_draw_string(current_x + 12, item_y + 14, item->title,
+                       RGB(255, 255, 255), 0);
+
+        current_x += item_width + item_spacing;
+        item = item->next;
+    }
     spinlock_unlock(&taskbar_lock);
 
     return ERR_OK;

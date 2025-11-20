@@ -54,6 +54,11 @@ void kernel_main(boot_info_t* boot_info) {
     // Print system information
     kinfo("Kernel loaded at: 0x%016lx - 0x%016lx\n",
           (uint64_t)_kernel_start, (uint64_t)_kernel_end);
+          
+    if ((uint64_t)_kernel_start == 0) {
+        kerror("CRITICAL: _kernel_start symbol is 0! Linker script issue?\n");
+    }
+    
     kinfo("Kernel size: %lu KB\n",
           ((uint64_t)_kernel_end - (uint64_t)_kernel_start) / 1024);
     kinfo("BSS section: 0x%016lx - 0x%016lx\n",
@@ -275,6 +280,11 @@ void kernel_main(boot_info_t* boot_info) {
     extern error_code_t gfx_accel_init(void);
     kinfo("Initializing 2D Graphics Acceleration...\n");
     gfx_accel_init();
+
+    // Initialize double buffering for smooth rendering
+    extern void gfx_init_double_buffer(void);
+    kinfo("Initializing Double Buffering...\n");
+    gfx_init_double_buffer();
     
     // Note: VirtIO GPU initialization would happen via PCI enumeration
     // In QEMU, VirtIO devices appear as PCI devices that can be detected
@@ -332,70 +342,27 @@ void kernel_main(boot_info_t* boot_info) {
     extern void run_all_tests(void);
     run_all_tests();
     
-    // Launch shell as userspace process
-    // TEMPORARILY DISABLED - userspace switching not fully functional yet
-    // kinfo("Launching shell as userspace process...\n");
-    // extern error_code_t launch_shell_userspace(void);
-    // error_code_t err = launch_shell_userspace();
-    // if (err != ERR_OK) {
-    //     kerror("Failed to launch shell in userspace: %s\n", error_to_string(err));
-    //     // Fall back to kernel-mode shell for now
-    //     extern void shell_run(void);
-    //     kinfo("Falling back to kernel-mode shell...\n");
-    //     shell_run();
-    // }
-
-    kinfo("Skipping userspace shell launch (desktop mode)...\n");
-    
-    // Test exception handling (uncomment to test)
-    // kinfo("Testing divide by zero exception...\n");
-    // volatile int x = 1 / 0;
-    
-    // Hide boot splash and show login/desktop
-    extern error_code_t bootsplash_hide(void);
-    extern error_code_t login_screen_show(void);
-    extern error_code_t login_screen_render(void);
-    extern error_code_t desktop_render(void);
-    extern error_code_t taskbar_render(void);
-    extern error_code_t window_manager_render_all(void);
-    extern error_code_t window_manager_handle_input(void);
-    extern error_code_t launcher_render(void);
-    extern bool login_screen_is_logged_in(void);
-    
-    bootsplash_hide();
-    login_screen_show();
-    
-    // Main loop - desktop environment loop
-    while (1) {
-        // Check if reschedule is needed (for preemptive multitasking)
-        extern void scheduler_check_reschedule(void);
-        scheduler_check_reschedule();
-        
-        // Handle input events
-        window_manager_handle_input();
-        extern error_code_t login_screen_handle_input(void);
-        login_screen_handle_input();
-        
-        // Render desktop environment
-        if (login_screen_is_logged_in()) {
-            // User is logged in - show desktop
-            desktop_render();
-            window_manager_render_all();
-            taskbar_render();
-            launcher_render();
-        } else {
-            // Show login screen
-            login_screen_render();
+        // Launch shell as userspace process
+        kinfo("Launching shell as userspace process...\n");
+        extern error_code_t launch_shell_userspace(void);
+        error_code_t err = launch_shell_userspace();
+        if (err != ERR_OK) {
+            kerror("Failed to launch shell in userspace: %s\n", error_to_string(err));
+            // Fall back to kernel-mode shell for now
+            extern void shell_run(void);
+            kinfo("Falling back to kernel-mode shell...\n");
+            shell_run(); // This will likely not return
         }
-        
-        // Swap buffers if double buffering is enabled
-        extern void gfx_swap_buffers(void);
-        gfx_swap_buffers();
-        
-        // Halt the CPU (will be woken by interrupts)
-        __asm__ volatile("hlt");
-    }
-}
+    
+        // Kernel idle loop.
+        // After launching the first userspace process, the kernel's job is to
+        // handle interrupts and syscalls. The scheduler will give CPU time
+        // to the userspace processes.
+        kinfo("Entering kernel idle loop.\n");
+        while (1) {
+            // Halt the CPU until the next interrupt
+            __asm__ volatile("hlt");
+        }}
 
 /**
  * Print kernel banner
@@ -403,7 +370,7 @@ void kernel_main(boot_info_t* boot_info) {
 static void print_banner(void) {
     kprintf("\n");
     kprintf("====================================================\n");
-    kprintf("                  Scarlett OS                       \n");
+    kprintf("                  Scarlett OS - DEBUG BUILD         \n");
     kprintf("        A Modern Microkernel Operating System      \n");
     kprintf("====================================================\n");
     kprintf("Version: 0.1.0 (Phase 1 - Development)\n");
