@@ -41,6 +41,7 @@ ASM_SRCS = hal/x86_64/multiboot2.S \
            hal/x86_64/exceptions.S \
            hal/x86_64/user_mode.S \
            hal/x86_64/interrupt_stubs.S
+           # hal/x86_64/ap_startup.S  # Disabled: conflicts with ap_startup.c
 
 C_SRCS = core/main.c \
          core/kprintf.c \
@@ -57,6 +58,10 @@ C_SRCS = core/main.c \
          hal/x86_64/idt.c \
          hal/x86_64/timer.c \
          hal/x86_64/interrupts.c \
+         hal/x86_64/apic.c \
+         hal/x86_64/cpu.c \
+         hal/x86_64/irq_handler.c \
+         hal/x86_64/ap_startup.c \
          mm/pmm.c \
          mm/bootstrap.c \
          mm/vmm.c \
@@ -95,12 +100,9 @@ C_SRCS += sched/scheduler.c \
           auth/password_hash.c \
           security/memory_protection.c \
           security/capability.c \
-          hal/x86_64/irq_handler.c \
           mm/mmap.c \
           core/test.c \
           core/userspace_launch.c \
-          hal/x86_64/cpu.c \
-          hal/x86_64/apic.c \
           sync/spinlock.c \
           sync/mutex.c \
           sync/semaphore.c \

@@ -22,7 +22,8 @@
       "Bash(wsl cat:*)",
       "Bash(wsl pkill:*)",
       "Bash(wsl chmod:*)",
-      "Bash(wsl sudo losetup -a)"
+      "Bash(wsl sudo losetup -a)",
+      "Bash(wsl nm:*)"
     ],
     "deny": [],
     "ask": []

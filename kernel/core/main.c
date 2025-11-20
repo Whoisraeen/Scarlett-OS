@@ -11,6 +11,7 @@
 #include "../include/debug.h"
 #include "../include/config.h"
 #include "../include/errors.h"
+#include "../include/cpu.h"
 #include "../include/mm/vmm.h"
 #include "../include/mm/pmm.h"
 #include "../include/desktop/desktop.h"
@@ -250,6 +251,41 @@ skip_boot_info:
     kinfo("Initializing APIC...\n");
     apic_init();
     // kinfo("APIC initialization skipped (PHYS_MAP_BASE not available)\n");
+
+    // Start Application Processors (Multi-core boot)
+    kinfo("\n========================================\n");
+    kinfo("Starting Application Processors...\n");
+    kinfo("========================================\n");
+
+    extern error_code_t ap_startup(uint32_t apic_id);
+    extern cpu_topology_t* cpu_get_topology(void);
+    extern cpu_info_t* cpu_get_info(uint32_t cpu_id);
+
+    cpu_topology_t* topo = cpu_get_topology();
+    uint32_t ap_count = 0;
+
+    // Start all Application Processors
+    for (uint32_t i = 0; i < MAX_CPUS; i++) {
+        cpu_info_t* cpu_info = cpu_get_info(i);
+        if (cpu_info && !cpu_info->is_bsp && cpu_info->apic_id != 0) {
+            kinfo("Starting AP %u (APIC ID %u)...\n", i, cpu_info->apic_id);
+            error_code_t result = ap_startup(cpu_info->apic_id);
+
+            if (result == ERR_OK) {
+                ap_count++;
+                kinfo("AP %u started successfully\n", i);
+
+                // Brief delay to let AP initialize (10ms @ ~1000 iterations/ms)
+                for (volatile uint32_t delay = 0; delay < 10000; delay++);
+            } else {
+                kwarn("Failed to start AP %u (error: %d)\n", i, result);
+            }
+        }
+    }
+
+    kinfo("Started %u Application Processor(s)\n", ap_count);
+    kinfo("Total CPUs online: %u\n", topo->num_cpus);
+    kinfo("========================================\n\n");
 
     // Skip VMM mapping test - causes hangs with kprintf formatting
     // TODO: Fix kprintf %016lx formatting issue

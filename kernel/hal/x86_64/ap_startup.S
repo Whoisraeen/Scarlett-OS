@@ -1,11 +1,11 @@
 /**
  * @file ap_startup.S
  * @brief Application Processor (AP) startup code
- * 
+ *
  * This code runs on each AP when it's woken up.
  */
 
-.section .text
+.section .ap_startup, "ax"
 .code16
 
 /**
@@ -13,6 +13,7 @@
  * This is copied to a 4KB page at 0x1000
  */
 .global ap_startup_16
+.type ap_startup_16, @function
 ap_startup_16:
     cli
     
@@ -91,3 +92,5 @@ ap_gdt_ptr:
     .word ap_gdt_ptr - ap_gdt - 1
     .quad ap_gdt
 
+.global ap_startup_16_end
+ap_startup_16_end:
