@@ -11,15 +11,18 @@
 │   ├── ipc/            # IPC primitives
 │   ├── syscall/        # Syscall handlers
 │   ├── hal/            # Hardware abstraction
-│   └── security/       # Capabilities
+│   ├── security/       # Capabilities
+│   └── drivers/        # Boot-critical drivers only (PCI, framebuffer, PS/2)
 ├── services/            # User-space services (Rust)
 │   ├── device_manager/ # Device enumeration and management
 │   ├── init/           # System initialization service
 │   └── vfs/            # Virtual file system service
 ├── drivers/             # User-space drivers (Rust)
+│   ├── framework/      # Driver framework library
+│   ├── bus/            # Bus drivers (USB, etc.)
 │   ├── input/          # Keyboard, mouse drivers
 │   ├── storage/        # AHCI, ATA, NVMe drivers
-│   ├── network/        # Ethernet drivers
+│   ├── network/        # Ethernet, Wi-Fi drivers
 │   └── graphics/       # GPU drivers
 ├── gui/                 # GUI subsystem (C++)
 │   ├── compositor/     # Window compositor

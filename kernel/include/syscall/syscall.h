@@ -54,9 +54,11 @@
 #define SYS_SHM_UNMAP 42
 #define SYS_SHM_DESTROY 43
 #define SYS_SHM_GET_INFO 44
+#define SYS_SPAWN_PROCESS 45
+#define SYS_GET_PROCESS_IPC_PORT 46
 
 // Maximum syscall number
-#define SYS_MAX         44
+#define SYS_MAX         46
 
 /**
  * Initialize system call handling

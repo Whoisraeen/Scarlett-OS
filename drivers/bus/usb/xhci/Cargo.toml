@@ -1,0 +1,14 @@
+[package]
+name = "xhci-driver"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+driver-framework = { path = "../../../framework" }
+
+[lib]
+crate-type = ["staticlib"]
+
+[[bin]]
+name = "xhci-driver"
+path = "src/main.rs"

@@ -1,0 +1,12 @@
+[package]
+name = "driver-framework"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "driver_framework"
+path = "src/lib.rs"
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+

@@ -1,10 +1,14 @@
 [workspace]
 members = [
-    # "input/keyboard",
-    # "input/mouse",
-    # "storage/ahci",
-    # "storage/ata",
+    "framework",
+    "storage/ahci",
+    "storage/ata",
+    "network/ethernet",
+    "input/keyboard",
+    "input/mouse",
     "serial",
+    "bus/usb/common",
+    "bus/usb/xhci",
 ]
 
 [workspace.package]

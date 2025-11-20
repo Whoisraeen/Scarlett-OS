@@ -2,11 +2,16 @@
 
 pub mod pci;
 pub mod device;
+pub mod driver;
+pub mod service_registry;
+pub mod process_spawn;
 
 pub use crate::ipc::{IpcMessage, IPC_MSG_REQUEST, IPC_MSG_RESPONSE};
 pub use pci::{pci_enumerate, pci_get_device_count, pci_get_device, PciDevice};
 pub use device::{register_pci_device, get_device, get_device_count, 
                  find_device_by_pci_id, set_device_driver, set_device_state, Device};
+pub use driver::{find_driver, load_driver, auto_load_drivers};
+pub use service_registry::{ServiceType, register_service_port, notify_service, get_driver_port};
 
 /// Device manager operation types
 pub const DEV_MGR_OP_ENUMERATE: u64 = 1;
@@ -83,6 +88,9 @@ pub fn init() -> Result<(), ()> {
                         let _ = device::register_pci_device(pci_dev);
                     }
                 }
+                
+                // Auto-load drivers for all devices
+                driver::auto_load_drivers();
             }
             Err(_) => {
                 // Enumeration failed, continue anyway

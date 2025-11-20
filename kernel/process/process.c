@@ -168,6 +168,9 @@ process_t* process_create(const char* name, vaddr_t entry_point) {
     // Exit status
     process->exit_code = 0;
     
+    // IPC
+    process->ipc_port = 0;  // Will be set when process creates IPC port
+    
     // Metadata
     if (name) {
         size_t name_len = 0;

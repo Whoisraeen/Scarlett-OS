@@ -60,6 +60,9 @@ typedef struct process {
     char name[64];              // Process name
     uint64_t created_at;        // Creation timestamp
     
+    // IPC
+    uint64_t ipc_port;          // Default IPC port for this process
+    
     // Linked list
     struct process* next;       // Next process in list
 } process_t;
@@ -104,6 +107,10 @@ address_space_t* process_get_address_space(process_t* process);
 // Process operations
 pid_t process_fork(process_t* parent);
 error_code_t process_exec(process_t* process, const char* path, char* const* argv, char* const* envp);
+
+// Process spawning
+pid_t process_spawn(const char* name, const char* path, vaddr_t entry_point);
+uint64_t process_get_ipc_port(pid_t pid);
 
 #endif // KERNEL_PROCESS_H
 

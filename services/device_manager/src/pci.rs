@@ -149,6 +149,11 @@ pub fn pci_find_class(class_code: u8, subclass: u8, prog_if: u8) -> Option<&'sta
     }
 }
 
+/// Get PCI device by vendor/device ID (alias for pci_find_device)
+pub fn pci_get_device_by_id(vendor_id: u16, device_id: u16) -> Option<&'static PciDevice> {
+    pci_find_device(vendor_id, device_id)
+}
+
 #[cfg(target_arch = "x86_64")]
 unsafe fn syscall_raw(num: u64, arg1: u64, arg2: u64, arg3: u64, arg4: u64, arg5: u64) -> u64 {
     let ret: u64;

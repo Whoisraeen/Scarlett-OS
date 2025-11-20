@@ -107,23 +107,32 @@ static error_code_t ethernet_nic_init(ethernet_nic_t* nic) {
     kinfo("Initializing Ethernet NIC (Vendor: 0x%04x, Device: 0x%04x)\n",
           nic->pci_dev->vendor_id, nic->pci_dev->device_id);
     
-    // Get MMIO base from BAR0
-    uint64_t bar0 = nic->pci_dev->bars[0];
-    if (bar0 & 1) {
+    // Decode BAR0 to get MMIO base address
+    extern error_code_t pci_decode_bar(pci_device_t* dev, uint8_t bar_index, pci_bar_info_t* info);
+    pci_bar_info_t bar_info;
+    
+    if (pci_decode_bar(nic->pci_dev, 0, &bar_info) != ERR_OK) {
+        kwarn("Ethernet: Failed to decode BAR0\n");
+        return ERR_INVALID_STATE;
+    }
+    
+    if (bar_info.is_io) {
         // I/O port BAR - not supported yet
         kwarn("Ethernet: I/O port BAR not supported\n");
         return ERR_NOT_SUPPORTED;
     }
     
-    // Extract MMIO address
-    uint64_t mmio_addr = bar0 & ~0xF;
-    if (mmio_addr == 0) {
+    if (bar_info.base_address == 0) {
         kwarn("Ethernet: No MMIO address in BAR0\n");
         return ERR_INVALID_STATE;
     }
     
-    // Map MMIO to virtual address
-    nic->mmio_base = (void*)(0xFFFF800000000000ULL + mmio_addr);  // Use kernel mapping
+    // Map MMIO to virtual address (use kernel mapping for now)
+    // TODO: Use proper VMM mapping with MMIO flags
+    nic->mmio_base = (void*)(0xFFFF800000000000ULL + bar_info.base_address);
+    
+    kinfo("Ethernet: MMIO base: 0x%llx, size: 0x%llx\n", 
+          bar_info.base_address, bar_info.size);
     
     // Get MAC address
     error_code_t err = ethernet_get_mac_from_pci(nic, nic->mac_address);

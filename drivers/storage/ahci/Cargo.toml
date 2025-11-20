@@ -1,15 +1,15 @@
 [package]
-name = "ahci_driver"
+name = "ahci-driver"
 version = "0.1.0"
 edition = "2021"
 
 [lib]
 name = "ahci_driver"
-crate-type = ["staticlib"]
+path = "src/lib.rs"
 
 [[bin]]
-name = "ahci_driver"
+name = "ahci"
 path = "src/main.rs"
 
 [dependencies]
-
+driver-framework = { path = "../../framework" }

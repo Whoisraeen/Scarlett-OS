@@ -191,6 +191,7 @@ COMMON_C_SRCS = core/main.c \
                 process/process.c \
                 process/user_mode.c \
                 process/fork_exec.c \
+                process/spawn.c \
                 loader/elf.c \
                 shell/shell.c \
                 fs/vfs.c \

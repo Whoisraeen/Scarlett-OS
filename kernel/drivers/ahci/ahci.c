@@ -173,11 +173,12 @@ error_code_t ahci_init(void) {
     memset(ahci_ports, 0, sizeof(ahci_ports));
     ahci_port_count = 0;
     
-    // TODO: Detect AHCI controllers via PCI
-    // For now, placeholder
-    kinfo("AHCI: PCI enumeration not yet implemented\n");
+    // Ensure PCI is enumerated first
+    extern error_code_t pci_enumerate(void);
+    pci_enumerate();
     
-    return ERR_OK;
+    // Detect AHCI controllers via PCI
+    return ahci_detect_controllers();
 }
 
 /**
@@ -203,24 +204,44 @@ error_code_t ahci_detect_controllers(void) {
         kinfo("AHCI: Found controller at %02x:%02x.%x\n",
               dev->bus, dev->device, dev->function);
         
-        // Get MMIO base address from BAR5
-        uint64_t mmio_base = dev->bars[5] & ~0xFFF;  // Clear lower 12 bits (4KB aligned)
-        if (mmio_base == 0 || mmio_base == 0xFFFFFFFF) {
-            kerror("AHCI: Invalid MMIO base address\n");
+        // Decode BAR5 (AHCI MMIO base address)
+        // Note: AHCI typically uses BAR5, but let's check BAR0 first (more common)
+        pci_bar_info_t bar_info;
+        error_code_t bar_result = ERR_NOT_FOUND;
+        
+        // Try BAR0 first (most common)
+        if (pci_decode_bar(dev, 0, &bar_info) == ERR_OK && !bar_info.is_io) {
+            bar_result = ERR_OK;
+        } else if (pci_decode_bar(dev, 5, &bar_info) == ERR_OK && !bar_info.is_io) {
+            // Fall back to BAR5
+            bar_result = ERR_OK;
+        }
+        
+        if (bar_result != ERR_OK || bar_info.base_address == 0) {
+            kerror("AHCI: Failed to find valid MMIO BAR\n");
             continue;
         }
         
-        // Map MMIO region (simplified - assume identity mapped for now)
+        // Map MMIO region to kernel address space
+        // For now, assume identity mapping (will be improved with proper VMM mapping later)
         ahci_controller_t* ctrl = &ahci_controllers[controller_idx];
-        ctrl->base_address = mmio_base;
+        ctrl->base_address = bar_info.base_address;
         ctrl->capabilities = ahci_read32(ctrl, AHCI_CAP);
         ctrl->num_ports = ((ctrl->capabilities & AHCI_CAP_NP_MASK) >> AHCI_CAP_NP_SHIFT) + 1;
         ctrl->present = true;
         
-        kinfo("AHCI: Controller %u - MMIO: 0x%llx, Ports: %u\n",
-              controller_idx, mmio_base, ctrl->num_ports);
+        kinfo("AHCI: Controller %u - MMIO: 0x%llx, Size: 0x%llx, Ports: %u\n",
+              controller_idx, bar_info.base_address, bar_info.size, ctrl->num_ports);
+        
+        // Enable AHCI mode in GHC register
+        uint32_t ghc = ahci_read32(ctrl, AHCI_GHC);
+        if (!(ghc & (1 << 31))) {  // Check if AHCI is already enabled
+            ahci_write32(ctrl, AHCI_GHC, ghc | (1 << 31));  // Enable AHCI
+            kinfo("AHCI: Enabled AHCI mode\n");
+        }
         
         // TODO: Initialize ports and detect devices
+        // This requires setting up command lists, FIS, and port initialization
         // For now, just mark controller as present
         
         controller_idx++;

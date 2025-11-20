@@ -1,6 +1,8 @@
 //! VFS Service Library
 
 pub mod vfs;
+pub mod block_device;
+pub mod syscalls;
 
 pub use crate::ipc::{IpcMessage, IPC_MSG_REQUEST, IPC_MSG_RESPONSE};
 use vfs::{vfs_init, vfs_mount, allocate_fd, free_fd, get_fd_entry, resolve_path};

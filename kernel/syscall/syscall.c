@@ -611,6 +611,40 @@ uint64_t syscall_handler(uint64_t syscall_num, uint64_t arg1, uint64_t arg2,
             return (uint64_t)shared_memory_get_info(shm_id, size, refcount);
         }
         
+        case SYS_SPAWN_PROCESS: {
+            // arg1 = name, arg2 = path, arg3 = entry_point
+            const char* name = (const char*)arg1;
+            const char* path = (const char*)arg2;
+            vaddr_t entry_point = (vaddr_t)arg3;
+            
+            // Validate arguments
+            if (!validate_user_ptr((void*)name, 64)) {
+                return (uint64_t)ERR_INVALID_ARG;
+            }
+            if (path && !validate_user_ptr((void*)path, 256)) {
+                return (uint64_t)ERR_INVALID_ARG;
+            }
+            
+            extern pid_t process_spawn(const char* name, const char* path, vaddr_t entry_point);
+            pid_t pid = process_spawn(name, path, entry_point);
+            
+            if (pid < 0) {
+                return (uint64_t)ERR_OUT_OF_MEMORY;
+            }
+            
+            return (uint64_t)pid;
+        }
+        
+        case SYS_GET_PROCESS_IPC_PORT: {
+            // arg1 = pid
+            pid_t pid = (pid_t)arg1;
+            
+            extern uint64_t process_get_ipc_port(pid_t pid);
+            uint64_t port = process_get_ipc_port(pid);
+            
+            return port;  // 0 on error
+        }
+        
         default:
             kwarn("Unknown system call: %lu\n", syscall_num);
             return (uint64_t)ERR_INVALID_SYSCALL;

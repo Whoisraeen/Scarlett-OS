@@ -1,0 +1,12 @@
+[package]
+name = "ethernet-driver"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "ethernet"
+path = "src/main.rs"
+
+[dependencies]
+driver-framework = { path = "../../framework" }
+
