@@ -108,6 +108,18 @@ void timer_enable_scheduler(void) {
     __asm__ volatile("nop; nop; nop;");
 }
 
+// Timer callback function pointer
+static void (*timer_callback)(void) = NULL;
+
+/**
+ * Set timer callback (for scheduler ticks)
+ */
+void timer_set_callback(void (*callback)(void)) {
+    timer_callback = callback;
+    // Enable scheduler ticks when callback is set
+    timer_enable_scheduler();
+}
+
 /**
  * Timer interrupt handler (called from interrupt handler)
  */
@@ -119,6 +131,11 @@ void timer_interrupt_handler(void) {
     if (scheduler_ready) {
         extern void scheduler_tick(void);
         scheduler_tick();
+    }
+    
+    // Call registered callback if set
+    if (timer_callback) {
+        timer_callback();
     }
 }
 
@@ -134,6 +151,34 @@ void timer_sleep_ms(uint64_t ms) {
     
     while (timer_ticks < target_ticks) {
         __asm__ volatile("pause");
+    }
+}
+
+/**
+ * Set timer callback (for scheduler ticks)
+ */
+static void (*timer_callback)(void) = NULL;
+
+void timer_set_callback(void (*callback)(void)) {
+    timer_callback = callback;
+    // Enable scheduler ticks when callback is set
+    timer_enable_scheduler();
+}
+
+// Update timer_interrupt_handler to call callback
+void timer_interrupt_handler(void) {
+    timer_ticks++;
+
+    // Call scheduler tick if scheduler is ready
+    // NOTE: Do NOT use kprintf/kinfo here - we're in interrupt context!
+    if (scheduler_ready) {
+        extern void scheduler_tick(void);
+        scheduler_tick();
+    }
+    
+    // Call registered callback if set
+    if (timer_callback) {
+        timer_callback();
     }
 }
 

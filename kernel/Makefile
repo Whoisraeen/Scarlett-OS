@@ -52,6 +52,10 @@ C_SRCS = core/main.c \
          core/math.c \
          core/stdio.c \
          core/multiboot2_parser.c \
+         hal/hal_common.c \
+         hal/hal_wrapper.c \
+         hal/arch_detect.c \
+         hal/x86_64/hal_impl.c \
          hal/x86_64/serial.c \
          hal/x86_64/vga.c \
          hal/x86_64/gdt.c \
@@ -64,8 +68,9 @@ C_SRCS = core/main.c \
          hal/x86_64/ap_startup.c \
          mm/pmm.c \
          mm/bootstrap.c \
-          mm/vmm.c \
-          mm/heap.c \
+         mm/vmm.c \
+         mm/heap.c \
+          mm/slab.c \
           mm/dma.c
 
 # Phase 2 sources

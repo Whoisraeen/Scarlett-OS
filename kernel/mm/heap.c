@@ -9,10 +9,12 @@
 #include "../include/types.h"
 #include "../include/config.h"
 #include "../include/mm/heap.h"
+#include "../include/mm/slab.h"
 #include "../include/mm/pmm.h"
 #include "../include/mm/vmm.h"
 #include "../include/kprintf.h"
 #include "../include/debug.h"
+#include "../include/sync/spinlock.h"
 
 // Block header
 typedef struct heap_block {
@@ -105,6 +107,10 @@ static void coalesce_free_blocks(void) {
 void heap_init(void) {
     kinfo("Initializing kernel heap...\n");
 
+    // Initialize slab allocator first
+    extern void slab_init(void);
+    slab_init();
+
     // Expand heap initially (vmm_map_page with NULL uses kernel address space)
     if (expand_heap(HEAP_INITIAL_SIZE) != 0) {
         kerror("Heap: Failed to expand heap\n");
@@ -128,6 +134,16 @@ void heap_init(void) {
 void* kmalloc(size_t size) {
     if (size == 0) {
         return NULL;
+    }
+    
+    // Use slab allocator for small objects (<= 4KB)
+    if (size <= 4096) {
+        extern void* slab_alloc(size_t size);
+        void* ptr = slab_alloc(size);
+        if (ptr) {
+            return ptr;
+        }
+        // Fall through to regular heap if slab allocation fails
     }
     
     // Align size
@@ -213,24 +229,42 @@ void kfree(void* ptr) {
         return;
     }
     
+    // Try to free from slab allocator first
+    // We need to check if this pointer is in a slab page
+    // For now, we'll check the heap magic first, and if it fails, try slab
     heap_block_t* block = (heap_block_t*)((uint8_t*)ptr - BLOCK_HEADER_SIZE);
     
-    // Validate magic
-    if (block->magic != HEAP_MAGIC) {
-        kerror("Heap: Invalid free (bad magic): %p\n", ptr);
+    // Check if this looks like a heap block
+    if (block->magic == HEAP_MAGIC) {
+        // It's a heap block
+        if (block->free) {
+            kwarn("Heap: Double free detected: %p\n", ptr);
+            return;
+        }
+        
+        block->free = true;
+        heap_used_size -= block->size + BLOCK_HEADER_SIZE;
+        
+        // Coalesce
+        coalesce_free_blocks();
         return;
     }
     
-    if (block->free) {
-        kwarn("Heap: Double free detected: %p\n", ptr);
-        return;
+    // Not a heap block, try slab allocator
+    // Check if pointer is in a valid address range for slab pages
+    // Slab pages are allocated from heap, so they're in heap address space
+    // We'll let slab_free handle validation
+    extern void slab_free(void* ptr, size_t size);
+    
+    // Try to determine size by checking which slab cache this might belong to
+    // This is a heuristic - in production, we'd store size metadata
+    // For now, we'll search through slab caches
+    extern bool slab_try_free(void* ptr);
+    if (slab_try_free(ptr)) {
+        return;  // Successfully freed from slab
     }
     
-    block->free = true;
-    heap_used_size -= block->size + BLOCK_HEADER_SIZE;
-    
-    // Coalesce
-    coalesce_free_blocks();
+    kerror("Heap: Invalid free (unknown allocator): %p\n", ptr);
 }
 
 /**

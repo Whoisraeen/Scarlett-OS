@@ -491,7 +491,7 @@ Run multiple user-space processes with IPC communication.
 - [x] Copy-on-write
 - [x] Memory-mapped files foundation
 - [x] DMA infrastructure
-- [ ] Kernel memory allocator optimization
+- [x] Kernel memory allocator optimization
 
 **Success Criteria:**
 Efficient multi-core operation with proper synchronization.
@@ -504,10 +504,10 @@ Efficient multi-core operation with proper synchronization.
 - Establish portability patterns
 
 **Deliverables:**
-- [ ] Complete HAL interface definition
-- [ ] Refactor x86_64 code into HAL
-- [ ] ARM64 HAL implementation (basic)
-- [ ] Architecture detection framework
+- [x] Complete HAL interface definition
+- [x] Refactor x86_64 code into HAL
+- [x] ARM64 HAL implementation (basic)
+- [x] Architecture detection framework
 - [ ] Build system for multi-arch
 - [ ] Boot on ARM64 (Raspberry Pi or QEMU)
 

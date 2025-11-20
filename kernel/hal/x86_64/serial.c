@@ -100,6 +100,24 @@ bool serial_has_data(void) {
 }
 
 /**
+ * Read a character from serial port (non-blocking)
+ * @return Character or -1 if no data available
+ */
+int serial_read_char(void) {
+    if (!serial_has_data()) {
+        return -1;
+    }
+    return (int)inb(COM1_PORT + COM_DATA_REG);
+}
+
+/**
+ * Write a character to serial port (HAL interface)
+ */
+void serial_write_char(char c) {
+    serial_putc(c);
+}
+
+/**
  * Read a character from serial port (blocking)
  */
 char serial_getc(void) {
