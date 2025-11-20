@@ -19,6 +19,7 @@
 #include "../include/hal/irq_handler.h"
 #include "../include/mm/pmm.h"
 #include "../include/mm/vmm.h"
+#include "../include/mm/dma.h"
 #include "../include/process.h"
 
 /**
@@ -473,45 +474,19 @@ uint64_t syscall_handler(uint64_t syscall_num, uint64_t arg1, uint64_t arg2,
         }
         
         case SYS_DMA_ALLOC: {
-            // Allocate DMA buffer (contiguous physical memory)
-            extern paddr_t pmm_alloc_pages(size_t count);
+            // Allocate DMA buffer using DMA subsystem
+            extern void* dma_alloc(size_t size, uint32_t flags);
             size_t size = (size_t)arg1;
-            size_t pages = (size + 4095) / 4096;  // Round up to pages
-            paddr_t paddr = pmm_alloc_pages(pages);
-            if (paddr == 0) {
-                return 0;  // Allocation failed
-            }
-            // Map to user-space virtual address
-            extern int vmm_map_pages(address_space_t* as, vaddr_t vaddr, paddr_t paddr, size_t count, uint64_t flags);
-            extern address_space_t* process_get_address_space(process_t* proc);
-            extern process_t* process_get_current(void);
-            process_t* proc = process_get_current();
-            if (!proc) {
-                return 0;
-            }
-            address_space_t* as = process_get_address_space(proc);
-            if (!as) {
-                return 0;
-            }
-            // Allocate virtual address (simplified - would use proper allocator)
-            vaddr_t vaddr = 0x40000000;  // User-space DMA region
-            uint64_t flags = VMM_PRESENT | VMM_WRITE | VMM_USER | VMM_NOCACHE;
-            if (vmm_map_pages(as, vaddr, paddr, pages, flags) != 0) {
-                return 0;
-            }
+            uint32_t flags = (uint32_t)arg2;
+            void* vaddr = dma_alloc(size, flags);
             return (uint64_t)vaddr;
         }
         
         case SYS_DMA_FREE: {
-            // Free DMA buffer
-            vaddr_t vaddr = (vaddr_t)arg1;
-            size_t size = (size_t)arg2;
-            size_t pages = (size + 4095) / 4096;
-            extern address_space_t* process_get_address_space(process_t* proc);
-            extern process_t* process_get_current(void);
-            extern paddr_t vmm_get_physical(address_space_t* as, vaddr_t vaddr);
-            extern void pmm_free_pages(paddr_t base, size_t count);
-            extern int vmm_unmap_pages(address_space_t* as, vaddr_t vaddr, size_t count);
+            // Free DMA buffer using DMA subsystem
+            extern int dma_free(void* vaddr);
+            void* vaddr = (void*)arg1;
+            return (uint64_t)dma_free(vaddr);
             process_t* proc = process_get_current();
             if (!proc) {
                 return (uint64_t)-1;
@@ -587,6 +562,53 @@ uint64_t syscall_handler(uint64_t syscall_num, uint64_t arg1, uint64_t arg2,
             uint64_t cap_id = arg1;
             uint32_t right = (uint32_t)arg2;
             return (uint64_t)capability_check(cap_id, right);
+        }
+        
+        case SYS_SHM_CREATE: {
+            // Create shared memory region
+            extern uint64_t shared_memory_create(size_t size, uint32_t flags);
+            size_t size = (size_t)arg1;
+            uint32_t flags = (uint32_t)arg2;
+            return shared_memory_create(size, flags);
+        }
+        
+        case SYS_SHM_MAP: {
+            // Map shared memory region
+            extern vaddr_t shared_memory_map(uint64_t shm_id, vaddr_t vaddr, uint32_t flags);
+            uint64_t shm_id = arg1;
+            vaddr_t vaddr = (vaddr_t)arg2;
+            uint32_t flags = (uint32_t)arg3;
+            return (uint64_t)shared_memory_map(shm_id, vaddr, flags);
+        }
+        
+        case SYS_SHM_UNMAP: {
+            // Unmap shared memory region
+            extern int shared_memory_unmap(uint64_t shm_id, vaddr_t vaddr);
+            uint64_t shm_id = arg1;
+            vaddr_t vaddr = (vaddr_t)arg2;
+            return (uint64_t)shared_memory_unmap(shm_id, vaddr);
+        }
+        
+        case SYS_SHM_DESTROY: {
+            // Destroy shared memory region
+            extern int shared_memory_destroy(uint64_t shm_id);
+            uint64_t shm_id = arg1;
+            return (uint64_t)shared_memory_destroy(shm_id);
+        }
+        
+        case SYS_SHM_GET_INFO: {
+            // Get shared memory region info
+            extern int shared_memory_get_info(uint64_t shm_id, size_t* size, size_t* refcount);
+            uint64_t shm_id = arg1;
+            size_t* size = (size_t*)arg2;
+            size_t* refcount = (size_t*)arg3;
+            
+            if (!validate_user_ptr(size, sizeof(size_t)) || 
+                !validate_user_ptr(refcount, sizeof(size_t))) {
+                return (uint64_t)ERR_INVALID_ARG;
+            }
+            
+            return (uint64_t)shared_memory_get_info(shm_id, size, refcount);
         }
         
         default:

@@ -319,6 +319,16 @@ skip_boot_info:
     extern void ipc_init(void);
     kinfo("Initializing IPC System...\n");
     ipc_init();
+    
+    // Initialize shared memory system
+    extern void shared_memory_init(void);
+    kinfo("Initializing Shared Memory...\n");
+    shared_memory_init();
+    
+    // Initialize DMA subsystem
+    extern void dma_init(void);
+    kinfo("Initializing DMA subsystem...\n");
+    dma_init();
 
     // System Calls
     extern void syscall_init(void);

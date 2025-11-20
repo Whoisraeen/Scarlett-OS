@@ -395,10 +395,16 @@ int vmm_unmap_page(address_space_t* as, vaddr_t vaddr) {
     }
     
     uint64_t* pte = get_page_table_entry(as->pml4, vaddr, 4, false);
-    if (!pte) {
-        kerror("VMM: Failed to get PTE for unmapping vaddr 0x%lx\n", vaddr);
-        return -1;
+    if (!pte || !(*pte & VMM_PRESENT)) {
+        return -1;  // Page not mapped
     }
+    
+    // Get physical address before unmapping
+    paddr_t paddr = *pte & 0xFFFFFFFFF000ULL;
+    
+    // Free the physical page (will decrement reference count)
+    extern void pmm_free_page(paddr_t page);
+    pmm_free_page(paddr);
     
     *pte = 0;
     vmm_flush_tlb_single(vaddr);
@@ -473,5 +479,95 @@ void vmm_flush_tlb_all(void) {
  */
 address_space_t* vmm_get_kernel_address_space(void) {
     return &kernel_address_space;
+}
+
+/**
+ * Mark a page as Copy-on-Write (remove write permission, set CoW flag)
+ */
+int vmm_mark_cow(address_space_t* as, vaddr_t vaddr) {
+    if (!as) {
+        as = &kernel_address_space;
+    }
+    
+    uint64_t* pte = get_page_table_entry(as->pml4, vaddr, 4, false);
+    if (!pte || !(*pte & VMM_PRESENT)) {
+        return -1;
+    }
+    
+    // Increment reference count for the physical page
+    paddr_t paddr = *pte & 0xFFFFFFFFF000ULL;
+    extern void pmm_ref_page(paddr_t page);
+    pmm_ref_page(paddr);
+    
+    // Remove write permission and set CoW flag
+    uint64_t flags = *pte & ~VMM_WRITE;
+    flags |= VMM_COW;
+    *pte = flags;
+    
+    vmm_flush_tlb_single(vaddr);
+    
+    return 0;
+}
+
+/**
+ * Get current address space (from current process)
+ */
+static address_space_t* vmm_get_current_address_space(void) {
+    extern process_t* process_get_current(void);
+    extern address_space_t* process_get_address_space(process_t* proc);
+    process_t* proc = process_get_current();
+    if (proc) {
+        return process_get_address_space(proc);
+    }
+    return &kernel_address_space;
+}
+
+/**
+ * Handle Copy-on-Write page fault
+ */
+int vmm_handle_cow_fault(vaddr_t vaddr) {
+    address_space_t* as = vmm_get_current_address_space();
+    
+    uint64_t* pte = get_page_table_entry(as->pml4, vaddr, 4, false);
+    if (!pte || !(*pte & VMM_PRESENT)) {
+        return -1;  // Not a CoW fault
+    }
+    
+    // Check if this is a CoW page
+    if (!(*pte & VMM_COW)) {
+        return -1;  // Not a CoW fault
+    }
+    
+    // Get the original physical page
+    paddr_t old_paddr = *pte & 0xFFFFFFFFF000ULL;
+    
+    // Allocate a new physical page
+    extern paddr_t pmm_alloc_page(void);
+    paddr_t new_paddr = pmm_alloc_page();
+    if (new_paddr == 0) {
+        kerror("CoW: Out of memory\n");
+        return -1;
+    }
+    
+    // Copy page contents
+    extern uint8_t* phys_to_virt(paddr_t paddr);
+    uint8_t* old_virt = (uint8_t*)(old_paddr + PHYS_MAP_BASE);
+    uint8_t* new_virt = (uint8_t*)(new_paddr + PHYS_MAP_BASE);
+    
+    extern void* memcpy(void* dest, const void* src, size_t n);
+    memcpy(new_virt, old_virt, PAGE_SIZE);
+    
+    // Update page table entry: restore write permission, clear CoW flag
+    uint64_t flags = *pte & ~VMM_COW;
+    flags |= VMM_WRITE;
+    *pte = (new_paddr & 0xFFFFFFFFF000ULL) | flags;
+    
+    // Decrement reference count on old page
+    extern void pmm_free_page(paddr_t page);
+    pmm_free_page(old_paddr);
+    
+    vmm_flush_tlb_single(vaddr);
+    
+    return 0;
 }
 

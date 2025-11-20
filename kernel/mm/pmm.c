@@ -17,6 +17,9 @@
 #define MAX_PAGES (16 * 1024 * 256) // Support up to 16GB of RAM
 static uint8_t page_bitmap[MAX_PAGES / 8];
 
+// Reference counting for Copy-on-Write
+static uint16_t page_refcount[MAX_PAGES];
+
 // Statistics
 static size_t total_pages = 0;
 static size_t free_pages = 0;
@@ -109,6 +112,11 @@ void pmm_init(boot_info_t* boot_info) {
         page_bitmap[i] = 0xFF; // Mark all as used initially
     }
     
+    // Initialize reference counts
+    for (size_t i = 0; i < MAX_PAGES; i++) {
+        page_refcount[i] = 0;
+    }
+    
     // Find highest physical address in CONVENTIONAL memory only
     // Ignore device memory regions (framebuffer, etc.) for total_pages calculation
     for (uint32_t i = 0; i < boot_info->memory_map_count; i++) {
@@ -185,6 +193,7 @@ paddr_t pmm_alloc_page(void) {
     for (pfn_t pfn = start_pfn; pfn < total_pages; pfn++) {
         if (!bitmap_test(pfn)) {
             bitmap_set(pfn);
+            page_refcount[pfn] = 1;  // Initialize reference count
             free_pages--;
             used_pages++;
             last_allocated = pfn + 1;
@@ -196,6 +205,7 @@ paddr_t pmm_alloc_page(void) {
     for (pfn_t pfn = (1 * 1024 * 1024) / PAGE_SIZE; pfn < start_pfn; pfn++) {
         if (!bitmap_test(pfn)) {
             bitmap_set(pfn);
+            page_refcount[pfn] = 1;  // Initialize reference count
             free_pages--;
             used_pages++;
             last_allocated = pfn + 1;
@@ -269,9 +279,43 @@ void pmm_free_page(paddr_t page) {
         return;
     }
     
-    bitmap_clear(pfn);
-    free_pages++;
-    used_pages--;
+    // Decrement reference count
+    if (page_refcount[pfn] > 0) {
+        page_refcount[pfn]--;
+    }
+    
+    // Only actually free if reference count reaches zero
+    if (page_refcount[pfn] == 0) {
+        bitmap_clear(pfn);
+        free_pages++;
+        used_pages--;
+    }
+}
+
+/**
+ * Increment reference count for a page (for Copy-on-Write)
+ */
+void pmm_ref_page(paddr_t page) {
+    if (page == 0) return;
+    
+    pfn_t pfn = PADDR_TO_PFN(page);
+    if (pfn >= total_pages) return;
+    
+    if (page_refcount[pfn] < 65535) {  // Prevent overflow
+        page_refcount[pfn]++;
+    }
+}
+
+/**
+ * Get reference count for a page
+ */
+uint16_t pmm_get_refcount(paddr_t page) {
+    if (page == 0) return 0;
+    
+    pfn_t pfn = PADDR_TO_PFN(page);
+    if (pfn >= total_pages) return 0;
+    
+    return page_refcount[pfn];
 }
 
 /**

@@ -19,6 +19,7 @@
 #define VMM_DIRTY      (1ULL << 6)
 #define VMM_HUGE       (1ULL << 7)
 #define VMM_GLOBAL     (1ULL << 8)
+#define VMM_COW        (1ULL << 9)  // Copy-on-Write flag (software-defined, bit 9)
 #define VMM_NX         (1ULL << 63)
 
 // Virtual address space structure
@@ -87,6 +88,21 @@ void vmm_flush_tlb_all(void);
  * Get kernel address space
  */
 address_space_t* vmm_get_kernel_address_space(void);
+
+/**
+ * Handle Copy-on-Write page fault
+ * @param vaddr Virtual address that caused the fault
+ * @return 0 on success, -1 on error
+ */
+int vmm_handle_cow_fault(vaddr_t vaddr);
+
+/**
+ * Mark a page as Copy-on-Write (remove write permission, set CoW flag)
+ * @param as Address space
+ * @param vaddr Virtual address
+ * @return 0 on success, -1 on error
+ */
+int vmm_mark_cow(address_space_t* as, vaddr_t vaddr);
 
 #endif // KERNEL_MM_VMM_H
 

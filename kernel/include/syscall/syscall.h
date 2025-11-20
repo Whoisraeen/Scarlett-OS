@@ -49,9 +49,14 @@
 #define SYS_MMIO_UNMAP 37
 #define SYS_CAPABILITY_CREATE 38
 #define SYS_CAPABILITY_CHECK 39
+#define SYS_SHM_CREATE 40
+#define SYS_SHM_MAP 41
+#define SYS_SHM_UNMAP 42
+#define SYS_SHM_DESTROY 43
+#define SYS_SHM_GET_INFO 44
 
 // Maximum syscall number
-#define SYS_MAX         39
+#define SYS_MAX         44
 
 /**
  * Initialize system call handling

@@ -429,13 +429,13 @@ Desktop Environment
 **Deliverables:**
 - [x] UEFI bootloader (Limine)
 - [x] Legacy BIOS bootloader (Limine)
-- [ ] Kernel entry point and initialization
-- [ ] Physical memory manager
-- [ ] Virtual memory manager (paging)
-- [ ] Basic serial console output
-- [ ] Early debugging infrastructure
-- [ ] GDT/IDT setup
-- [ ] Exception handling
+- [x] Kernel entry point and initialization
+- [x] Physical memory manager
+- [x] Virtual memory manager (paging)
+- [x] Basic serial console output
+- [x] Early debugging infrastructure
+- [x] GDT/IDT setup
+- [x] Exception handling
 
 **Success Criteria:**
 Boot to a kernel that can print to serial console and manage memory.
@@ -448,14 +448,14 @@ Boot to a kernel that can print to serial console and manage memory.
 - Thread/process management
 
 **Deliverables:**
-- [ ] Scheduler (single-core initially)
-- [ ] Process/thread creation and management
-- [ ] IPC message passing
-- [ ] Capability system foundation
-- [ ] System call interface
-- [ ] Synchronization primitives
-- [ ] Timer subsystem
-- [ ] User-space transition
+- [x] Scheduler (single-core initially)
+- [x] Process/thread creation and management
+- [x] IPC message passing
+- [x] Capability system foundation
+- [x] System call interface
+- [x] Synchronization primitives
+- [x] Timer subsystem
+- [x] User-space transition
 
 **Success Criteria:**
 **Success Criteria:**
@@ -484,13 +484,13 @@ Run multiple user-space processes with IPC communication.
 - Performance optimization
 
 **Deliverables:**
-- [ ] Multi-core boot and synchronization
-- [ ] Per-CPU data structures
-- [ ] SMP-safe scheduler
-- [ ] Shared memory IPC
-- [ ] Copy-on-write
-- [ ] Memory-mapped files foundation
-- [ ] DMA infrastructure
+- [x] Multi-core boot and synchronization
+- [x] Per-CPU data structures
+- [x] SMP-safe scheduler
+- [x] Shared memory IPC
+- [x] Copy-on-write
+- [x] Memory-mapped files foundation
+- [x] DMA infrastructure
 - [ ] Kernel memory allocator optimization
 
 **Success Criteria:**

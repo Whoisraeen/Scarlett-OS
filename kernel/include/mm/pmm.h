@@ -63,6 +63,19 @@ size_t pmm_get_free_pages(void);
 size_t pmm_get_total_pages(void);
 
 /**
+ * Increment reference count for a page (for Copy-on-Write)
+ * @param page Physical address of page
+ */
+void pmm_ref_page(paddr_t page);
+
+/**
+ * Get reference count for a page
+ * @param page Physical address of page
+ * @return Reference count
+ */
+uint16_t pmm_get_refcount(paddr_t page);
+
+/**
  * Convert physical address to page frame number
  */
 #define PADDR_TO_PFN(addr) ((addr) >> PAGE_SHIFT)

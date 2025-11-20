@@ -32,11 +32,10 @@ pid_t process_fork(process_t* parent) {
         return -1;
     }
     
-    // Copy parent's address space (copy-on-write would be better, but for now copy)
-    // TODO: Implement copy-on-write
-    // For now, we'll create a new address space and copy pages
+    // Copy parent's address space using Copy-on-Write
+    // Map child's pages to same physical pages as parent, marked as CoW
     
-    // Copy stack
+    // Copy stack using CoW
     size_t stack_pages = (parent->stack_size + PAGE_SIZE - 1) / PAGE_SIZE;
     for (size_t i = 0; i < stack_pages; i++) {
         vaddr_t parent_vaddr = parent->stack_base + (i * PAGE_SIZE);
@@ -50,27 +49,23 @@ pid_t process_fork(process_t* parent) {
             return -1;
         }
         
-        // Allocate new page for child
-        paddr_t child_paddr = pmm_alloc_page();
-        if (child_paddr == 0) {
-            kerror("Fork: Out of memory\n");
-            process_destroy(child);
-            return -1;
-        }
+        // Increment reference count for the physical page
+        extern void pmm_ref_page(paddr_t page);
+        pmm_ref_page(parent_paddr);
         
-        // Map child's page (stack pages are non-executable)
-        if (vmm_map_page(child->address_space, child_vaddr, child_paddr,
-                        VMM_PRESENT | VMM_WRITE | VMM_USER | VMM_NX) != 0) {
+        // Map child's page to same physical page, but mark as CoW (no write permission)
+        // Stack pages are non-executable
+        uint64_t flags = VMM_PRESENT | VMM_USER | VMM_NX | VMM_COW;
+        if (vmm_map_page(child->address_space, child_vaddr, parent_paddr, flags) != 0) {
             kerror("Fork: Failed to map child page\n");
-            pmm_free_page(child_paddr);
+            pmm_free_page(parent_paddr);  // Decrement ref count
             process_destroy(child);
             return -1;
         }
         
-        // Copy page contents
-        uint8_t* parent_data = (uint8_t*)(parent_paddr + PHYS_MAP_BASE);
-        uint8_t* child_data = (uint8_t*)(child_paddr + PHYS_MAP_BASE);
-        memcpy(child_data, parent_data, PAGE_SIZE);
+        // Mark parent's page as CoW too (if not already)
+        extern int vmm_mark_cow(address_space_t* as, vaddr_t vaddr);
+        vmm_mark_cow(parent->address_space, parent_vaddr);
     }
     
     // Copy other process attributes

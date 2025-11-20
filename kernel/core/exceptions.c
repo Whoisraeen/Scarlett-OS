@@ -96,6 +96,15 @@ void exception_handler_c(exception_frame_t* frame) {
     if (frame->exception_num == 14) {
         uint64_t cr2;
         __asm__ volatile("mov %%cr2, %0" : "=r"(cr2));
+        
+        // Try to handle Copy-on-Write fault
+        extern int vmm_handle_cow_fault(vaddr_t vaddr);
+        if (vmm_handle_cow_fault((vaddr_t)cr2) == 0) {
+            // CoW fault handled successfully, return from exception
+            return;
+        }
+        
+        // Not a CoW fault, print debug info
         kprintf("Page Fault Address: 0x%016lx\n", cr2);
         
         kprintf("Fault Type: ");

@@ -64,8 +64,9 @@ C_SRCS = core/main.c \
          hal/x86_64/ap_startup.c \
          mm/pmm.c \
          mm/bootstrap.c \
-         mm/vmm.c \
-         mm/heap.c
+          mm/vmm.c \
+          mm/heap.c \
+          mm/dma.c
 
 # Phase 2 sources
 ASM_SRCS += hal/x86_64/context_switch.S \
@@ -76,6 +77,7 @@ C_SRCS += sched/scheduler.c \
           sched/cpu_affinity.c \
           sched/work_stealing.c \
           ipc/ipc.c \
+          ipc/shared_memory.c \
           syscall/syscall.c \
           syscall/registry.c \
           process/process.c \
