@@ -11,7 +11,16 @@
 // VMM headers not needed here - framebuffer uses identity mapping from bootloader
 
 // Global framebuffer instance
-static framebuffer_t g_framebuffer = {0};
+// NOTE: Explicitly initialized to move to .data section instead of .bss
+// This prevents it from being zeroed after framebuffer_init() is called
+static framebuffer_t g_framebuffer = {
+    .base_address = NULL,
+    .width = 0,
+    .height = 0,
+    .pitch = 0,
+    .bpp = 0,
+    .initialized = false
+};
 
 /**
  * Initialize framebuffer from boot info

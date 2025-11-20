@@ -13,7 +13,15 @@
 #include "../include/errors.h"
 #include "../include/mm/vmm.h"
 #include "../include/mm/pmm.h"
+#include "../include/desktop/desktop.h"
+#include "../include/desktop/taskbar.h"
+#include "../include/desktop/login.h"
+#include "../include/window/window.h"
+#include "../include/graphics/graphics.h"
 #include "../../bootloader/common/boot_info.h"
+#include "../include/desktop/desktop.h"
+#include "../include/desktop/taskbar.h"
+#include "../include/graphics/graphics.h"
 
 // External symbols from linker script
 extern uint8_t _kernel_start[];
@@ -342,27 +350,60 @@ void kernel_main(boot_info_t* boot_info) {
     extern void run_all_tests(void);
     run_all_tests();
     
-        // Launch shell as userspace process
-        kinfo("Launching shell as userspace process...\n");
-        extern error_code_t launch_shell_userspace(void);
-        error_code_t err = launch_shell_userspace();
-        if (err != ERR_OK) {
-            kerror("Failed to launch shell in userspace: %s\n", error_to_string(err));
-            // Fall back to kernel-mode shell for now
-            extern void shell_run(void);
-            kinfo("Falling back to kernel-mode shell...\n");
-            shell_run(); // This will likely not return
-        }
+    // ========================================================================
+    // Desktop Environment Main Loop
+    // ========================================================================
+    kinfo("\n========================================\n");
+    kinfo("Starting Desktop Environment...\n");
+    kinfo("========================================\n");
     
-        // Kernel idle loop.
-        // After launching the first userspace process, the kernel's job is to
-        // handle interrupts and syscalls. The scheduler will give CPU time
-        // to the userspace processes.
-        kinfo("Entering kernel idle loop.\n");
-        while (1) {
-            // Halt the CPU until the next interrupt
-            __asm__ volatile("hlt");
-        }}
+    // Show login screen initially
+    extern error_code_t login_screen_show(void);
+    extern bool login_screen_is_logged_in(void);
+    extern error_code_t login_screen_render(void);
+    extern error_code_t login_screen_handle_input(void);
+    
+    login_screen_show();
+    
+    // Import desktop rendering functions
+    extern error_code_t desktop_render(void);
+    extern error_code_t taskbar_render(void);
+    extern error_code_t window_manager_render_all(void);
+    extern error_code_t window_manager_handle_input(void);
+    extern void gfx_swap_buffers(void);
+    
+    kinfo("Entering main desktop loop...\n");
+    
+    // Main Desktop Loop
+    while (1) {
+        // Handle input events first
+        window_manager_handle_input();
+        
+        // Render desktop background
+        desktop_render();
+        
+        // Check if user is logged in
+        if (!login_screen_is_logged_in()) {
+            // Show login screen
+            login_screen_handle_input();
+            login_screen_render();
+        } else {
+            // User is logged in - show desktop
+            // Render taskbar
+            taskbar_render();
+            
+            // Render all windows
+            window_manager_render_all();
+        }
+        
+        // Swap buffers to display the new frame
+        gfx_swap_buffers();
+        
+        // Small delay to prevent excessive CPU usage
+        // The HLT instruction will pause until the next interrupt (timer, keyboard, etc.)
+        __asm__ volatile("hlt");
+    }
+    }
 
 /**
  * Print kernel banner

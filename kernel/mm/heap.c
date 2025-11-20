@@ -54,6 +54,10 @@ static int expand_heap(size_t needed_size) {
         }
 
         // Map page to kernel address space (NULL = kernel AS)
+        // This will create page tables if needed - VMM should use low memory for page tables
+        // since PHYS_MAP_BASE might not be fully ready yet
+        kdebug("Heap: Mapping page %lu/%lu: virt=0x%016lx -> phys=0x%016lx...\n", 
+               i + 1, pages, heap_current, page);
         int result = vmm_map_page(NULL, heap_current, page,
                                  VMM_PRESENT | VMM_WRITE | VMM_NX);
         if (result != 0) {
@@ -62,6 +66,7 @@ static int expand_heap(size_t needed_size) {
             pmm_free_page(page);
             return -1;
         }
+        kdebug("Heap: Page %lu/%lu mapped successfully\n", i + 1, pages);
 
         heap_current += PAGE_SIZE;
     }

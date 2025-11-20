@@ -25,6 +25,12 @@ void pmm_init(boot_info_t* boot_info);
 paddr_t pmm_alloc_page(void);
 
 /**
+ * Allocate a single physical page in low memory (< 128MB)
+ * @return Physical address of allocated page, or 0 if out of memory
+ */
+paddr_t pmm_alloc_page_low(void);
+
+/**
  * Free a single physical page
  * @param page Physical address of page to free
  */

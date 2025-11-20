@@ -208,6 +208,42 @@ paddr_t pmm_alloc_page(void) {
 }
 
 /**
+ * Allocate a single physical page in low memory (< 128MB)
+ * Used for page tables during VMM initialization
+ */
+paddr_t pmm_alloc_page_low(void) {
+    // Search from 2MB to 128MB
+    pfn_t start_pfn = (2 * 1024 * 1024) / PAGE_SIZE;
+    pfn_t end_pfn = (128 * 1024 * 1024) / PAGE_SIZE;
+    
+    if (end_pfn > total_pages) {
+        end_pfn = total_pages;
+    }
+
+    for (pfn_t pfn = start_pfn; pfn < end_pfn; pfn++) {
+        if (!bitmap_test(pfn)) {
+            bitmap_set(pfn);
+            free_pages--;
+            used_pages++;
+            return PFN_TO_PADDR(pfn);
+        }
+    }
+    
+    // Try 1MB to 2MB as fallback
+    for (pfn_t pfn = (1 * 1024 * 1024) / PAGE_SIZE; pfn < start_pfn; pfn++) {
+        if (!bitmap_test(pfn)) {
+            bitmap_set(pfn);
+            free_pages--;
+            used_pages++;
+            return PFN_TO_PADDR(pfn);
+        }
+    }
+
+    kerror("PMM: Out of low memory (< 128MB)!\n");
+    return 0;
+}
+
+/**
  * Free a single physical page
  */
 void pmm_free_page(paddr_t page) {

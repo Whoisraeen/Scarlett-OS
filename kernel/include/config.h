@@ -21,7 +21,7 @@
 #define PMM_BITMAP_SIZE (PMM_MAX_PAGES / 8)
 
 // Kernel memory layout (virtual addresses)
-#define KERNEL_VMA_BASE         0xFFFFFFFF80000000ULL
+#define KERNEL_VMA_BASE         0x0000000000000000ULL
 #define KERNEL_PHYS_BASE        0x0000000000100000ULL  // 1MB
 #define PHYS_MAP_BASE           0xFFFF800000000000ULL  // Physical memory direct map
 

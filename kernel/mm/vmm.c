@@ -81,20 +81,49 @@ static uint64_t* get_page_table_entry(uint64_t* pml4, vaddr_t vaddr, int level, 
             }
 
             // Allocate new page table
-            // Note: phys_to_virt_pt() handles pages both inside and outside the PHYS_MAP_BASE range
-            // Pages in mapped range use PHYS_MAP_BASE, pages outside use identity mapping
+            // CRITICAL: During VMM initialization (before PHYS_MAP_BASE is ready),
+            // we MUST use low memory (< 128MB) so pages are accessible via identity mapping.
+            // After PHYS_MAP_BASE is ready, we can use any memory as it's all mapped.
             kdebug("VMM: Allocating new page table for vaddr 0x%016lx level %d...\n", vaddr, i);
 
-            paddr_t new_table_phys = pmm_alloc_page();
-            if (new_table_phys == 0) {
-                kerror("VMM: Out of memory for page table\n");
-                return NULL;
+            paddr_t new_table_phys;
+            if (!phys_map_ready) {
+                // Before PHYS_MAP_BASE is ready, use low memory only
+                // This ensures page tables are accessible via identity mapping
+                new_table_phys = pmm_alloc_page_low();
+                if (new_table_phys == 0) {
+                    kerror("VMM: Failed to allocate page table in low memory (phys_map_ready=%d)\n", phys_map_ready);
+                    return NULL;
+                }
+                // Verify it's in low memory
+                if (new_table_phys >= (128 * 1024 * 1024)) {
+                    kerror("VMM: Page table allocated beyond 128MB: 0x%016lx (phys_map_ready=%d)\n", 
+                           new_table_phys, phys_map_ready);
+                    pmm_free_page(new_table_phys);
+                    return NULL;
+                }
+            } else {
+                // After PHYS_MAP_BASE is ready, we can use any memory
+                new_table_phys = pmm_alloc_page();
+                if (new_table_phys == 0) {
+                    kerror("VMM: Out of memory for page table\n");
+                    return NULL;
+                }
             }
 
-            kdebug("VMM: Allocated page table at phys 0x%016lx\n", new_table_phys);
+            kdebug("VMM: Allocated page table at phys 0x%016lx (phys_map_ready=%d)\n", 
+                   new_table_phys, phys_map_ready);
 
             // Access the page table via phys_to_virt_pt (uses PHYS_MAP_BASE or identity mapping)
             uint64_t* virt_table = phys_to_virt_pt(new_table_phys);
+            
+            // Verify we can access the page table
+            if (!virt_table) {
+                kerror("VMM: Failed to convert page table phys 0x%016lx to virt (phys_map_ready=%d)\n",
+                       new_table_phys, phys_map_ready);
+                pmm_free_page(new_table_phys);
+                return NULL;
+            }
             
             // Clear the page table
             for (int j = 0; j < 512; j++) {
@@ -182,7 +211,8 @@ void vmm_init(void) {
 
         // Get or create PDP
         if (!(pml4[pml4_idx] & VMM_PRESENT)) {
-            paddr_t pdp_phys = pmm_alloc_page();
+            // Use low memory for these early page tables
+            paddr_t pdp_phys = pmm_alloc_page_low();
             if (pdp_phys == 0) {
                 kerror("VMM: Out of memory for PDP\n");
                 break;
@@ -197,7 +227,8 @@ void vmm_init(void) {
 
         // Get or create PD
         if (!(pdp[pdp_idx] & VMM_PRESENT)) {
-            paddr_t pd_phys = pmm_alloc_page();
+            // Use low memory for these early page tables
+            paddr_t pd_phys = pmm_alloc_page_low();
             if (pd_phys == 0) {
                 kerror("VMM: Out of memory for PD\n");
                 break;
