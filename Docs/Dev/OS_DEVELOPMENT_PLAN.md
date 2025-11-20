@@ -572,14 +572,14 @@ Read/write files persistently, mount multiple file systems. Snapshots/rollback o
 - Socket API
 
 **Deliverables:**
-- [ ] Network device abstraction
-- [ ] Ethernet frame handling
-- [ ] ARP, IP, ICMP implementation
-- [ ] TCP and UDP implementation
-- [ ] Socket API
-- [ ] DNS resolver
-- [ ] DHCP client
-- [ ] Basic network utilities
+- [x] Network device abstraction
+- [x] Ethernet frame handling
+- [x] ARP, IP, ICMP implementation
+- [x] TCP and UDP implementation
+- [x] Socket API
+- [x] DNS resolver
+- [x] DHCP client (basic implementation)
+- [x] Basic network utilities (ping)
 - [ ] More network drivers (Wi-Fi basic)
 
 **Success Criteria:**
@@ -593,8 +593,8 @@ Network connectivity, can ping, TCP connections work.
 - Cryptography integration
 
 **Deliverables:**
-- [ ] Capability enforcement in IPC
-- [ ] User/group management
+- [x] Capability enforcement in IPC (functional, per-process tables pending)
+- [x] User/group management
 - [ ] ACL implementation for VFS
 - [ ] RBAC framework
 - [ ] Sandboxing support

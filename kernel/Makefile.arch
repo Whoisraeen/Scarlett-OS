@@ -240,6 +240,9 @@ COMMON_C_SRCS = core/main.c \
                 net/tcp.c \
                 net/arp.c \
                 net/icmp.c \
+                net/dns.c \
+                net/dhcp.c \
+                net/ping.c \
                 net/socket.c \
                 desktop/desktop.c \
                 desktop/taskbar.c \

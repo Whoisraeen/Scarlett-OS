@@ -458,6 +458,14 @@ skip_boot_info:
     kinfo("Initializing Socket System...\n");
     socket_init();
     
+    extern error_code_t dns_init(void);
+    kinfo("Initializing DNS Resolver...\n");
+    dns_init();
+    
+    extern error_code_t dhcp_init(void);
+    kinfo("Initializing DHCP Client...\n");
+    dhcp_init();
+    
     // Desktop Environment
     extern error_code_t desktop_init(void);
     kinfo("Initializing Desktop Environment...\n");

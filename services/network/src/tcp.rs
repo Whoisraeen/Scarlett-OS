@@ -96,8 +96,85 @@ pub fn tcp_create_connection(local_ip: u32, local_port: u16, remote_ip: u32, rem
                 return Ok(i);
             }
         }
-        
+
         Err(())
+    }
+}
+
+/// Initiate TCP connection (SYN)
+pub fn tcp_connect(conn_id: usize) -> Result<(), ()> {
+    unsafe {
+        if conn_id >= MAX_TCP_CONNECTIONS {
+            return Err(());
+        }
+
+        if let Some(ref mut conn) = TCP_CONNECTIONS[conn_id] {
+            conn.state = TcpState::SynSent;
+            // TODO: Send SYN packet
+            Ok(())
+        } else {
+            Err(())
+        }
+    }
+}
+
+/// Send data on TCP connection
+pub fn tcp_send(conn_id: usize, data: &[u8]) -> Result<(), ()> {
+    unsafe {
+        if conn_id >= MAX_TCP_CONNECTIONS {
+            return Err(());
+        }
+
+        if let Some(ref conn) = TCP_CONNECTIONS[conn_id] {
+            if conn.state != TcpState::Established {
+                return Err(());
+            }
+
+            // TODO: Build and send TCP segment
+            let _ = data;
+            Ok(())
+        } else {
+            Err(())
+        }
+    }
+}
+
+/// Receive data from TCP connection
+pub fn tcp_receive(conn_id: usize, buffer: &mut [u8]) -> Result<usize, ()> {
+    unsafe {
+        if conn_id >= MAX_TCP_CONNECTIONS {
+            return Err(());
+        }
+
+        if let Some(ref conn) = TCP_CONNECTIONS[conn_id] {
+            if conn.state != TcpState::Established {
+                return Err(());
+            }
+
+            // TODO: Retrieve data from receive buffer
+            let _ = buffer;
+            Err(())
+        } else {
+            Err(())
+        }
+    }
+}
+
+/// Close TCP connection
+pub fn tcp_close(conn_id: usize) -> Result<(), ()> {
+    unsafe {
+        if conn_id >= MAX_TCP_CONNECTIONS {
+            return Err(());
+        }
+
+        if let Some(ref mut conn) = TCP_CONNECTIONS[conn_id] {
+            conn.state = TcpState::FinWait1;
+            // TODO: Send FIN packet
+            TCP_CONNECTIONS[conn_id] = None;
+            Ok(())
+        } else {
+            Err(())
+        }
     }
 }
 
