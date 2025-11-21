@@ -65,10 +65,11 @@ fn vfs_loop() {
                     resp
                 }
             };
-            
-            // Send response back to sender
-            // Note: In real implementation, we'd use msg.sender_tid to get reply port
-            let _ = response;
+
+            // Send response back to sender on their reply port (using sender_tid as a proxy)
+            // In a fuller implementation, we would resolve sender_tid to a reply port.
+            let reply_port = msg.sender_tid;
+            let _ = sys_ipc_send(reply_port, &response);
         }
     }
 }

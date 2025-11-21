@@ -1,6 +1,7 @@
 //! DNS (Domain Name System) Resolver
 
 use crate::udp;
+use crate::syscalls::sys_get_uptime_ms;
 use core::mem;
 
 /// DNS header structure
@@ -175,8 +176,17 @@ fn dns_cache_lookup(domain: &str) -> Option<u32> {
                 let cached_name = core::str::from_utf8(&DNS_CACHE[i].name[0..DNS_CACHE[i].name_len])
                     .ok()?;
                 if cached_name == domain {
-                    // TODO: Check TTL and timestamp
-                    return Some(DNS_CACHE[i].ip);
+                    // Check TTL and timestamp
+                    let current_time = sys_get_uptime_ms();
+                    let cache_age = current_time.saturating_sub(DNS_CACHE[i].timestamp);
+                    let ttl_ms = (DNS_CACHE[i].ttl as u64) * 1000;
+                    
+                    if cache_age < ttl_ms {
+                        return Some(DNS_CACHE[i].ip);
+                    } else {
+                        // Cache entry expired, mark as invalid
+                        DNS_CACHE[i].valid = false;
+                    }
                 }
             }
         }
@@ -196,7 +206,7 @@ fn dns_cache_add(domain: &str, ip: u32, ttl: u32) {
                 DNS_CACHE[i].name_len = len;
                 DNS_CACHE[i].ip = ip;
                 DNS_CACHE[i].ttl = ttl;
-                DNS_CACHE[i].timestamp = 0; // TODO: Get current time
+                DNS_CACHE[i].timestamp = sys_get_uptime_ms();
                 DNS_CACHE[i].valid = true;
                 return;
             }
@@ -207,7 +217,7 @@ fn dns_cache_add(domain: &str, ip: u32, ttl: u32) {
         DNS_CACHE[0].name_len = domain.len();
         DNS_CACHE[0].ip = ip;
         DNS_CACHE[0].ttl = ttl;
-        DNS_CACHE[0].timestamp = 0;
+        DNS_CACHE[0].timestamp = sys_get_uptime_ms();
         DNS_CACHE[0].valid = true;
     }
 }

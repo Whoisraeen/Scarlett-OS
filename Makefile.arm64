@@ -1,0 +1,107 @@
+# ScarlettOS ARM64 Cross-Compilation Makefile
+
+# Toolchain
+CROSS_COMPILE ?= aarch64-linux-gnu-
+CC = $(CROSS_COMPILE)gcc
+AS = $(CROSS_COMPILE)as
+LD = $(CROSS_COMPILE)ld
+OBJCOPY = $(CROSS_COMPILE)objcopy
+
+# Architecture
+ARCH = arm64
+
+# Directories
+KERNEL_DIR = kernel
+HAL_DIR = $(KERNEL_DIR)/hal/$(ARCH)
+BUILD_DIR = build/$(ARCH)
+
+# Compiler flags
+CFLAGS = -ffreestanding -nostdlib -Wall -Wextra -O2
+CFLAGS += -mcpu=cortex-a53 -march=armv8-a
+CFLAGS += -I$(KERNEL_DIR)/include
+CFLAGS += -DARCH_ARM64
+
+# Assembler flags
+ASFLAGS = -mcpu=cortex-a53 -march=armv8-a
+
+# Linker flags
+LDFLAGS = -nostdlib -T $(HAL_DIR)/linker.ld
+
+# Source files
+KERNEL_SOURCES = $(wildcard $(KERNEL_DIR)/*.c)
+HAL_SOURCES = $(wildcard $(HAL_DIR)/*.c)
+ASM_SOURCES = $(wildcard $(HAL_DIR)/*.S)
+
+# Object files
+KERNEL_OBJECTS = $(KERNEL_SOURCES:%.c=$(BUILD_DIR)/%.o)
+HAL_OBJECTS = $(HAL_SOURCES:%.c=$(BUILD_DIR)/%.o)
+ASM_OBJECTS = $(ASM_SOURCES:%.S=$(BUILD_DIR)/%.o)
+
+ALL_OBJECTS = $(KERNEL_OBJECTS) $(HAL_OBJECTS) $(ASM_OBJECTS)
+
+# Output
+KERNEL_ELF = $(BUILD_DIR)/kernel.elf
+KERNEL_BIN = $(BUILD_DIR)/kernel.bin
+
+# Default target
+all: $(KERNEL_ELF) $(KERNEL_BIN)
+
+# Create build directory
+$(BUILD_DIR):
+	mkdir -p $(BUILD_DIR)
+	mkdir -p $(BUILD_DIR)/$(KERNEL_DIR)
+	mkdir -p $(BUILD_DIR)/$(HAL_DIR)
+
+# Compile C files
+$(BUILD_DIR)/%.o: %.c | $(BUILD_DIR)
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+# Compile assembly files
+$(BUILD_DIR)/%.o: %.S | $(BUILD_DIR)
+	@mkdir -p $(dir $@)
+	$(AS) $(ASFLAGS) $< -o $@
+
+# Link kernel
+$(KERNEL_ELF): $(ALL_OBJECTS)
+	$(LD) $(LDFLAGS) $(ALL_OBJECTS) -o $@
+	@echo "Built ARM64 kernel: $@"
+
+# Create binary
+$(KERNEL_BIN): $(KERNEL_ELF)
+	$(OBJCOPY) -O binary $< $@
+	@echo "Created kernel binary: $@"
+
+# QEMU testing
+qemu: $(KERNEL_ELF)
+	qemu-system-aarch64 \
+		-M virt \
+		-cpu cortex-a53 \
+		-m 2G \
+		-kernel $(KERNEL_ELF) \
+		-nographic \
+		-serial mon:stdio
+
+# QEMU with GDB
+qemu-gdb: $(KERNEL_ELF)
+	qemu-system-aarch64 \
+		-M virt \
+		-cpu cortex-a53 \
+		-m 2G \
+		-kernel $(KERNEL_ELF) \
+		-nographic \
+		-serial mon:stdio \
+		-s -S
+
+# Clean
+clean:
+	rm -rf $(BUILD_DIR)
+
+# Info
+info:
+	@echo "Architecture: $(ARCH)"
+	@echo "Toolchain: $(CROSS_COMPILE)"
+	@echo "Kernel ELF: $(KERNEL_ELF)"
+	@echo "Kernel BIN: $(KERNEL_BIN)"
+
+.PHONY: all qemu qemu-gdb clean info

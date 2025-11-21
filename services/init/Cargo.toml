@@ -3,13 +3,13 @@ name = "init"
 version = "0.1.0"
 edition = "2021"
 
-[lib]
-name = "init"
-crate-type = ["staticlib"]
+[dependencies]
+
+[profile.release]
+panic = "abort"
+lto = true
+opt-level = "z"
 
 [[bin]]
 name = "init"
 path = "src/main.rs"
-
-[dependencies]
-

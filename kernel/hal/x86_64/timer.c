@@ -141,44 +141,16 @@ void timer_interrupt_handler(void) {
 
 /**
  * Sleep for specified milliseconds (busy wait)
- * 
+ *
  * Note: This is a simple busy-wait implementation.
  * For proper sleep, threads should block and be woken by timer.
  */
 void timer_sleep_ms(uint64_t ms) {
     uint64_t start_ticks = timer_ticks;
     uint64_t target_ticks = start_ticks + (ms * TARGET_FREQUENCY / 1000);
-    
+
     while (timer_ticks < target_ticks) {
         __asm__ volatile("pause");
-    }
-}
-
-/**
- * Set timer callback (for scheduler ticks)
- */
-static void (*timer_callback)(void) = NULL;
-
-void timer_set_callback(void (*callback)(void)) {
-    timer_callback = callback;
-    // Enable scheduler ticks when callback is set
-    timer_enable_scheduler();
-}
-
-// Update timer_interrupt_handler to call callback
-void timer_interrupt_handler(void) {
-    timer_ticks++;
-
-    // Call scheduler tick if scheduler is ready
-    // NOTE: Do NOT use kprintf/kinfo here - we're in interrupt context!
-    if (scheduler_ready) {
-        extern void scheduler_tick(void);
-        scheduler_tick();
-    }
-    
-    // Call registered callback if set
-    if (timer_callback) {
-        timer_callback();
     }
 }
 

@@ -21,6 +21,7 @@
 #include "../include/mm/vmm.h"
 #include "../include/mm/dma.h"
 #include "../include/process.h"
+#include "../include/time.h"
 
 /**
  * Initialize system calls
@@ -643,6 +644,11 @@ uint64_t syscall_handler(uint64_t syscall_num, uint64_t arg1, uint64_t arg2,
             uint64_t port = process_get_ipc_port(pid);
             
             return port;  // 0 on error
+        }
+        
+        case SYS_GET_UPTIME_MS: {
+            // Return system uptime in milliseconds
+            return time_get_uptime_ms();
         }
         
         default:

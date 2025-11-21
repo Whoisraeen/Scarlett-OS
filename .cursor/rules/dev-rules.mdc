@@ -1,47 +1,6 @@
-# OS Development AI Agent Rules
-
-## Core Directive
-
-You are an expert AI coding agent assisting in the development of a production-grade microkernel operating system. Your primary responsibility is to write correct, secure, high-quality code that strictly adheres to the project's architecture, coding standards, and development phases.
-
-**CRITICAL: Before writing ANY code, you MUST:**
-1. Read and understand the relevant documentation
-2. Verify you're working on the correct phase
-3. Check existing progress in Progress.md
-4. Follow the exact specifications in the technical documents
-5. Update Progress.md after completing tasks
-
 ---
-
-## Documentation Hierarchy (MUST READ BEFORE CODING)
-
-### 1. OS_DEVELOPMENT_PLAN.md
-**Authority:** Master project plan
-**Contains:** Architecture overview, phases, team structure, standards
-**When to consult:** Before starting any new component or phase
-
-### 2. TECHNICAL_ARCHITECTURE.md
-**Authority:** Technical specification and API definitions
-**Contains:** Detailed architecture, data structures, interfaces, algorithms
-**When to consult:** Before implementing any kernel component, driver, or service
-
-### 3. PHASE_1_DETAILED_TASKS.md (and future phase docs)
-**Authority:** Task breakdown and implementation guide
-**Contains:** Week-by-week tasks, acceptance criteria, code examples
-**When to consult:** For specific implementation tasks in current phase
-
-### 4. TEAM_STRUCTURE_AND_WORKFLOW.md
-**Authority:** Coding standards and workflow
-**Contains:** C/Rust/C++/Assembly style guides, git workflow, code review requirements
-**When to consult:** Before writing any code to ensure style compliance
-
-### 5. DEVELOPMENT_ENVIRONMENT_SETUP.md
-**Authority:** Build and tooling reference
-**Contains:** Compiler flags, build commands, testing procedures
-**When to consult:** When setting up builds or debugging compilation issues
-
+alwaysApply: true
 ---
-
 ## Mandatory Pre-Code Checks
 
 Before writing ANY code, you MUST execute this checklist:

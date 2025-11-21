@@ -307,11 +307,10 @@ skip_boot_info:
     kinfo("Scheduler init returned\n");
 
     // Enable scheduler ticks in timer interrupt
-    // TODO: Debug why this causes hang - disabled for now
-    // kinfo("Enabling scheduler ticks...\n");
-    // extern void timer_enable_scheduler(void);
-    // timer_enable_scheduler();
-    kinfo("Scheduler ticks DISABLED for debugging\n");
+    kinfo("Enabling scheduler ticks...\n");
+    extern void timer_enable_scheduler(void);
+    timer_enable_scheduler();
+    kinfo("Scheduler ticks ENABLED - preemptive multitasking active\n");
 
     // IPC System
     extern void ipc_init(void);
@@ -352,43 +351,9 @@ skip_boot_info:
     kinfo("Initializing block device system...\n");
     block_device_init();
     
-    // PCI enumeration (needed for AHCI and network cards)
-    extern error_code_t pci_init(void);
-    kinfo("Initializing PCI subsystem...\n");
-    pci_init();
-    
-    // Network stack (needed before ethernet driver registration)
-    extern error_code_t network_init(void);
-    kinfo("Initializing Network Stack...\n");
-    network_init();
-    
-    // Ethernet driver (probes PCI for network cards)
-    extern error_code_t ethernet_driver_init(void);
-    kinfo("Initializing Ethernet driver...\n");
-    ethernet_driver_init();
-    
-    // Storage Drivers
-    extern error_code_t ata_init(void);
-    kinfo("Initializing ATA driver...\n");
-    ata_init();
-    
-    extern error_code_t ahci_init(void);
-    kinfo("Initializing AHCI driver...\n");
-    ahci_init();
-    
-    // Input Event System
-    extern error_code_t input_event_init(void);
-    kinfo("Initializing input event system...\n");
-    input_event_init();
-    
-    // Input Drivers
-    extern error_code_t keyboard_init(void);
-    kinfo("Initializing keyboard...\n");
-    keyboard_init();
-    
-    extern error_code_t mouse_init(void);
-    kinfo("Initializing mouse...\n");
-    mouse_init();
+    // PCI enumeration and non-boot-critical drivers are delegated to user-space
+    // device manager and driver processes per microkernel design.
+    kinfo("Skipping in-kernel PCI/network/storage init (handled in user-space)\n");
     
     // User & Group System
     extern error_code_t user_init(void);
@@ -475,15 +440,14 @@ skip_boot_info:
     kinfo("Initializing Shell...\n");
     shell_init();
     
-    // Theme System
-    extern error_code_t theme_init(void);
-    kinfo("Initializing Theme System...\n");
-    theme_init();
+    // NOTE: Theme System should run in user-space (Ring 3)
+    // It will be part of the desktop environment
+    // Kernel doesn't need to know about themes
     
-    // Window Manager
-    extern error_code_t window_manager_init(void);
-    kinfo("Initializing Window Manager...\n");
-    window_manager_init();
+    
+    // NOTE: Window Manager and Theme System should run in user-space (Ring 3)
+    // They will be launched as services by the init process
+    // Kernel only provides basic graphics primitives via syscalls
     
     // 2D Graphics Acceleration
     extern error_code_t gfx_accel_init(void);
@@ -693,4 +657,3 @@ void kpanic(const char* msg) {
     
     __builtin_unreachable();
 }
-

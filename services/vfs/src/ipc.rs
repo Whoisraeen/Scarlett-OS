@@ -38,6 +38,18 @@ impl IpcMessage {
     }
 }
 
+/// Convenience wrapper that returns Result for send
+pub fn ipc_send(port_id: u64, msg: &IpcMessage) -> Result<(), ()> {
+    let ret = unsafe { sys_ipc_send(port_id, msg as *const IpcMessage) };
+    if ret == 0 { Ok(()) } else { Err(()) }
+}
+
+/// Convenience wrapper that returns Result for receive
+pub fn ipc_receive(port_id: u64, msg: &mut IpcMessage) -> Result<(), ()> {
+    let ret = unsafe { sys_ipc_receive(port_id, msg as *mut IpcMessage) };
+    if ret == 0 { Ok(()) } else { Err(()) }
+}
+
 /// System call wrapper for IPC send
 #[no_mangle]
 pub extern "C" fn sys_ipc_send(port_id: u64, msg: *const IpcMessage) -> i32 {

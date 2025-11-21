@@ -1,73 +1,121 @@
-//! Init Service
-//! 
-//! This is the first user-space process started by the kernel.
-//! It initializes system services and launches the desktop environment.
-
-#![no_std]
-#![no_main]
-
-mod service_manager;
-mod service_startup;
+/**
+ * @file init.rs
+ * @brief User-space init process - launches all system services and desktop
+ */
 
 use core::panic::PanicInfo;
-use service_manager::{register_service, SERVICE_DEVICE_MANAGER, SERVICE_VFS, SERVICE_NETWORK};
-use service_startup::{start_core_services, wait_for_core_services};
 
-/// Panic handler for init
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
     loop {}
 }
 
-/// Entry point for init service
+// IPC syscall wrappers
+extern "C" {
+    fn sys_ipc_send(tid: u32, msg: *const IpcMessage) -> i32;
+    fn sys_ipc_receive(port: u32, msg: *mut IpcMessage) -> i32;
+    fn sys_exec(path: *const u8, args: *const *const u8) -> i32;
+    fn sys_fork() -> i32;
+    fn sys_wait(pid: i32) -> i32;
+    fn sys_exit(code: i32) -> !;
+}
+
+#[repr(C)]
+struct IpcMessage {
+    sender_tid: u32,
+    msg_type: u32,
+    data: [u8; 256],
+}
+
+// Service launch order
+const SERVICES: &[&str] = &[
+    "/sbin/driver_manager",     // 1. Driver manager (manages all drivers)
+    "/sbin/vfs",                // 2. Virtual File System
+    "/sbin/security",           // 3. Security service (capabilities, ACL)
+    "/sbin/network",            // 4. Network stack
+    "/sbin/audio",              // 5. Audio server
+    "/sbin/compositor",         // 6. Display compositor
+    "/sbin/window_manager",     // 7. Window manager
+];
+
+// User applications (launched after services)
+const APPS: &[&str] = &[
+    "/bin/login",               // Login manager (first user app)
+];
+
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
-    init_main();
+    // Init process (PID 1) - runs in Ring 3
+    
+    // Phase 1: Launch system services
+    launch_services();
+    
+    // Phase 2: Launch login manager
+    launch_login();
+    
+    // Phase 3: Wait for login, then launch desktop
+    wait_for_login_and_launch_desktop();
+    
+    // Phase 4: Reap zombie processes
+    reaper_loop();
 }
 
-/// Main initialization function
-fn init_main() {
-    // Start core services
-    start_core_services();
-    
-    // Wait for services to register
-    wait_for_core_services();
-    
-    // Keep running - monitor services
-    loop {
-        // TODO: Monitor child processes
-        // TODO: Handle service restarts
-        // TODO: Handle service failures
-        // TODO: Check service health
-        yield_cpu();
+fn launch_services() {
+    for service in SERVICES {
+        let pid = unsafe { sys_fork() };
+        
+        if pid == 0 {
+            // Child process - exec the service
+            let args: [*const u8; 1] = [core::ptr::null()];
+            unsafe {
+                sys_exec(service.as_ptr(), args.as_ptr());
+            }
+            // If exec fails, exit
+            unsafe { sys_exit(1); }
+        }
+        // Parent continues to launch next service
     }
 }
 
-/// Yield CPU to scheduler
-fn yield_cpu() {
+fn launch_login() {
+    let pid = unsafe { sys_fork() };
+    
+    if pid == 0 {
+        // Child - exec login manager
+        let args: [*const u8; 1] = [core::ptr::null()];
+        unsafe {
+            sys_exec("/bin/login".as_ptr(), args.as_ptr());
+            sys_exit(1);
+        }
+    }
+}
+
+fn wait_for_login_and_launch_desktop() {
+    // Wait for login manager to signal successful login
+    // For now, just wait for login process to exit
     unsafe {
-        syscall_raw(6, 0, 0, 0, 0, 0);  // SYS_YIELD
+        sys_wait(-1);  // Wait for any child
+    }
+    
+    // Launch desktop environment
+    let pid = unsafe { sys_fork() };
+    
+    if pid == 0 {
+        // Child - exec desktop
+        let args: [*const u8; 1] = [core::ptr::null()];
+        unsafe {
+            sys_exec("/bin/desktop".as_ptr(), args.as_ptr());
+            sys_exit(1);
+        }
     }
 }
 
-#[cfg(target_arch = "x86_64")]
-unsafe fn syscall_raw(num: u64, arg1: u64, arg2: u64, arg3: u64, arg4: u64, arg5: u64) -> u64 {
-    let ret: u64;
-    core::arch::asm!(
-        "syscall",
-        in("rax") num,
-        in("rdi") arg1,
-        in("rsi") arg2,
-        in("rdx") arg3,
-        in("r10") arg4,
-        in("r8") arg5,
-        out("rax") ret,
-        options(nostack, preserves_flags)
-    );
-    ret
-}
-
-#[cfg(not(target_arch = "x86_64"))]
-unsafe fn syscall_raw(_num: u64, _arg1: u64, _arg2: u64, _arg3: u64, _arg4: u64, _arg5: u64) -> u64 {
-    0
+fn reaper_loop() -> ! {
+    // Init process must reap zombie processes
+    loop {
+        unsafe {
+            sys_wait(-1);  // Wait for any child to exit
+        }
+        // Child exited, loop to wait for next one
+    }
 }

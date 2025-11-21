@@ -42,12 +42,18 @@ interrupt_handler_\num:
     // Call C handler
     mov %rsp, %rdi
     call interrupt_handler_c
-    
-    // Check if we need to reschedule (for timer interrupt)
-    // The C handler will have set a flag if needed
-    // For now, we'll just return normally
-    // TODO: Implement proper preemptive context switch from interrupt
-    
+
+    // Check if we need to reschedule after interrupt (enables preemptive multitasking)
+    // Only check for timer interrupt (num 32)
+    cmpq $32, 8(%rsp)  // Compare interrupt number on stack
+    jne .Lno_reschedule_\num
+
+    // Save RSP before checking reschedule
+    push %rsp
+    call scheduler_check_reschedule
+    pop %rsp
+
+.Lno_reschedule_\num:
     // Restore registers
     pop %r15
     pop %r14

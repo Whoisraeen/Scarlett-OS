@@ -1,6 +1,7 @@
 //! ARP (Address Resolution Protocol) Implementation
 
 use crate::ethernet_device;
+use crate::syscalls::sys_get_uptime_ms;
 use core::mem;
 
 /// ARP header structure
@@ -180,7 +181,7 @@ fn arp_cache_add(ip: u32, mac: [u8; 6]) {
         for i in 0..ARP_CACHE_SIZE {
             if ARP_CACHE[i].valid && ARP_CACHE[i].ip == ip {
                 ARP_CACHE[i].mac = mac;
-                ARP_CACHE[i].timestamp = 0; // TODO: Get current time
+                ARP_CACHE[i].timestamp = sys_get_uptime_ms();
                 return;
             }
         }
@@ -190,7 +191,7 @@ fn arp_cache_add(ip: u32, mac: [u8; 6]) {
             if !ARP_CACHE[i].valid {
                 ARP_CACHE[i].ip = ip;
                 ARP_CACHE[i].mac = mac;
-                ARP_CACHE[i].timestamp = 0;
+                ARP_CACHE[i].timestamp = sys_get_uptime_ms();
                 ARP_CACHE[i].valid = true;
                 ARP_CACHE_COUNT += 1;
                 return;

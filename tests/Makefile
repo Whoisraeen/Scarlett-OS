@@ -1,40 +1,44 @@
-# Test Makefile
+# ScarlettOS Test Suite Makefile
 
 CC = gcc
-CFLAGS = -Wall -Wextra -std=c11 -ffreestanding -fno-stack-protector -mno-red-zone
-INCLUDES = -I../kernel/include -I../libs/libc/include
-LDFLAGS = -nostdlib -static
+CFLAGS = -Wall -Wextra -std=c11 -I..
+LDFLAGS =
 
-# Test sources
-SERVICE_TESTS = integration/test_services.c
-FILESYSTEM_TESTS = integration/test_filesystem.c
-NETWORK_TESTS = integration/test_network.c
-ALL_TESTS = integration/test_all.c
+# Test framework
+TEST_FRAMEWORK = test_framework.c
 
-# Test objects
-SERVICE_OBJS = $(SERVICE_TESTS:.c=.o)
-FILESYSTEM_OBJS = $(FILESYSTEM_TESTS:.c=.o)
-NETWORK_OBJS = $(NETWORK_TESTS:.c=.o)
-ALL_OBJS = $(ALL_TESTS:.c=.o)
+# Unit tests
+UNIT_TESTS = unit/test_memory unit/test_scheduler
 
-# Test binaries
-SERVICE_BIN = build/test_services.bin
-FILESYSTEM_BIN = build/test_filesystem.bin
-NETWORK_BIN = build/test_network.bin
-ALL_BIN = build/test_all.bin
+# Integration tests
+INTEGRATION_TESTS = integration/test_ipc
 
-.PHONY: all clean
+# System tests
+SYSTEM_TESTS = system/test_boot
 
-all: $(ALL_BIN)
+ALL_TESTS = $(UNIT_TESTS) $(INTEGRATION_TESTS) $(SYSTEM_TESTS)
 
-$(ALL_BIN): $(ALL_OBJS) $(SERVICE_OBJS) $(FILESYSTEM_OBJS) $(NETWORK_OBJS)
-	@mkdir -p build
-	$(CC) $(LDFLAGS) -o $@ $^
+.PHONY: all clean run
 
-%.o: %.c
-	$(CC) $(CFLAGS) $(INCLUDES) -c -o $@ $<
+all: $(ALL_TESTS)
 
+# Build unit tests
+unit/%: unit/%.c $(TEST_FRAMEWORK)
+	$(CC) $(CFLAGS) $< $(TEST_FRAMEWORK) -o $@ $(LDFLAGS)
+
+# Build integration tests
+integration/%: integration/%.c $(TEST_FRAMEWORK)
+	$(CC) $(CFLAGS) $< $(TEST_FRAMEWORK) -o $@ $(LDFLAGS)
+
+# Build system tests
+system/%: system/%.c $(TEST_FRAMEWORK)
+	$(CC) $(CFLAGS) $< $(TEST_FRAMEWORK) -o $@ $(LDFLAGS)
+
+# Run all tests
+run: all
+	@./run_tests.sh
+
+# Clean build artifacts
 clean:
-	rm -f $(SERVICE_OBJS) $(FILESYSTEM_OBJS) $(NETWORK_OBJS) $(ALL_OBJS)
-	rm -f $(SERVICE_BIN) $(FILESYSTEM_BIN) $(NETWORK_BIN) $(ALL_BIN)
-
+	rm -f $(ALL_TESTS)
+	rm -f unit/*.o integration/*.o system/*.o

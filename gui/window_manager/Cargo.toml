@@ -1,0 +1,15 @@
+[package]
+name = "window_manager"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+
+[profile.release]
+panic = "abort"
+lto = true
+opt-level = "z"
+
+[[bin]]
+name = "window_manager"
+path = "src/main.rs"

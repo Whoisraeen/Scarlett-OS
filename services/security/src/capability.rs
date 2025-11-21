@@ -3,6 +3,7 @@
 //! Provides unforgeable capability tokens for resource access control
 
 use core::sync::atomic::{AtomicU64, Ordering};
+use crate::syscalls::sys_get_uptime_ms;
 
 /// Capability types
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -98,7 +99,7 @@ impl Capability {
             resource_id,
             permissions: 0xFFFFFFFFFFFFFFFF, // All permissions by default
             owner_pid,
-            timestamp: 0, // TODO: Get current time
+            timestamp: sys_get_uptime_ms(),
             expiration: 0, // Never expires
             delegation_depth: 3, // Can be delegated 3 times
             flags: 0,

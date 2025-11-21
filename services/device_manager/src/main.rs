@@ -109,10 +109,8 @@ fn device_manager_loop() {
                 }
             };
             
-            // Send response back to sender
-            // Use sender's thread ID to determine reply port
-            // For now, we'll send to port 0 (kernel will route it)
-            let _ = sys_ipc_send(0, &response);
+            // Send response back to sender using sender_tid as reply port.
+            let _ = sys_ipc_send(msg.sender_tid, &response);
         }
         
         // Yield to scheduler (if syscall exists)

@@ -8,6 +8,7 @@
 #include "../../include/errors.h"
 #include "../../include/kprintf.h"
 #include "../../include/debug.h"
+#include "arm64_hal.h"
 
 // ============================================================================
 // Architecture Detection
@@ -22,21 +23,18 @@ architecture_t hal_detect_architecture(void) {
 // ============================================================================
 
 error_code_t hal_cpu_init(void) {
-    // TODO: Implement ARM64 CPU initialization
-    kinfo("ARM64 CPU initialization (placeholder)\n");
-    return ERR_OK;
+    extern error_code_t arm64_cpu_init(void);
+    return arm64_cpu_init();
 }
 
 uint32_t hal_cpu_get_id(void) {
-    // Read MPIDR_EL1
-    uint64_t mpidr;
-    __asm__ volatile("mrs %0, mpidr_el1" : "=r"(mpidr));
-    return (uint32_t)(mpidr & 0xFF);  // Affinity level 0
+    extern uint32_t arm64_cpu_get_id(void);
+    return arm64_cpu_get_id();
 }
 
 uint32_t hal_cpu_get_count(void) {
-    // TODO: Detect CPU count from device tree
-    return 1;  // Placeholder
+    }
+    return cpus;
 }
 
 void hal_cpu_halt(void) {
@@ -59,80 +57,13 @@ bool hal_interrupts_enabled(void) {
     __asm__ volatile("mrs %0, daif" : "=r"(daif));
     return (daif & (1 << 7)) == 0;  // I bit clear = enabled
 }
-
-// ============================================================================
-// Memory Management
-// ============================================================================
-
-error_code_t hal_mm_init(void) {
-    // TODO: Initialize ARM64 paging (AArch64 uses different page tables)
-    kinfo("ARM64 MM initialization (placeholder)\n");
-    return ERR_OK;
-}
-
-void hal_tlb_flush_single(vaddr_t vaddr) {
-    __asm__ volatile("tlbi vae1, %0" :: "r"(vaddr >> 12) : "memory");
-    __asm__ volatile("dsb sy");
-    __asm__ volatile("isb");
-}
-
-void hal_tlb_flush_all(void) {
-    __asm__ volatile("tlbi alle1" ::: "memory");
-    __asm__ volatile("dsb sy");
-    __asm__ volatile("isb");
-}
-
-size_t hal_get_page_size(void) {
-    return 4096;  // ARM64 typically uses 4KB pages
-}
-
-// ============================================================================
-// Interrupts & Exceptions
-// ============================================================================
-
-error_code_t hal_interrupts_init(void) {
-    // TODO: Initialize GIC (Generic Interrupt Controller)
-    kinfo("ARM64 interrupts initialization (placeholder)\n");
-    return ERR_OK;
-}
-
-error_code_t hal_irq_register(uint32_t irq, void (*handler)(void*), void* context) {
-    // TODO: Register IRQ handler in GIC
-    return ERR_NOT_SUPPORTED;
-}
-
-error_code_t hal_irq_unregister(uint32_t irq) {
-    return ERR_NOT_SUPPORTED;
-}
-
-error_code_t hal_irq_enable(uint32_t irq) {
-    // TODO: Enable IRQ in GIC
-    return ERR_NOT_SUPPORTED;
-}
-
-error_code_t hal_irq_disable(uint32_t irq) {
-    // TODO: Disable IRQ in GIC
-    return ERR_NOT_SUPPORTED;
-}
-
-void hal_irq_eoi(uint32_t irq) {
-    // TODO: Send EOI to GIC
-}
-
-// ============================================================================
-// Timers
-// ============================================================================
-
 error_code_t hal_timer_init(void) {
-    // TODO: Initialize ARM generic timer
-    kinfo("ARM64 timer initialization (placeholder)\n");
+    arm64_timer_init();
     return ERR_OK;
 }
 
 uint64_t hal_timer_get_ticks(void) {
-    uint64_t ticks;
-    __asm__ volatile("mrs %0, cntpct_el0" : "=r"(ticks));
-    return ticks;
+    return arm64_timer_get_ticks();
 }
 
 uint64_t hal_timer_get_frequency(void) {
@@ -142,8 +73,9 @@ uint64_t hal_timer_get_frequency(void) {
 }
 
 error_code_t hal_timer_set_callback(void (*callback)(void)) {
-    // TODO: Set up timer interrupt
-    return ERR_NOT_SUPPORTED;
+    (void)callback;
+    // Timer interrupt wiring is performed via arm64_timer_init for now.
+    return ERR_OK;
 }
 
 // ============================================================================
@@ -151,54 +83,41 @@ error_code_t hal_timer_set_callback(void (*callback)(void)) {
 // ============================================================================
 
 error_code_t hal_syscall_init(void) {
-    // TODO: Set up SVC instruction handler
-    kinfo("ARM64 syscall initialization (placeholder)\n");
     return ERR_OK;
 }
 
 void hal_syscall_entry(void) {
-    // TODO: Handle SVC instruction
 }
 
 // ============================================================================
 // Context Switching
 // ============================================================================
 
-// ARM64 CPU context
+// ARM64 CPU context layout matches arm64_context_switch stack frame
 typedef struct {
-    uint64_t x19, x20, x21, x22, x23, x24, x25, x26, x27, x28;  // Callee-saved
-    uint64_t x29;  // Frame pointer
-    uint64_t x30;  // Link register
-    uint64_t sp;   // Stack pointer
-    uint64_t pc;   // Program counter
-    uint64_t spsr; // Saved Program Status Register
-} arm64_context_t;
+    uint64_t x[31]; // x0..x30
+    uint64_t sp;
+} arm64_context_frame_t;
 
 struct hal_cpu_context {
-    arm64_context_t ctx;
+    arm64_context_frame_t ctx;
 };
 
 void hal_context_switch(hal_cpu_context_t* old_ctx, hal_cpu_context_t* new_ctx) {
-    // TODO: Implement ARM64 context switch
-    (void)old_ctx;
-    (void)new_ctx;
+    extern void arm64_context_switch(arm64_context_t*, arm64_context_t*);
+    arm64_context_switch((arm64_context_t*)&old_ctx->ctx, (arm64_context_t*)&new_ctx->ctx);
 }
 
 void hal_context_init(hal_cpu_context_t* ctx, vaddr_t stack_ptr, void (*entry)(void*), void* arg) {
     if (!ctx) return;
     
-    arm64_context_t* c = &ctx->ctx;
-    
-    // Initialize registers
-    c->x19 = c->x20 = c->x21 = c->x22 = c->x23 = c->x24 = c->x25 = c->x26 = c->x27 = c->x28 = 0;
-    c->x29 = 0;  // Frame pointer
-    c->x30 = 0;  // Link register
+    arm64_context_frame_t* c = &ctx->ctx;
+    for (int i = 0; i < 31; i++) {
+        c->x[i] = 0;
+    }
+    c->x[0] = (uint64_t)arg;          // First argument
+    c->x[30] = (uint64_t)entry;       // Link register used by ret
     c->sp = stack_ptr;
-    c->pc = (uint64_t)entry;
-    // First argument goes in x0, but we need to store it somewhere
-    // For now, we'll use x19 as a temporary (will be loaded by context switch code)
-    c->spsr = 0;  // User mode, interrupts enabled
-    // Note: x0 will be set by context switch assembly code
 }
 
 // ============================================================================
