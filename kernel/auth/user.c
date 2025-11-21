@@ -12,6 +12,13 @@
 #include "../include/mm/heap.h"
 #include "../include/errors.h"
 
+// Forward declaration for persistence functions
+extern error_code_t user_save_to_disk(void);
+extern error_code_t user_load_from_disk(void);
+extern error_code_t group_save_to_disk(void);
+extern error_code_t group_load_from_disk(void);
+extern error_code_t create_home_directory(const char* username, uid_t uid, gid_t gid);
+
 // User and group databases
 static user_t users[MAX_USERS];
 static group_t groups[MAX_GROUPS];
@@ -49,24 +56,38 @@ error_code_t user_init(void) {
     user_count = 0;
     group_count = 0;
     
-    // Create root user
-    user_t* root = &users[0];
-    root->uid = ROOT_UID;
-    root->gid = ROOT_GID;
-    strcpy(root->username, "root");
-    hash_password("root", root->password_hash);
-    root->active = true;
-    user_count = 1;
+    // Try to load from disk first
+    user_load_from_disk();
+    group_load_from_disk();
     
-    // Create root group
-    group_t* root_group = &groups[0];
-    root_group->gid = ROOT_GID;
-    strcpy(root_group->groupname, "root");
-    root_group->members[0] = ROOT_UID;
-    root_group->member_count = 1;
-    group_count = 1;
+    // If no users loaded, create root user
+    if (user_count == 0) {
+        // Create root user
+        user_t* root = &users[0];
+        root->uid = ROOT_UID;
+        root->gid = ROOT_GID;
+        strcpy(root->username, "root");
+        hash_password("root", root->password_hash);
+        root->active = true;
+        user_count = 1;
+        
+        // Create root group
+        group_t* root_group = &groups[0];
+        root_group->gid = ROOT_GID;
+        strcpy(root_group->groupname, "root");
+        root_group->members[0] = ROOT_UID;
+        root_group->member_count = 1;
+        group_count = 1;
+        
+        // Save to disk
+        user_save_to_disk();
+        group_save_to_disk();
+        
+        kinfo("User system initialized (root user created)\n");
+    } else {
+        kinfo("User system initialized (loaded %u users, %u groups from disk)\n", user_count, group_count);
+    }
     
-    kinfo("User system initialized (root user created)\n");
     return ERR_OK;
 }
 
@@ -98,6 +119,12 @@ error_code_t user_create(const char* username, const char* password, uid_t* uid)
     *uid = user->uid;
     user_count++;
     
+    // Create home directory for the user
+    create_home_directory(username, user->uid, user->gid);
+    
+    // Save to disk
+    user_save_to_disk();
+    
     kinfo("User created: %s (UID: %u)\n", username, user->uid);
     return ERR_OK;
 }
@@ -113,6 +140,10 @@ error_code_t user_delete(uid_t uid) {
     for (uint32_t i = 0; i < user_count; i++) {
         if (users[i].uid == uid) {
             users[i].active = false;
+            
+            // Save to disk
+            user_save_to_disk();
+            
             kinfo("User deleted: UID %u\n", uid);
             return ERR_OK;
         }
@@ -184,6 +215,10 @@ error_code_t user_set_password(uid_t uid, const char* password) {
     }
     
     hash_password(password, user->password_hash);
+    
+    // Save to disk
+    user_save_to_disk();
+    
     return ERR_OK;
 }
 
@@ -221,6 +256,9 @@ error_code_t group_create(const char* groupname, gid_t* gid) {
     *gid = group->gid;
     group_count++;
     
+    // Save to disk
+    group_save_to_disk();
+    
     kinfo("Group created: %s (GID: %u)\n", groupname, group->gid);
     return ERR_OK;
 }
@@ -237,6 +275,10 @@ error_code_t group_delete(gid_t gid) {
         if (groups[i].gid == gid) {
             // Mark as deleted (simplified)
             groups[i].gid = 0;
+            
+            // Save to disk
+            group_save_to_disk();
+            
             kinfo("Group deleted: GID %u\n", gid);
             return ERR_OK;
         }
@@ -294,6 +336,10 @@ error_code_t group_add_member(gid_t gid, uid_t uid) {
     }
     
     group->members[group->member_count++] = uid;
+    
+    // Save to disk
+    group_save_to_disk();
+    
     return ERR_OK;
 }
 
@@ -313,6 +359,10 @@ error_code_t group_remove_member(gid_t gid, uid_t uid) {
                 group->members[j] = group->members[j + 1];
             }
             group->member_count--;
+            
+            // Save to disk
+            group_save_to_disk();
+            
             return ERR_OK;
         }
     }

@@ -197,20 +197,28 @@ COMMON_C_SRCS = core/main.c \
                 fs/vfs.c \
                 fs/block.c \
                 fs/fat32.c \
+                fs/ext4.c \
+                fs/ext4_vfs.c \
+                fs/ntfs.c \
+                fs/ntfs_vfs.c \
                 fs/fat32_file.c \
                 fs/fat32_vfs.c \
                 fs/fat32_create.c \
                 fs/fat32_dir.c \
                 fs/fat32_utils.c \
                 fs/permissions.c \
+                fs/acl.c \
                 drivers/ata/ata.c \
                 drivers/ahci/ahci.c \
                 drivers/pci/pci.c \
                 drivers/ethernet/ethernet.c \
                 auth/user.c \
+                auth/user_persistence.c \
                 auth/password_hash.c \
                 security/memory_protection.c \
                 security/capability.c \
+                security/rbac.c \
+                security/sandbox.c \
                 mm/mmap.c \
                 core/test.c \
                 core/userspace_launch.c \
@@ -220,6 +228,8 @@ COMMON_C_SRCS = core/main.c \
                 sync/rwlock.c \
                 sync/lockfree.c \
                 drivers/graphics/framebuffer.c \
+                drivers/gpu/gpu.c \
+                drivers/gpu/virtio_gpu_driver.c \
                 graphics/graphics.c \
                 graphics/font.c \
                 drivers/ps2/ps2.c \

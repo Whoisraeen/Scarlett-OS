@@ -69,5 +69,12 @@ gid_t get_current_gid(void);
 error_code_t set_current_uid(uid_t uid);
 error_code_t set_current_gid(gid_t gid);
 
+// Persistence functions
+error_code_t user_save_to_disk(void);
+error_code_t user_load_from_disk(void);
+error_code_t group_save_to_disk(void);
+error_code_t group_load_from_disk(void);
+error_code_t create_home_directory(const char* username, uid_t uid, gid_t gid);
+
 #endif // KERNEL_AUTH_USER_H
 

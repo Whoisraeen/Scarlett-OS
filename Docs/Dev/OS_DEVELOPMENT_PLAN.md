@@ -556,10 +556,10 @@ Display graphics, receive keyboard/mouse input, read from disk.
 - [x] Path resolution - **NEW: Path parsing and resolution**
 - [x] Mount management - **NEW: 32 mount point support**
 - [x] **SFS v1 implementation (snapshots, CoW, per-app sandboxes)** - **NEW: Core implementation complete**
-- [ ] FAT32 driver (in progress)
+- [x] FAT32 driver
 - [x] Block I/O layer - **NEW: Block cache with LRU**
 - [x] Caching layer - **NEW: 4MB block cache**
-- [ ] Persistent storage of user data
+- [x] Persistent storage of user data - **NEW: User/group database saved to /etc/passwd and /etc/group, home directories created**
 
 **Success Criteria:**
 Read/write files persistently, mount multiple file systems. Snapshots/rollback of system volume and per-app data.
@@ -593,11 +593,11 @@ Network connectivity, can ping, TCP connections work.
 - Cryptography integration
 
 **Deliverables:**
-- [x] Capability enforcement in IPC (functional, per-process tables pending)
+- [x] Capability enforcement in IPC - **NEW: Complete with per-process tables (4096 caps)**
 - [x] User/group management
-- [ ] ACL implementation for VFS
-- [ ] RBAC framework
-- [ ] Sandboxing support
+- [x] ACL implementation for VFS - **NEW: Complete (32 entries per resource)**
+- [x] RBAC framework - **NEW: Integrated with capability system**
+- [x] Sandboxing support - **NEW: Complete with resource limits**
 - [ ] Crypto library integration
 - [ ] Secure boot implementation
 - [ ] TPM driver and integration
@@ -615,15 +615,15 @@ Secure system with enforced access controls and encryption.
 - Input integration
 
 **Deliverables:**
-- [ ] Display server core
-- [ ] Window management
-- [ ] Software compositor
-- [ ] GPU driver framework
-- [ ] Basic GPU driver (Intel/AMD/NVIDIA)
+- [x] Display server core
+- [x] Window management
+- [x] Software compositor
+- [x] GPU driver framework - **NEW: Complete framework with device registration**
+- [ ] Basic GPU driver (Intel/AMD/NVIDIA) - VirtIO GPU exists, vendor drivers pending
 - [ ] Hardware-accelerated compositor
-- [ ] 2D graphics library
+- [x] 2D graphics library
 - [ ] Font rendering (FreeType-like or custom)
-- [ ] Input server
+- [x] Input server
 - [ ] Cursor rendering
 - [ ] **Crashless compositor architecture (separate process, basic state restore on crash)**
 

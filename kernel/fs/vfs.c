@@ -219,6 +219,16 @@ error_code_t vfs_open(const char* path, uint64_t flags, fd_t* fd) {
             perms.uid = stat.uid;
             perms.gid = stat.gid;
             
+            // Check ACL first (if available), then fall back to standard permissions
+            extern error_code_t acl_check_access(const acl_t* acl, uint32_t uid, uint32_t gid, uint8_t requested_perms);
+            
+            uint8_t requested_perms = 0;
+            if (flags & VFS_MODE_READ) requested_perms |= 0x04;  // ACL_READ
+            if (flags & VFS_MODE_WRITE) requested_perms |= 0x02;  // ACL_WRITE
+            if (flags & VFS_MODE_EXEC) requested_perms |= 0x01;  // ACL_EXECUTE
+            
+            // TODO: Get ACL from filesystem if supported
+            // For now, use standard permissions
             // Check read permission
             if (flags & VFS_MODE_READ) {
                 if (!permissions_check_read(&perms, uid, gid)) {

@@ -397,10 +397,40 @@ skip_boot_info:
     kinfo("Initializing user system...\n");
     user_init();
     
+    // Capability System
+    extern void capability_init(void);
+    kinfo("Initializing Capability System...\n");
+    capability_init();
+    
+    // RBAC System
+    extern error_code_t rbac_init(void);
+    kinfo("Initializing RBAC System...\n");
+    rbac_init();
+    
+    // Sandbox System
+    extern error_code_t sandbox_init(void);
+    kinfo("Initializing Sandbox System...\n");
+    sandbox_init();
+    
+    // ACL System
+    extern error_code_t acl_init(void);
+    kinfo("Initializing ACL System...\n");
+    acl_init();
+    
     // Memory Protection
     extern error_code_t memory_protection_init(void);
     kinfo("Initializing memory protection...\n");
     memory_protection_init();
+    
+    // GPU Framework
+    extern error_code_t gpu_init(void);
+    kinfo("Initializing GPU Framework...\n");
+    gpu_init();
+    
+    // Register VirtIO GPU with framework
+    extern error_code_t virtio_gpu_register_with_framework(void);
+    kinfo("Registering VirtIO GPU driver...\n");
+    virtio_gpu_register_with_framework();
     
     // Virtual File System
     extern error_code_t vfs_init(void);
@@ -411,6 +441,16 @@ skip_boot_info:
     extern error_code_t fat32_register_vfs(void);
     kinfo("Registering FAT32 filesystem...\n");
     fat32_register_vfs();
+    
+    // Register ext4 filesystem
+    extern error_code_t ext4_register_vfs(void);
+    kinfo("Registering ext4 filesystem...\n");
+    ext4_register_vfs();
+    
+    // Register NTFS filesystem
+    extern error_code_t ntfs_register_vfs(void);
+    kinfo("Registering NTFS filesystem...\n");
+    ntfs_register_vfs();
     
     // Shell (initialize but don't run yet - will launch in userspace)
     extern void shell_init(void);
