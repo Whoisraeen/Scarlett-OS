@@ -16,9 +16,26 @@ void gfx_fill_rect(uint32_t x, uint32_t y, uint32_t width, uint32_t height, uint
 void gfx_draw_circle(uint32_t x, uint32_t y, uint32_t radius, uint32_t color);
 void gfx_fill_circle(uint32_t x, uint32_t y, uint32_t radius, uint32_t color);
 
-// Text rendering (basic)
+// Text rendering
 void gfx_draw_char(uint32_t x, uint32_t y, char c, uint32_t color, uint32_t bg_color);
+void gfx_draw_char_scaled(uint32_t x, uint32_t y, char c, uint32_t color, uint32_t bg_color, uint32_t scale);
 void gfx_draw_string(uint32_t x, uint32_t y, const char* str, uint32_t color, uint32_t bg_color);
+void gfx_draw_string_scaled(uint32_t x, uint32_t y, const char* str, uint32_t color, uint32_t bg_color, uint32_t scale);
+void gfx_draw_string_aligned(uint32_t x, uint32_t y, uint32_t width, uint32_t height, const char* str, uint32_t color, uint32_t bg_color, uint32_t align);
+
+// Text measurement
+uint32_t gfx_text_width(const char* str);
+uint32_t gfx_text_width_scaled(const char* str, uint32_t scale);
+uint32_t gfx_text_height(void);
+uint32_t gfx_text_height_scaled(uint32_t scale);
+
+// Text alignment constants
+#define TEXT_ALIGN_LEFT    0
+#define TEXT_ALIGN_CENTER  1
+#define TEXT_ALIGN_RIGHT   2
+#define TEXT_ALIGN_TOP     0
+#define TEXT_ALIGN_MIDDLE  4
+#define TEXT_ALIGN_BOTTOM  8
 
 // Double buffering
 void gfx_init_double_buffer(void);

@@ -215,6 +215,11 @@ COMMON_C_SRCS = core/main.c \
                 auth/user.c \
                 auth/user_persistence.c \
                 auth/password_hash.c \
+                crypto/crypto.c \
+                crypto/sha256.c \
+                crypto/sha512.c \
+                crypto/aes256.c \
+                crypto/rng.c \
                 security/memory_protection.c \
                 security/capability.c \
                 security/rbac.c \
@@ -232,6 +237,7 @@ COMMON_C_SRCS = core/main.c \
                 drivers/gpu/virtio_gpu_driver.c \
                 graphics/graphics.c \
                 graphics/font.c \
+                graphics/cursor.c \
                 drivers/ps2/ps2.c \
                 drivers/ps2/keyboard.c \
                 drivers/ps2/mouse.c \

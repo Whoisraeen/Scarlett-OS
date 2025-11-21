@@ -417,6 +417,11 @@ skip_boot_info:
     kinfo("Initializing ACL System...\n");
     acl_init();
     
+    // Crypto Library
+    extern error_code_t crypto_init(void);
+    kinfo("Initializing Crypto Library...\n");
+    crypto_init();
+    
     // Memory Protection
     extern error_code_t memory_protection_init(void);
     kinfo("Initializing memory protection...\n");
@@ -426,6 +431,11 @@ skip_boot_info:
     extern error_code_t gpu_init(void);
     kinfo("Initializing GPU Framework...\n");
     gpu_init();
+    
+    // Cursor System
+    extern void cursor_init(void);
+    kinfo("Initializing Cursor System...\n");
+    cursor_init();
     
     // Register VirtIO GPU with framework
     extern error_code_t virtio_gpu_register_with_framework(void);

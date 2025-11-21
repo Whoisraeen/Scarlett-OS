@@ -598,7 +598,7 @@ Network connectivity, can ping, TCP connections work.
 - [x] ACL implementation for VFS - **NEW: Complete (32 entries per resource)**
 - [x] RBAC framework - **NEW: Integrated with capability system**
 - [x] Sandboxing support - **NEW: Complete with resource limits**
-- [ ] Crypto library integration
+- [x] Crypto library integration - **NEW: SHA-256/512, AES-256, secure RNG, PBKDF2**
 - [ ] Secure boot implementation
 - [ ] TPM driver and integration
 - [ ] Disk encryption
@@ -622,9 +622,9 @@ Secure system with enforced access controls and encryption.
 - [ ] Basic GPU driver (Intel/AMD/NVIDIA) - VirtIO GPU exists, vendor drivers pending
 - [ ] Hardware-accelerated compositor
 - [x] 2D graphics library
-- [ ] Font rendering (FreeType-like or custom)
+- [x] Font rendering (FreeType-like or custom) - **NEW: Bitmap font with scaling and alignment**
 - [x] Input server
-- [ ] Cursor rendering
+- [x] Cursor rendering - **NEW: Multiple cursor types (arrow, text, resize, hand, crosshair)**
 - [ ] **Crashless compositor architecture (separate process, basic state restore on crash)**
 
 **Success Criteria:**

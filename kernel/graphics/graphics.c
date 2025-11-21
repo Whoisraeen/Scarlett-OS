@@ -260,6 +260,132 @@ void gfx_draw_string(uint32_t x, uint32_t y, const char* str, uint32_t color, ui
 }
 
 /**
+ * Draw a scaled character
+ */
+void gfx_draw_char_scaled(uint32_t x, uint32_t y, char c, uint32_t color, uint32_t bg_color, uint32_t scale) {
+    framebuffer_t* fb = framebuffer_get();
+    if (!fb || scale == 0) {
+        return;
+    }
+    
+    // Fill background
+    if (bg_color != 0xFFFFFFFF) {  // 0xFFFFFFFF = transparent
+        gfx_fill_rect(x, y, 8 * scale, 8 * scale, bg_color);
+    }
+    
+    // Get font glyph
+    const uint8_t* glyph = font_get_glyph(c);
+    
+    // Draw scaled glyph bitmap
+    for (uint32_t row = 0; row < 8; row++) {
+        uint8_t byte = glyph[row];
+        for (uint32_t col = 0; col < 8; col++) {
+            if (byte & (1 << (7 - col))) {
+                // Draw scaled pixel
+                for (uint32_t sy = 0; sy < scale; sy++) {
+                    for (uint32_t sx = 0; sx < scale; sx++) {
+                        uint32_t px = x + col * scale + sx;
+                        uint32_t py = y + row * scale + sy;
+                        if (!is_point_clipped(px, py)) {
+                            set_pixel_buffer(px, py, color);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Draw a scaled string
+ */
+void gfx_draw_string_scaled(uint32_t x, uint32_t y, const char* str, uint32_t color, uint32_t bg_color, uint32_t scale) {
+    if (!str) {
+        return;
+    }
+    
+    uint32_t cx = x;
+    for (const char* p = str; *p; p++) {
+        gfx_draw_char_scaled(cx, y, *p, color, bg_color, scale);
+        cx += 8 * scale;  // Scaled character width
+    }
+}
+
+// Text alignment constants
+#define TEXT_ALIGN_LEFT    0
+#define TEXT_ALIGN_CENTER  1
+#define TEXT_ALIGN_RIGHT   2
+#define TEXT_ALIGN_TOP     0
+#define TEXT_ALIGN_MIDDLE  4
+#define TEXT_ALIGN_BOTTOM  8
+
+/**
+ * Draw a string with alignment
+ */
+void gfx_draw_string_aligned(uint32_t x, uint32_t y, uint32_t width, uint32_t height, const char* str, uint32_t color, uint32_t bg_color, uint32_t align) {
+    if (!str) {
+        return;
+    }
+    
+    uint32_t text_w = gfx_text_width(str);
+    uint32_t text_h = gfx_text_height();
+    
+    // Calculate horizontal position
+    uint32_t text_x = x;
+    if (align & TEXT_ALIGN_CENTER) {
+        text_x = x + (width - text_w) / 2;
+    } else if (align & TEXT_ALIGN_RIGHT) {
+        text_x = x + width - text_w;
+    }
+    
+    // Calculate vertical position
+    uint32_t text_y = y;
+    if (align & TEXT_ALIGN_MIDDLE) {
+        text_y = y + (height - text_h) / 2;
+    } else if (align & TEXT_ALIGN_BOTTOM) {
+        text_y = y + height - text_h;
+    }
+    
+    gfx_draw_string(text_x, text_y, str, color, bg_color);
+}
+
+/**
+ * Get text width in pixels
+ */
+uint32_t gfx_text_width(const char* str) {
+    if (!str) {
+        return 0;
+    }
+    
+    uint32_t len = 0;
+    for (const char* p = str; *p; p++) {
+        len++;
+    }
+    return len * 8;  // 8 pixels per character
+}
+
+/**
+ * Get scaled text width in pixels
+ */
+uint32_t gfx_text_width_scaled(const char* str, uint32_t scale) {
+    return gfx_text_width(str) * scale;
+}
+
+/**
+ * Get text height in pixels
+ */
+uint32_t gfx_text_height(void) {
+    return 8;  // 8 pixels per character
+}
+
+/**
+ * Get scaled text height in pixels
+ */
+uint32_t gfx_text_height_scaled(uint32_t scale) {
+    return 8 * scale;
+}
+
+/**
  * Initialize double buffering
  */
 void gfx_init_double_buffer(void) {
