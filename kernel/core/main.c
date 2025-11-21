@@ -14,14 +14,12 @@
 #include "../include/cpu.h"
 #include "../include/mm/vmm.h"
 #include "../include/mm/pmm.h"
-#include "../include/desktop/desktop.h"
-#include "../include/desktop/taskbar.h"
-#include "../include/desktop/login.h"
+// NOTE: Desktop, taskbar, and login screen are user-space applications
+// They should not be included in kernel code
 #include "../include/window/window.h"
 #include "../include/graphics/graphics.h"
 #include "../../bootloader/common/boot_info.h"
-#include "../include/desktop/desktop.h"
-#include "../include/desktop/taskbar.h"
+// Desktop components are user-space - not included in kernel
 #include "../include/graphics/graphics.h"
 #include "../../bootloader/limine/limine.h"
 
@@ -181,7 +179,7 @@ skip_boot_info:
               boot_info->framebuffer.bpp);
         framebuffer_init(&boot_info->framebuffer);
         
-        // Initialize boot splash screen early
+        // Initialize boot splash screen early (acceptable in kernel for early boot display)
         extern error_code_t bootsplash_init(void);
         kinfo("Initializing boot splash screen...\n");
         bootsplash_init();
@@ -412,6 +410,11 @@ skip_boot_info:
     kinfo("Initializing Sandbox System...\n");
     sandbox_init();
     
+    // Audit System
+    extern error_code_t audit_init(void);
+    kinfo("Initializing Audit System...\n");
+    audit_init();
+    
     // ACL System
     extern error_code_t acl_init(void);
     kinfo("Initializing ACL System...\n");
@@ -461,6 +464,11 @@ skip_boot_info:
     extern error_code_t ntfs_register_vfs(void);
     kinfo("Registering NTFS filesystem...\n");
     ntfs_register_vfs();
+    
+    // Disk Encryption
+    extern error_code_t disk_encryption_init(void);
+    kinfo("Initializing Disk Encryption...\n");
+    disk_encryption_init();
     
     // Shell (initialize but don't run yet - will launch in userspace)
     extern void shell_init(void);
@@ -516,22 +524,9 @@ skip_boot_info:
     kinfo("Initializing DHCP Client...\n");
     dhcp_init();
     
-    // Desktop Environment
-    extern error_code_t desktop_init(void);
-    kinfo("Initializing Desktop Environment...\n");
-    desktop_init();
-    
-    extern error_code_t taskbar_init(void);
-    kinfo("Initializing Taskbar...\n");
-    taskbar_init();
-    
-    extern error_code_t launcher_init(void);
-    kinfo("Initializing Application Launcher...\n");
-    launcher_init();
-    
-    extern error_code_t login_screen_init(void);
-    kinfo("Initializing Login Screen...\n");
-    login_screen_init();
+    // NOTE: Desktop environment runs in user-space (Ring 3), not in kernel
+    // The desktop shell is launched as a user-space process via launch_shell_userspace()
+    // Kernel only provides window management primitives and syscalls
     
     // Update boot splash
     extern error_code_t bootsplash_set_message(const char* message);
@@ -554,26 +549,10 @@ skip_boot_info:
     kinfo("Starting Desktop Environment...\n");
     kinfo("========================================\n");
     
-    // Show login screen initially
-    extern error_code_t login_screen_show(void);
-    extern bool login_screen_is_logged_in(void);
-    extern error_code_t login_screen_render(void);
-    extern error_code_t login_screen_handle_input(void);
-    
-    login_screen_show();
-    
-    // Import desktop rendering functions
-    extern error_code_t desktop_render(void);
-    extern error_code_t taskbar_render(void);
-    extern error_code_t window_manager_render_all(void);
-    extern error_code_t window_manager_handle_input(void);
-    extern void gfx_swap_buffers(void);
-    
-    kinfo("Entering main desktop loop...\n");
-    
-    // Show login screen
-    extern error_code_t login_screen_show(void);
-    login_screen_show();
+    // NOTE: Desktop, taskbar, launcher, and login screen are user-space applications
+    // They should NOT be initialized or called from kernel code
+    // The desktop shell is launched as a user-space process via launch_shell_userspace()
+    // Kernel only provides window management primitives and syscalls
     
     kinfo("\n========================================\n");
     kinfo("Kernel initialization complete!\n");

@@ -488,6 +488,25 @@ void desktop_handle_mouse_button(desktop_ctx_t* ctx, int32_t x, int32_t y, uint3
                 ctx->dragged_icon_id = icon->id;
                 ctx->drag_offset_x = x - icon->x;
                 ctx->drag_offset_y = y - icon->y;
+            } else if (!pressed) {
+                // Double-click detection (on release)
+                static uint64_t last_click_time = 0;
+                static int32_t last_click_x = 0, last_click_y = 0;
+                uint64_t current_time = 0;  // TODO: Get current time
+                
+                // Check for double-click (within 500ms and 10px)
+                if (current_time - last_click_time < 500 && 
+                    abs(x - last_click_x) < 10 && abs(y - last_click_y) < 10) {
+                    // Double-click detected - open icon if one was clicked
+                    desktop_icon_t* double_click_icon = desktop_find_icon_at(ctx, x, y);
+                    if (double_click_icon) {
+                        desktop_open_icon(ctx, double_click_icon->id);
+                    }
+                }
+                
+                last_click_time = current_time;
+                last_click_x = x;
+                last_click_y = y;
             } else {
                 // Clicked on empty space - deselect all icons
                 for (uint32_t i = 0; i < MAX_DESKTOP_ICONS; i++) {
@@ -523,13 +542,63 @@ void desktop_handle_key(desktop_ctx_t* ctx, uint32_t keycode, bool pressed) {
     // - Delete: Delete selected icons
 }
 
+// Generate gradient wallpaper
+static void generate_wallpaper(desktop_ctx_t* ctx, uint32_t* buffer, uint32_t width, uint32_t height) {
+    if (!ctx || !buffer) return;
+
+    // Create modern gradient wallpaper (glassmorphism style)
+    // Inspired by iOS/macOS design - deep blue to purple-pink gradient
+    for (uint32_t y = 0; y < height; y++) {
+        for (uint32_t x = 0; x < width; x++) {
+            // Multi-color gradient: deep blue -> purple -> pink
+            float t_y = (float)y / height;
+            float t_x = (float)x / width;
+
+            // Create diagonal gradient with radial influence
+            float t = (t_y * 0.7f + t_x * 0.3f);
+
+            // Define gradient color stops
+            uint8_t r, g, b;
+            if (t < 0.5f) {
+                // Deep blue to vibrant purple
+                float local_t = t * 2.0f;
+                r = (uint8_t)(15 + (80 - 15) * local_t);
+                g = (uint8_t)(25 + (40 - 25) * local_t);
+                b = (uint8_t)(50 + (120 - 50) * local_t);
+            } else {
+                // Vibrant purple to deep teal
+                float local_t = (t - 0.5f) * 2.0f;
+                r = (uint8_t)(80 + (35 - 80) * local_t);
+                g = (uint8_t)(40 + (50 - 40) * local_t);
+                b = (uint8_t)(120 + (80 - 120) * local_t);
+            }
+
+            // Add subtle noise for depth (simple pattern)
+            uint8_t noise = ((x + y) % 3 == 0) ? 2 : 0;
+            r = (r + noise > 255) ? 255 : r + noise;
+            g = (g + noise > 255) ? 255 : g + noise;
+            b = (b + noise > 255) ? 255 : b + noise;
+
+            buffer[y * width + x] = (0xFF << 24) | (r << 16) | (g << 8) | b;
+        }
+    }
+}
+
 // Render desktop
 void desktop_render(desktop_ctx_t* ctx) {
     if (!ctx || !ctx->desktop_window) return;
 
     void* canvas = ctx->desktop_window->framebuffer;
+    uint32_t width = ctx->desktop_window->width;
+    uint32_t height = ctx->desktop_window->height;
 
-    // TODO: Draw wallpaper or background color
+    // Draw wallpaper or background color
+    if (ctx->wallpaper_texture) {
+        // TODO: Draw loaded wallpaper texture
+    } else {
+        // Generate and draw gradient wallpaper
+        generate_wallpaper(ctx, (uint32_t*)canvas, width, height);
+    }
 
     // Draw desktop icons
     if (ctx->config.show_desktop_icons) {

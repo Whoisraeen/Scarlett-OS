@@ -6,6 +6,7 @@
 #include "../include/types.h"
 #include "../include/fs/vfs.h"
 #include "../include/fs/permissions.h"
+#include "../include/security/audit.h"
 #include "../include/kprintf.h"
 #include "../include/debug.h"
 
@@ -232,6 +233,12 @@ error_code_t vfs_open(const char* path, uint64_t flags, fd_t* fd) {
             // Check read permission
             if (flags & VFS_MODE_READ) {
                 if (!permissions_check_read(&perms, uid, gid)) {
+                    // Audit: Permission denied
+                    extern process_t* process_get_current(void);
+                    process_t* current = process_get_current();
+                    audit_log(AUDIT_EVENT_PERMISSION_DENIED, uid, gid, 
+                             current ? current->pid : 0, ERR_PERMISSION_DENIED,
+                             "user", resolved_path, "read", "File open denied");
                     free_fd(new_fd);
                     return ERR_PERMISSION_DENIED;
                 }
@@ -240,6 +247,12 @@ error_code_t vfs_open(const char* path, uint64_t flags, fd_t* fd) {
             // Check write permission
             if (flags & VFS_MODE_WRITE) {
                 if (!permissions_check_write(&perms, uid, gid)) {
+                    // Audit: Permission denied
+                    extern process_t* process_get_current(void);
+                    process_t* current = process_get_current();
+                    audit_log(AUDIT_EVENT_PERMISSION_DENIED, uid, gid,
+                             current ? current->pid : 0, ERR_PERMISSION_DENIED,
+                             "user", resolved_path, "write", "File open denied");
                     free_fd(new_fd);
                     return ERR_PERMISSION_DENIED;
                 }
@@ -261,6 +274,15 @@ error_code_t vfs_open(const char* path, uint64_t flags, fd_t* fd) {
     fd_table[new_fd].fs = mount->fs;
     fd_table[new_fd].position = 0;
     fd_table[new_fd].flags = flags;
+    
+    // Audit: File opened
+    extern process_t* process_get_current(void);
+    process_t* current = process_get_current();
+    uint32_t uid = permissions_get_current_uid();
+    uint32_t gid = permissions_get_current_gid();
+    audit_event_type_t event_type = (flags & VFS_MODE_WRITE) ? AUDIT_EVENT_FILE_WRITE : AUDIT_EVENT_FILE_OPEN;
+    audit_log(event_type, uid, gid, current ? current->pid : 0, ERR_OK,
+             "process", resolved_path, "open", "");
     
     *fd = new_fd;
     return ERR_OK;

@@ -4,6 +4,7 @@
  */
 
 #include "../include/ui/widget.h"
+#include "../include/ui/theme.h"
 #include "../include/drivers/ps2.h"
 #include "../include/kprintf.h"
 #include "../include/debug.h"
@@ -258,19 +259,17 @@ error_code_t widget_render(widget_t* widget, window_t* window) {
         // Default rendering based on widget type
         switch (widget->type) {
             case WIDGET_TYPE_BUTTON: {
-                // Draw button background with gradient and rounded corners
-                uint32_t bg_top = (widget->flags & WIDGET_FLAG_FOCUSED) ? RGB(200, 220, 255) : RGB(250, 250, 250);
-                uint32_t bg_bottom = (widget->flags & WIDGET_FLAG_FOCUSED) ? RGB(160, 180, 240) : RGB(220, 220, 220);
+                // Get theme colors
+                theme_t* theme = theme_get_current();
                 
-                // We don't have a direct rounded gradient fill yet, so we'll fill a rounded rect with the average color
-                // or just use a solid color for now to keep it simple but rounded.
-                // Let's use a solid color but slightly different if focused.
-                uint32_t bg = (widget->flags & WIDGET_FLAG_FOCUSED) ? RGB(180, 200, 255) : RGB(240, 240, 240);
-                
+                // Draw button background
+                uint32_t bg = (widget->flags & WIDGET_FLAG_FOCUSED) ? 
+                    theme->button_bg_pressed : theme->button_bg;
                 gfx_fill_rounded_rect(x, y, width, height, 6, bg);
                 
                 // Draw button border
-                uint32_t border = (widget->flags & WIDGET_FLAG_FOCUSED) ? RGB(0, 120, 215) : RGB(180, 180, 180);
+                uint32_t border = (widget->flags & WIDGET_FLAG_FOCUSED) ? 
+                    theme->border_focused : theme->border;
                 gfx_draw_rounded_rect(x, y, width, height, 6, border);
                 
                 // Draw button text (centered)
@@ -278,7 +277,7 @@ error_code_t widget_render(widget_t* widget, window_t* window) {
                     uint32_t text_x = x + (width / 2) - (strlen(widget->text) * 4);
                     uint32_t text_y = y + (height / 2) - 4;
                     gfx_draw_string(text_x, text_y, widget->text, 
-                        widget->fg_color, 0); // Transparent bg
+                        theme->button_fg, 0); // Transparent bg
                 }
                 break;
             }
@@ -292,29 +291,34 @@ error_code_t widget_render(widget_t* widget, window_t* window) {
             }
             
             case WIDGET_TYPE_TEXTBOX: {
+                // Get theme colors
+                theme_t* theme = theme_get_current();
+                
                 // Draw textbox background
-                gfx_fill_rounded_rect(x, y, width, height, 4, RGB(255, 255, 255));
+                uint32_t bg = (widget->flags & WIDGET_FLAG_FOCUSED) ?
+                    theme->textbox_bg_focused : theme->textbox_bg;
+                gfx_fill_rounded_rect(x, y, width, height, 4, bg);
                 
                 // Draw textbox border
                 uint32_t border_color = (widget->flags & WIDGET_FLAG_FOCUSED) ?
-                    RGB(0, 120, 215) : RGB(180, 180, 180);
+                    theme->border_focused : theme->border;
                 gfx_draw_rounded_rect(x, y, width, height, 4, border_color);
                 
                 // Draw text
                 if (widget->text[0]) {
                     gfx_draw_string(x + 4, y + (height/2) - 4, widget->text, 
-                        widget->fg_color, 0);
+                        theme->textbox_fg, 0);
                 } else if (widget->data) {  // Placeholder text
                     char* placeholder = (char*)widget->data;
                     gfx_draw_string(x + 4, y + (height/2) - 4, placeholder, 
-                        RGB(150, 150, 150), 0);
+                        theme->textbox_placeholder, 0);
                 }
                 
                 // Draw cursor if focused
                 if (widget->flags & WIDGET_FLAG_FOCUSED) {
                     uint32_t cursor_x = x + 4 + (strlen(widget->text) * 8);
                     gfx_draw_line(cursor_x, y + 4, cursor_x, y + height - 4, 
-                        widget->fg_color);
+                        theme->textbox_fg);
                 }
                 break;
             }
@@ -339,12 +343,50 @@ error_code_t widget_render(widget_t* widget, window_t* window) {
             }
             
             case WIDGET_TYPE_PANEL: {
-                // Draw panel background with slight transparency if desired, or solid
-                // For now solid but rounded
-                gfx_fill_rounded_rect(x, y, width, height, 8, widget->bg_color);
+                // Get theme colors
+                theme_t* theme = theme_get_current();
+                
+                // Draw panel background
+                gfx_fill_rounded_rect(x, y, width, height, 8, theme->panel_bg);
                 
                 // Draw panel border
-                gfx_draw_rounded_rect(x, y, width, height, 8, RGB(200, 200, 200));
+                gfx_draw_rounded_rect(x, y, width, height, 8, theme->panel_border);
+                break;
+            }
+            
+            case WIDGET_TYPE_MENU: {
+                // Menu is a container, draw background if open
+                bool* is_open = (bool*)widget->data;
+                if (is_open && *is_open) {
+                    // Get theme colors
+                    theme_t* theme = theme_get_current();
+                    gfx_fill_rounded_rect(x, y, width, height, 4, theme->menu_bg);
+                    gfx_draw_rounded_rect(x, y, width, height, 4, theme->menu_border);
+                }
+                break;
+            }
+            
+            case WIDGET_TYPE_MENU_ITEM: {
+                // Get theme colors
+                theme_t* theme = theme_get_current();
+                
+                // Draw menu item background
+                bool* is_hovered = (bool*)widget->data;
+                uint32_t bg = (is_hovered && *is_hovered) ? 
+                    theme->menu_item_bg_hover : theme->menu_item_bg;
+                gfx_fill_rect(x, y, width, height, bg);
+                
+                // Draw menu item text
+                if (widget->text[0]) {
+                    gfx_draw_string(x + 8, y + (height/2) - 4, widget->text, 
+                        theme->menu_item_fg, 0);
+                }
+                
+                // Draw separator if text starts with "-"
+                if (widget->text[0] == '-' && widget->text[1] == '\0') {
+                    gfx_draw_line(x + 4, y + height/2, x + width - 4, y + height/2, 
+                        theme->menu_separator);
+                }
                 break;
             }
             
@@ -399,10 +441,41 @@ error_code_t widget_handle_mouse(widget_t* widget, int32_t mx, int32_t my, bool 
     }
     
     // Handle click
-    if (clicked && widget->on_click) {
+    if (clicked) {
         widget->flags |= WIDGET_FLAG_FOCUSED;
-        widget->on_click(widget, widget->user_data);
+        
+        // Widget-specific click handling
+        switch (widget->type) {
+            case WIDGET_TYPE_MENU:
+                // Toggle menu open/closed
+                {
+                    bool is_open = widget_menu_is_open(widget);
+                    widget_menu_set_open(widget, !is_open);
+                }
+                break;
+                
+            case WIDGET_TYPE_MENU_ITEM:
+                // Menu item clicked - close parent menu and trigger callback
+                {
+                    widget_t* menu = widget->parent;
+                    if (menu && menu->type == WIDGET_TYPE_MENU) {
+                        widget_menu_set_open(menu, false);
+                    }
+                }
+                // Fall through to call on_click
+                break;
+        }
+        
+        if (widget->on_click) {
+            widget->on_click(widget, widget->user_data);
+        }
         return ERR_OK;
+    } else {
+        // Handle hover for menu items
+        if (widget->type == WIDGET_TYPE_MENU_ITEM && widget->data) {
+            bool* is_hovered = (bool*)widget->data;
+            *is_hovered = true;
+        }
     }
     
     // Check children

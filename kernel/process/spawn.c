@@ -43,6 +43,17 @@ pid_t process_spawn(const char* name, const char* path, vaddr_t entry_point) {
     // Store IPC port in process structure
     process->ipc_port = port;
     
+    // Audit: Process created
+    extern process_t* process_get_current(void);
+    process_t* current = process_get_current();
+    uint32_t uid = get_current_uid();
+    uint32_t gid = get_current_gid();
+    char details[256];
+    strncpy(details, path ? path : "unknown", sizeof(details) - 1);
+    audit_log(AUDIT_EVENT_PROCESS_CREATE, uid, gid, 
+             current ? current->pid : 0, ERR_OK,
+             current ? current->name : "kernel", name, "spawn", details);
+    
     kinfo("Spawn: Created process PID %d with IPC port %lu\n", process->pid, port);
     
     return process->pid;

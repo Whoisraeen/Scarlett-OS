@@ -27,6 +27,12 @@ theme_t theme_light = {
     .textbox_placeholder = RGB(150, 150, 150),
     .panel_bg = RGB(250, 250, 250),
     .panel_border = RGB(200, 200, 200),
+    .menu_bg = RGB(255, 255, 255),
+    .menu_border = RGB(180, 180, 180),
+    .menu_item_bg = RGB(255, 255, 255),
+    .menu_item_bg_hover = RGB(240, 240, 240),
+    .menu_item_fg = RGB(0, 0, 0),
+    .menu_separator = RGB(200, 200, 200),
     .font_size = 8
 };
 
@@ -50,6 +56,12 @@ theme_t theme_dark = {
     .textbox_placeholder = RGB(150, 150, 150),
     .panel_bg = RGB(35, 35, 35),
     .panel_border = RGB(80, 80, 80),
+    .menu_bg = RGB(40, 40, 40),
+    .menu_border = RGB(80, 80, 80),
+    .menu_item_bg = RGB(40, 40, 40),
+    .menu_item_bg_hover = RGB(60, 60, 60),
+    .menu_item_fg = RGB(255, 255, 255),
+    .menu_separator = RGB(80, 80, 80),
     .font_size = 8
 };
 
@@ -73,6 +85,12 @@ theme_t theme_blue = {
     .textbox_placeholder = RGB(150, 150, 200),
     .panel_bg = RGB(245, 250, 255),
     .panel_border = RGB(150, 170, 220),
+    .menu_bg = RGB(255, 255, 255),
+    .menu_border = RGB(150, 170, 220),
+    .menu_item_bg = RGB(255, 255, 255),
+    .menu_item_bg_hover = RGB(220, 230, 255),
+    .menu_item_fg = RGB(0, 0, 0),
+    .menu_separator = RGB(200, 210, 230),
     .font_size = 8
 };
 
@@ -96,6 +114,12 @@ theme_t theme_glass = {
     .textbox_placeholder = RGB(120, 130, 150),
     .panel_bg = RGBA(30, 38, 55, 220),        // Frosted glass panel
     .panel_border = RGBA(255, 255, 255, 40),
+    .menu_bg = RGBA(40, 48, 70, 220),        // Frosted glass menu
+    .menu_border = RGBA(255, 255, 255, 60),
+    .menu_item_bg = RGBA(40, 48, 70, 220),
+    .menu_item_bg_hover = RGBA(60, 70, 100, 240),
+    .menu_item_fg = RGB(255, 255, 255),
+    .menu_separator = RGBA(255, 255, 255, 40),
     .font_size = 8
 };
 
@@ -156,6 +180,15 @@ error_code_t theme_apply_to_widget(void* widget_ptr, theme_t* theme) {
             
         case WIDGET_TYPE_PANEL:
             widget->bg_color = theme->panel_bg;
+            break;
+            
+        case WIDGET_TYPE_MENU:
+            widget->bg_color = theme->menu_bg;
+            break;
+            
+        case WIDGET_TYPE_MENU_ITEM:
+            widget->bg_color = theme->menu_item_bg;
+            widget->fg_color = theme->menu_item_fg;
             break;
             
         default:

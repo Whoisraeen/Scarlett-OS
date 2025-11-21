@@ -601,8 +601,8 @@ Network connectivity, can ping, TCP connections work.
 - [x] Crypto library integration - **NEW: SHA-256/512, AES-256, secure RNG, PBKDF2**
 - [ ] Secure boot implementation
 - [ ] TPM driver and integration
-- [ ] Disk encryption
-- [ ] Audit subsystem
+- [x] Disk encryption - **NEW: AES-256 block device encryption with key derivation**
+- [x] Audit subsystem - **NEW: Event logging with circular buffer and query interface**
 
 **Success Criteria:**
 Secure system with enforced access controls and encryption.
@@ -625,7 +625,7 @@ Secure system with enforced access controls and encryption.
 - [x] Font rendering (FreeType-like or custom) - **NEW: Bitmap font with scaling and alignment**
 - [x] Input server
 - [x] Cursor rendering - **NEW: Multiple cursor types (arrow, text, resize, hand, crosshair)**
-- [ ] **Crashless compositor architecture (separate process, basic state restore on crash)**
+- [x] **Crashless compositor architecture (separate process, basic state restore on crash)** - **NEW: Checkpoint/restore implemented with persistent state**
 
 **Success Criteria:**
 Multiple windows can be displayed and moved, GPU acceleration works.
@@ -638,9 +638,9 @@ Multiple windows can be displayed and moved, GPU acceleration works.
 - Basic applications
 
 **Deliverables:**
-- [ ] Widget toolkit (buttons, windows, menus, etc.)
-- [ ] Theme engine
-- [ ] Desktop shell
+- [x] Widget toolkit (buttons, windows, menus, etc.) - **NEW: Complete widget system with buttons, labels, textboxes, checkboxes, panels, and menus**
+- [x] Theme engine - **NEW: Complete theme system with light, dark, blue, and glass themes, menu colors, and widget integration**
+- [x] Desktop shell - **User-space implementation in apps/desktop/ (kernel desktop code was incorrectly placed and should be removed)**
 - [ ] Task bar / panel
 - [ ] Application launcher
 - [ ] File manager

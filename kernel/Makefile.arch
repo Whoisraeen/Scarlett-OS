@@ -196,6 +196,7 @@ COMMON_C_SRCS = core/main.c \
                 shell/shell.c \
                 fs/vfs.c \
                 fs/block.c \
+                fs/disk_encryption.c \
                 fs/fat32.c \
                 fs/ext4.c \
                 fs/ext4_vfs.c \
@@ -224,6 +225,7 @@ COMMON_C_SRCS = core/main.c \
                 security/capability.c \
                 security/rbac.c \
                 security/sandbox.c \
+                security/audit.c \
                 mm/mmap.c \
                 core/test.c \
                 core/userspace_launch.c \
@@ -247,6 +249,7 @@ COMMON_C_SRCS = core/main.c \
                 input/input.c \
                 window/window.c \
                 ui/widget.c \
+                ui/widget_menu.c \
                 ui/layout.c \
                 ui/theme.c \
                 net/network.c \
@@ -260,10 +263,6 @@ COMMON_C_SRCS = core/main.c \
                 net/dhcp.c \
                 net/ping.c \
                 net/socket.c \
-                desktop/desktop.c \
-                desktop/taskbar.c \
-                desktop/launcher.c \
-                desktop/login.c \
                 desktop/bootsplash.c
 
 # Combine architecture-specific and common sources

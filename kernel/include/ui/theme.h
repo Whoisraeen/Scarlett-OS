@@ -37,6 +37,14 @@ typedef struct {
     uint32_t panel_bg;
     uint32_t panel_border;
     
+    // Menu colors
+    uint32_t menu_bg;
+    uint32_t menu_border;
+    uint32_t menu_item_bg;
+    uint32_t menu_item_bg_hover;
+    uint32_t menu_item_fg;
+    uint32_t menu_separator;
+    
     // Font
     uint32_t font_size;      // Font size (currently 8x8)
 } theme_t;
@@ -45,6 +53,7 @@ typedef struct {
 extern theme_t theme_light;
 extern theme_t theme_dark;
 extern theme_t theme_blue;
+extern theme_t theme_glass;
 
 // Theme functions
 error_code_t theme_init(void);

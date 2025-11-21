@@ -18,6 +18,8 @@ typedef enum {
     WIDGET_TYPE_TEXTBOX,
     WIDGET_TYPE_CHECKBOX,
     WIDGET_TYPE_PANEL,
+    WIDGET_TYPE_MENU,
+    WIDGET_TYPE_MENU_ITEM,
     WIDGET_TYPE_CUSTOM
 } widget_type_t;
 
@@ -86,6 +88,11 @@ widget_t* widget_create_label(widget_t* parent, const char* text, int32_t x, int
 widget_t* widget_create_textbox(widget_t* parent, const char* placeholder, int32_t x, int32_t y, uint32_t width, uint32_t height);
 widget_t* widget_create_checkbox(widget_t* parent, const char* text, int32_t x, int32_t y);
 widget_t* widget_create_panel(widget_t* parent, int32_t x, int32_t y, uint32_t width, uint32_t height);
+widget_t* widget_create_menu(widget_t* parent, int32_t x, int32_t y, uint32_t width);
+widget_t* widget_create_menu_item(widget_t* menu, const char* text);
+error_code_t widget_menu_add_item(widget_t* menu, widget_t* item);
+error_code_t widget_menu_set_open(widget_t* menu, bool open);
+bool widget_menu_is_open(widget_t* menu);
 
 #endif // KERNEL_UI_WIDGET_H
 
