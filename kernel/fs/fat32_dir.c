@@ -212,14 +212,104 @@ error_code_t fat32_rmdir(fat32_fs_t* fs, const char* path) {
         return ERR_INVALID_ARG;
     }
     
-    // TODO: Implement directory removal
+    // Implement directory removal
     // 1. Find directory
-    // 2. Check if directory is empty
-    // 3. Remove directory entry from parent
-    // 4. Free directory clusters
+    fat32_dir_entry_t entry;
+    error_code_t err = fat32_find_file(fs, path, &entry);
+    if (err != ERR_OK) {
+        return err;
+    }
     
-    kinfo("FAT32: rmdir %s (not yet implemented)\n", path);
-    return ERR_NOT_SUPPORTED;
+    // Check if it's actually a directory
+    if (!(entry.attributes & FAT32_ATTR_DIRECTORY)) {
+        return ERR_NOT_A_DIRECTORY;
+    }
+    
+    // 2. Check if directory is empty (only . and .. entries)
+    uint32_t dir_cluster = entry.cluster_low | ((uint32_t)entry.cluster_high << 16);
+    fat32_dir_entry_t dir_entries[16];
+    err = fat32_read_dir(fs, dir_cluster, dir_entries, 16);
+    if (err != ERR_OK) {
+        return err;
+    }
+    
+    // Count non-empty entries (skip . and ..)
+    uint32_t entry_count = 0;
+    for (uint32_t i = 0; i < 16; i++) {
+        if (dir_entries[i].name[0] == 0x00) {
+            break;  // End of directory
+        }
+        if (dir_entries[i].name[0] != 0xE5 && 
+            !(dir_entries[i].name[0] == '.' && (dir_entries[i].name[1] == ' ' || dir_entries[i].name[1] == '.'))) {
+            entry_count++;
+        }
+    }
+    
+    if (entry_count > 0) {
+        return ERR_NOT_EMPTY;  // Directory not empty
+    }
+    
+    // 3. Remove directory entry from parent
+    extern error_code_t fat32_find_in_dir_location(fat32_fs_t* fs, uint32_t cluster, const char* name,
+                                                    uint32_t* out_cluster, uint32_t* out_entry_index);
+    extern error_code_t fat32_parse_path(const char* path, char components[][12], uint32_t* component_count);
+    
+    char components[32][12];
+    uint32_t component_count = 0;
+    err = fat32_parse_path(path, components, &component_count);
+    if (err != ERR_OK || component_count == 0) {
+        return err;
+    }
+    
+    // Get parent directory cluster
+    uint32_t parent_cluster = fs->root_cluster;
+    for (uint32_t i = 0; i < component_count - 1; i++) {
+        fat32_dir_entry_t parent_entry;
+        err = fat32_find_in_dir(fs, parent_cluster, components[i], &parent_entry);
+        if (err != ERR_OK) {
+            return err;
+        }
+        parent_cluster = parent_entry.cluster_low | ((uint32_t)parent_entry.cluster_high << 16);
+    }
+    
+    // Find entry location in parent directory
+    uint32_t entry_cluster, entry_index;
+    err = fat32_find_in_dir_location(fs, parent_cluster, components[component_count - 1], 
+                                     &entry_cluster, &entry_index);
+    if (err != ERR_OK) {
+        return err;
+    }
+    
+    // Read cluster containing the entry
+    uint8_t* cluster_data = (uint8_t*)kmalloc(fs->bytes_per_cluster);
+    if (!cluster_data) {
+        return ERR_OUT_OF_MEMORY;
+    }
+    
+    err = fat32_read_cluster(fs, entry_cluster, cluster_data);
+    if (err != ERR_OK) {
+        kfree(cluster_data);
+        return err;
+    }
+    
+    // Mark entry as deleted (0xE5)
+    fat32_dir_entry_t* entries = (fat32_dir_entry_t*)cluster_data;
+    entries[entry_index].name[0] = 0xE5;
+    
+    // Write back cluster
+    err = fat32_write_cluster(fs, entry_cluster, cluster_data);
+    kfree(cluster_data);
+    if (err != ERR_OK) {
+        return err;
+    }
+    
+    // 4. Free directory clusters
+    if (dir_cluster >= 2) {
+        fat32_free_cluster(fs, dir_cluster);
+    }
+    
+    kinfo("FAT32: Directory %s removed successfully\n", path);
+    return ERR_OK;
 }
 
 /**

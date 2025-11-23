@@ -304,7 +304,28 @@ error_code_t fat32_file_write(fat32_fs_t* fs, fd_t fd, const void* buf, size_t c
             }
             
             // Link to previous cluster if exists
-            // TODO: Link new cluster to chain
+            // Find the last cluster in the file's chain
+            uint32_t first_cluster = file->entry.cluster_low | ((uint32_t)file->entry.cluster_high << 16);
+            if (first_cluster >= 2) {
+                // Walk to end of chain
+                uint32_t current = first_cluster;
+                while (true) {
+                    uint32_t next = fat32_get_next_cluster(file->fs, current);
+                    if (next >= FAT32_CLUSTER_EOF_MIN) {
+                        // Found end of chain - link new cluster
+                        fat32_set_next_cluster(file->fs, current, cluster);
+                        fat32_set_next_cluster(file->fs, cluster, FAT32_CLUSTER_EOF_MIN);
+                        break;
+                    }
+                    current = next;
+                }
+            } else {
+                // First cluster - update directory entry
+                file->entry.cluster_low = cluster & 0xFFFF;
+                file->entry.cluster_high = (cluster >> 16) & 0xFFFF;
+                fat32_set_next_cluster(file->fs, cluster, FAT32_CLUSTER_EOF_MIN);
+            }
+            file->current_cluster = cluster;
             
             // Initialize cluster
             if (!file->cluster_buffer) {

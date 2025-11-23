@@ -100,12 +100,31 @@ static error_code_t ext4_vfs_read(vfs_filesystem_t* fs, fd_t fd, void* buf, size
     if (!fs || !fs->private_data || !buf || !bytes_read) {
         return ERR_INVALID_ARG;
     }
+    
+    // Get inode from fd and read data
+    extern fd_entry_t fd_table[];
+    
+    if (fd < 0 || fd >= 256 || !fd_table[fd].used) {
+        return ERR_INVALID_ARG;
+    }
+    
     uint32_t inode_num = (uint32_t)(uintptr_t)fd_table[fd].file_data;
     if (inode_num == 0) {
         return ERR_NOT_FOUND;
     }
+    
     ext4_fs_t* ext4_fs = (ext4_fs_t*)fs->private_data;
-    return ext4_read_file(ext4_fs, inode_num, buf, 0, count, bytes_read);
+    
+    // Use current position from fd
+    size_t offset = fd_table[fd].position;
+    error_code_t err = ext4_read_file(ext4_fs, inode_num, buf, offset, count, bytes_read);
+    
+    if (err == ERR_OK) {
+        // Update position
+        fd_table[fd].position += *bytes_read;
+    }
+    
+    return err;
 }
 
 static error_code_t ext4_vfs_write(vfs_filesystem_t* fs, fd_t fd, const void* buf, size_t count, size_t* bytes_written) {
@@ -148,10 +167,76 @@ static error_code_t ext4_vfs_stat(vfs_filesystem_t* fs, const char* path, vfs_st
     
     ext4_fs_t* ext4_fs = (ext4_fs_t*)fs->private_data;
     
-    // TODO: Resolve path and read inode
-    (void)ext4_fs;
+    // Resolve path and read inode
+    // Parse path components (same as in ext4_vfs_open)
+    char components[64][256];
+    uint32_t component_count = 0;
     
-    return ERR_NOT_SUPPORTED;
+    // Skip leading slash
+    const char* p = path;
+    if (*p == '/') {
+        p++;
+    }
+    
+    // Parse path into components
+    const char* start = p;
+    while (*p) {
+        if (*p == '/') {
+            if (p > start && component_count < 64) {
+                size_t len = p - start;
+                if (len < 256) {
+                    memcpy(components[component_count], start, len);
+                    components[component_count][len] = '\0';
+                    component_count++;
+                }
+            }
+            start = p + 1;
+        }
+        p++;
+    }
+    
+    // Add final component
+    if (p > start && component_count < 64) {
+        size_t len = p - start;
+        if (len < 256) {
+            memcpy(components[component_count], start, len);
+            components[component_count][len] = '\0';
+            component_count++;
+        }
+    }
+    
+    // Start from root inode (inode 2)
+    uint32_t current_inode = 2;
+    
+    // Traverse path
+    for (uint32_t i = 0; i < component_count; i++) {
+        uint32_t next_inode;
+        error_code_t err = ext4_find_file(ext4_fs, current_inode, components[i], &next_inode);
+        if (err != ERR_OK) {
+            return err;
+        }
+        current_inode = next_inode;
+    }
+    
+    // Read inode
+    ext4_inode_t inode;
+    error_code_t err = ext4_read_inode(ext4_fs, current_inode, &inode);
+    if (err != ERR_OK) {
+        return err;
+    }
+    
+    // Fill stat structure
+    stat->ino = current_inode;
+    stat->type = ((inode.mode & 0xF000) == 0x4000) ? VFS_TYPE_DIRECTORY : VFS_TYPE_FILE;
+    stat->size = inode.size_lo | ((uint64_t)inode.size_hi << 32);
+    stat->mode = inode.mode & 0x0FFF;
+    stat->uid = inode.uid | ((uint64_t)inode.uid_hi << 16);
+    stat->gid = inode.gid | ((uint64_t)inode.gid_hi << 16);
+    stat->atime = inode.atime;
+    stat->mtime = inode.mtime;
+    stat->ctime = inode.ctime;
+    
+    return ERR_OK;
 }
 
 /**

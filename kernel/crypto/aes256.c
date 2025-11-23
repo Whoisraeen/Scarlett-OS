@@ -9,8 +9,8 @@
 #include "../include/mm/heap.h"
 #include "../include/string.h"
 
-// AES S-box
-static const uint8_t sbox[256] = {
+// AES S-box (exported for use by AES-128 and AES-192)
+const uint8_t sbox[256] = {
     0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76,
     0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf, 0x9c, 0xa4, 0x72, 0xc0,
     0xb7, 0xfd, 0x93, 0x26, 0x36, 0x3f, 0xf7, 0xcc, 0x34, 0xa5, 0xe5, 0xf1, 0x71, 0xd8, 0x31, 0x15,
@@ -29,8 +29,8 @@ static const uint8_t sbox[256] = {
     0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42, 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16
 };
 
-// Inverse S-box
-static const uint8_t inv_sbox[256] = {
+// Inverse S-box (exported for use by AES-128 and AES-192)
+const uint8_t inv_sbox[256] = {
     0x52, 0x09, 0x6a, 0xd5, 0x30, 0x36, 0xa5, 0x38, 0xbf, 0x40, 0xa3, 0x9e, 0x81, 0xf3, 0xd7, 0xfb,
     0x7c, 0xe3, 0x39, 0x82, 0x9b, 0x2f, 0xff, 0x87, 0x34, 0x8e, 0x43, 0x44, 0xc4, 0xde, 0xe9, 0xcb,
     0x54, 0x7b, 0x94, 0x32, 0xa6, 0xc2, 0x23, 0x3d, 0xee, 0x4c, 0x95, 0x0b, 0x42, 0xfa, 0xc3, 0x4e,
@@ -49,8 +49,8 @@ static const uint8_t inv_sbox[256] = {
     0x17, 0x2b, 0x04, 0x7e, 0xba, 0x77, 0xd6, 0x26, 0xe1, 0x69, 0x14, 0x63, 0x55, 0x21, 0x0c, 0x7d
 };
 
-// Rcon table
-static const uint8_t rcon[11] = {
+// Rcon table (exported for use by AES-128 and AES-192)
+const uint8_t rcon[11] = {
     0x00, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36
 };
 
@@ -92,8 +92,8 @@ static void aes256_key_expansion(const uint8_t* key, uint32_t* round_keys) {
     }
 }
 
-// AddRoundKey
-static void add_round_key(uint8_t* state, const uint32_t* round_key) {
+// AddRoundKey (exported for use by AES-128 and AES-192)
+void add_round_key(uint8_t* state, const uint32_t* round_key) {
     for (int i = 0; i < 4; i++) {
         uint32_t k = round_key[i];
         state[i * 4] ^= (k >> 24) & 0xFF;
@@ -103,22 +103,22 @@ static void add_round_key(uint8_t* state, const uint32_t* round_key) {
     }
 }
 
-// SubBytes
-static void sub_bytes(uint8_t* state) {
+// SubBytes (exported for use by AES-128 and AES-192)
+void sub_bytes(uint8_t* state) {
     for (int i = 0; i < 16; i++) {
         state[i] = sbox[state[i]];
     }
 }
 
-// InvSubBytes
-static void inv_sub_bytes(uint8_t* state) {
+// InvSubBytes (exported for use by AES-128 and AES-192)
+void inv_sub_bytes(uint8_t* state) {
     for (int i = 0; i < 16; i++) {
         state[i] = inv_sbox[state[i]];
     }
 }
 
-// ShiftRows
-static void shift_rows(uint8_t* state) {
+// ShiftRows (exported for use by AES-128 and AES-192)
+void shift_rows(uint8_t* state) {
     uint8_t temp;
     
     // Row 1: shift left by 1
@@ -144,8 +144,8 @@ static void shift_rows(uint8_t* state) {
     state[7] = temp;
 }
 
-// InvShiftRows
-static void inv_shift_rows(uint8_t* state) {
+// InvShiftRows (exported for use by AES-128 and AES-192)
+void inv_shift_rows(uint8_t* state) {
     uint8_t temp;
     
     // Row 1: shift right by 1
@@ -188,8 +188,8 @@ static inline uint8_t gmul(uint8_t a, uint8_t b) {
     return p;
 }
 
-// MixColumns
-static void mix_columns(uint8_t* state) {
+// MixColumns (exported for use by AES-128 and AES-192)
+void mix_columns(uint8_t* state) {
     for (int i = 0; i < 4; i++) {
         uint8_t s0 = state[i * 4];
         uint8_t s1 = state[i * 4 + 1];
@@ -203,8 +203,8 @@ static void mix_columns(uint8_t* state) {
     }
 }
 
-// InvMixColumns
-static void inv_mix_columns(uint8_t* state) {
+// InvMixColumns (exported for use by AES-128 and AES-192)
+void inv_mix_columns(uint8_t* state) {
     for (int i = 0; i < 4; i++) {
         uint8_t s0 = state[i * 4];
         uint8_t s1 = state[i * 4 + 1];

@@ -127,10 +127,37 @@ error_code_t ext4_read_inode(ext4_fs_t* fs, uint32_t inode_num, ext4_inode_t* in
     uint32_t group = ext4_inode_to_group(fs, inode_num);
     uint32_t index = ext4_inode_to_index(fs, inode_num);
     
-    // TODO: Read group descriptor to find inode table block
-    // For now, use simplified calculation
-    // Inode table typically starts after superblock and group descriptors
-    uint32_t inode_table_block = 2 + (group * fs->blocks_per_group);  // Simplified
+    // Read group descriptor to find inode table block
+    // Group descriptors start at block (first_data_block + 1) or block 1 if block size >= 2KB
+    uint32_t first_data_block = fs->superblock.first_data_block;
+    uint32_t group_desc_block = (fs->block_size >= 2048) ? 1 : (first_data_block + 1);
+    
+    // Calculate which group descriptor to read
+    // Group descriptors are typically 32 bytes each
+    size_t group_desc_size = fs->superblock.group_desc_size ? fs->superblock.group_desc_size : 32;
+    uint32_t descs_per_block = fs->block_size / group_desc_size;
+    uint32_t desc_block = group_desc_block + (group / descs_per_block);
+    uint32_t desc_offset = (group % descs_per_block) * group_desc_size;
+    
+    // Read group descriptor block
+    uint8_t* desc_block_buffer = (uint8_t*)kmalloc(fs->block_size);
+    if (!desc_block_buffer) {
+        return ERR_OUT_OF_MEMORY;
+    }
+    
+    error_code_t err = block_device_read(fs->device, desc_block, desc_block_buffer);
+    if (err != ERR_OK) {
+        kfree(desc_block_buffer);
+        return err;
+    }
+    
+    // Extract inode table block from group descriptor
+    // Group descriptor structure: {block_bitmap, inode_bitmap, inode_table, ...}
+    // inode_table is at offset 8 (32-bit value)
+    uint32_t* desc = (uint32_t*)(desc_block_buffer + desc_offset);
+    uint32_t inode_table_block = desc[2];  // inode_table is 3rd 32-bit field (index 2)
+    
+    kfree(desc_block_buffer);
     
     // Calculate block and offset within block
     uint32_t inode_block = inode_table_block + (index * fs->inode_size) / fs->block_size;
@@ -171,17 +198,157 @@ static error_code_t ext4_read_inode_block(ext4_fs_t* fs, ext4_inode_t* inode, ui
     }
     // Indirect block (12)
     else if (block_index < 12 + (fs->block_size / 4)) {
-        return ERR_NOT_SUPPORTED;
+        // Single indirect: block[12] points to a block containing block numbers
+        uint32_t indirect_index = block_index - 12;
+        uint32_t indirect_block = inode->block[12];
+        
+        if (indirect_block == 0) {
+            return ERR_NOT_FOUND;
+        }
+        
+        // Read indirect block
+        uint8_t* indirect_buffer = (uint8_t*)kmalloc(fs->block_size);
+        if (!indirect_buffer) {
+            return ERR_OUT_OF_MEMORY;
+        }
+        
+        error_code_t err = block_device_read(fs->device, indirect_block, indirect_buffer);
+        if (err != ERR_OK) {
+            kfree(indirect_buffer);
+            return err;
+        }
+        
+        // Get block number from indirect block
+        uint32_t* block_ptr = (uint32_t*)indirect_buffer;
+        block_num = block_ptr[indirect_index];
+        
+        kfree(indirect_buffer);
     }
     // Double indirect (13)
     else if (block_index < 12 + (fs->block_size / 4) + (fs->block_size / 4) * (fs->block_size / 4)) {
-        // TODO: Read double indirect block
-        return ERR_NOT_SUPPORTED;
+        // Double indirect: block[13] points to a block of indirect block pointers
+        uint32_t blocks_per_indirect = fs->block_size / 4;
+        uint32_t double_index = block_index - 12 - blocks_per_indirect;
+        uint32_t indirect1_index = double_index / blocks_per_indirect;
+        uint32_t indirect2_index = double_index % blocks_per_indirect;
+        uint32_t double_indirect_block = inode->block[13];
+        
+        if (double_indirect_block == 0) {
+            return ERR_NOT_FOUND;
+        }
+        
+        // Read double indirect block
+        uint8_t* double_indirect_buffer = (uint8_t*)kmalloc(fs->block_size);
+        if (!double_indirect_buffer) {
+            return ERR_OUT_OF_MEMORY;
+        }
+        
+        error_code_t err = block_device_read(fs->device, double_indirect_block, double_indirect_buffer);
+        if (err != ERR_OK) {
+            kfree(double_indirect_buffer);
+            return err;
+        }
+        
+        // Get indirect block number
+        uint32_t* double_block_ptr = (uint32_t*)double_indirect_buffer;
+        uint32_t indirect_block = double_block_ptr[indirect1_index];
+        kfree(double_indirect_buffer);
+        
+        if (indirect_block == 0) {
+            return ERR_NOT_FOUND;
+        }
+        
+        // Read indirect block
+        uint8_t* indirect_buffer = (uint8_t*)kmalloc(fs->block_size);
+        if (!indirect_buffer) {
+            return ERR_OUT_OF_MEMORY;
+        }
+        
+        err = block_device_read(fs->device, indirect_block, indirect_buffer);
+        if (err != ERR_OK) {
+            kfree(indirect_buffer);
+            return err;
+        }
+        
+        // Get block number from indirect block
+        uint32_t* block_ptr = (uint32_t*)indirect_buffer;
+        block_num = block_ptr[indirect2_index];
+        
+        kfree(indirect_buffer);
     }
     // Triple indirect (14)
     else {
-        // TODO: Read triple indirect block
-        return ERR_NOT_SUPPORTED;
+        // Triple indirect: block[14] points to a block of double indirect block pointers
+        uint32_t blocks_per_indirect = fs->block_size / 4;
+        uint32_t triple_index = block_index - 12 - blocks_per_indirect - (blocks_per_indirect * blocks_per_indirect);
+        uint32_t double_index = triple_index / blocks_per_indirect;
+        uint32_t indirect1_index = (triple_index % blocks_per_indirect) / blocks_per_indirect;
+        uint32_t indirect2_index = triple_index % blocks_per_indirect;
+        uint32_t triple_indirect_block = inode->block[14];
+        
+        if (triple_indirect_block == 0) {
+            return ERR_NOT_FOUND;
+        }
+        
+        // Read triple indirect block
+        uint8_t* triple_indirect_buffer = (uint8_t*)kmalloc(fs->block_size);
+        if (!triple_indirect_buffer) {
+            return ERR_OUT_OF_MEMORY;
+        }
+        
+        error_code_t err = block_device_read(fs->device, triple_indirect_block, triple_indirect_buffer);
+        if (err != ERR_OK) {
+            kfree(triple_indirect_buffer);
+            return err;
+        }
+        
+        // Get double indirect block number
+        uint32_t* triple_block_ptr = (uint32_t*)triple_indirect_buffer;
+        uint32_t double_indirect_block = triple_block_ptr[double_index];
+        kfree(triple_indirect_buffer);
+        
+        if (double_indirect_block == 0) {
+            return ERR_NOT_FOUND;
+        }
+        
+        // Read double indirect block
+        uint8_t* double_indirect_buffer = (uint8_t*)kmalloc(fs->block_size);
+        if (!double_indirect_buffer) {
+            return ERR_OUT_OF_MEMORY;
+        }
+        
+        err = block_device_read(fs->device, double_indirect_block, double_indirect_buffer);
+        if (err != ERR_OK) {
+            kfree(double_indirect_buffer);
+            return err;
+        }
+        
+        // Get indirect block number
+        uint32_t* double_block_ptr = (uint32_t*)double_indirect_buffer;
+        uint32_t indirect_block = double_block_ptr[indirect1_index];
+        kfree(double_indirect_buffer);
+        
+        if (indirect_block == 0) {
+            return ERR_NOT_FOUND;
+        }
+        
+        // Read indirect block
+        uint8_t* indirect_buffer = (uint8_t*)kmalloc(fs->block_size);
+        if (!indirect_buffer) {
+            return ERR_OUT_OF_MEMORY;
+        }
+        
+        err = block_device_read(fs->device, indirect_block, indirect_buffer);
+        if (err != ERR_OK) {
+            kfree(indirect_buffer);
+            return err;
+        }
+        
+        // Get block number from indirect block
+        uint32_t* block_ptr = (uint32_t*)indirect_buffer;
+        block_num = block_ptr[indirect2_index];
+        
+        kfree(indirect_buffer);
     }
     
     if (block_num == 0) {

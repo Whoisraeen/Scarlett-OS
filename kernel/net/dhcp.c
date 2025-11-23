@@ -414,7 +414,66 @@ error_code_t dhcp_release_config(net_device_t* device) {
     
     kinfo("DHCP: Releasing configuration for device %s\n", device->name);
     
-    // TODO: Send DHCP RELEASE message
-    return ERR_NOT_SUPPORTED;
+    // Send DHCP RELEASE message
+    // Get current IP configuration from device
+    uint32_t client_ip = device->ip_address;
+    uint32_t server_ip = device->gateway;  // Use gateway as server IP (simplified)
+    
+    if (client_ip == 0) {
+        kerror("DHCP: No IP address configured to release\n");
+        return ERR_INVALID_STATE;
+    }
+    
+    // Create DHCP RELEASE message
+    dhcp_message_t* release = (dhcp_message_t*)kmalloc(sizeof(dhcp_message_t));
+    if (!release) {
+        return ERR_OUT_OF_MEMORY;
+    }
+    
+    memset(release, 0, sizeof(dhcp_message_t));
+    
+    spinlock_lock(&dhcp_state.lock);
+    release->xid = dhcp_state.next_xid++;
+    spinlock_unlock(&dhcp_state.lock);
+    
+    release->op = 1;  // BOOTREQUEST
+    release->htype = 1;  // Ethernet
+    release->hlen = 6;   // MAC address length
+    release->hops = 0;
+    release->secs = 0;
+    release->flags = 0;
+    release->ciaddr = client_ip;  // Client IP address
+    
+    // Client hardware address
+    memcpy(release->chaddr, device->mac_address, 6);
+    
+    // Magic cookie (99.130.83.99)
+    release->options[0] = 99;
+    release->options[1] = 130;
+    release->options[2] = 83;
+    release->options[3] = 99;
+    
+    // DHCP message type: RELEASE
+    size_t opt_offset = 4;
+    uint8_t msg_type = DHCP_RELEASE;
+    opt_offset = dhcp_add_option(release->options, opt_offset, DHCP_OPT_MESSAGE_TYPE, &msg_type, 1);
+    
+    // Server ID
+    opt_offset = dhcp_add_option(release->options, opt_offset, DHCP_OPT_SERVER_ID, &server_ip, 4);
+    
+    // End option
+    release->options[opt_offset++] = DHCP_OPT_END;
+    
+    // Send RELEASE to server (unicast)
+    error_code_t err = udp_send(server_ip, DHCP_SERVER_PORT, DHCP_CLIENT_PORT, release, sizeof(dhcp_message_t));
+    kfree(release);
+    
+    if (err != ERR_OK) {
+        kerror("DHCP: Failed to send RELEASE message\n");
+        return err;
+    }
+    
+    kinfo("DHCP: RELEASE message sent\n");
+    return ERR_OK;
 }
 

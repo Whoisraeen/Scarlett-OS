@@ -87,9 +87,62 @@ static error_code_t virtio_gpu_driver_submit_command(gpu_device_t* gpu, const gp
             return virtio_gpu_flush(g_virtio_gpu, cmd->x, cmd->y, cmd->width, cmd->height);
             
         case GPU_CMD_DRAW_RECT:
-            // Draw rectangle (would use framebuffer directly)
-            // TODO: Implement rectangle drawing
-            return ERR_NOT_SUPPORTED;
+            // Draw rectangle using framebuffer directly
+            if (!gpu->framebuffer) {
+                return ERR_NOT_INITIALIZED;
+            }
+            
+            // Draw rectangle outline using cmd parameters
+            uint32_t* fb = (uint32_t*)gpu->framebuffer;
+            uint32_t width = gpu->current_mode.width;
+            uint32_t height = gpu->current_mode.height;
+            uint32_t color = cmd->color;
+            
+            // Extract parameters from cmd structure
+            uint32_t rect_x = cmd->x;
+            uint32_t rect_y = cmd->y;
+            uint32_t rect_w = cmd->width;
+            uint32_t rect_h = cmd->height;
+            
+            // Clamp to framebuffer bounds
+            if (rect_x >= width || rect_y >= height) {
+                return ERR_OK;  // Rectangle is outside framebuffer
+            }
+            
+            if (rect_x + rect_w > width) {
+                rect_w = width - rect_x;
+            }
+            if (rect_y + rect_h > height) {
+                rect_h = height - rect_y;
+            }
+            
+            // Top edge
+            for (uint32_t i = rect_x; i < rect_x + rect_w; i++) {
+                fb[rect_y * width + i] = color;
+            }
+            
+            // Bottom edge
+            if (rect_h > 1) {
+                uint32_t bottom_y = rect_y + rect_h - 1;
+                for (uint32_t i = rect_x; i < rect_x + rect_w; i++) {
+                    fb[bottom_y * width + i] = color;
+                }
+            }
+            
+            // Left edge
+            for (uint32_t i = rect_y; i < rect_y + rect_h; i++) {
+                fb[i * width + rect_x] = color;
+            }
+            
+            // Right edge
+            if (rect_w > 1) {
+                uint32_t right_x = rect_x + rect_w - 1;
+                for (uint32_t i = rect_y; i < rect_y + rect_h; i++) {
+                    fb[i * width + right_x] = color;
+                }
+            }
+            
+            return ERR_OK;
             
         default:
             return ERR_NOT_SUPPORTED;

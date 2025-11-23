@@ -346,12 +346,171 @@ error_code_t dns_resolve(const char* hostname, uint32_t* ip_address) {
 }
 
 /**
- * Resolve hostname to IPv6 address (placeholder)
+ * Resolve hostname to IPv6 address
  */
 error_code_t dns_resolve_ipv6(const char* hostname, uint8_t* ipv6_address) {
-    (void)hostname;
-    (void)ipv6_address;
-    // TODO: Implement IPv6 DNS resolution
-    return ERR_NOT_SUPPORTED;
+    if (!hostname || !ipv6_address) {
+        return ERR_INVALID_ARG;
+    }
+    
+    if (!dns_state.initialized) {
+        dns_init();
+    }
+    
+    kinfo("DNS: Resolving IPv6 address for %s\n", hostname);
+    
+    // Create socket
+    int sockfd = socket_create(2, SOCK_DGRAM, 0);  // AF_INET, SOCK_DGRAM
+    if (sockfd < 0) {
+        kerror("DNS: Failed to create socket\n");
+        return ERR_FAILED;
+    }
+    
+    // Build DNS query for AAAA record
+    size_t name_len = strlen(hostname) + 2;
+    size_t query_size = sizeof(dns_header_t) + name_len + 4;  // Header + name + qtype + qclass
+    
+    uint8_t* query = (uint8_t*)kmalloc(query_size);
+    if (!query) {
+        socket_close(sockfd);
+        return ERR_OUT_OF_MEMORY;
+    }
+    
+    dns_header_t* header = (dns_header_t*)query;
+    
+    spinlock_lock(&dns_state.lock);
+    header->id = __builtin_bswap16(dns_state.next_id++);
+    spinlock_unlock(&dns_state.lock);
+    
+    header->flags = __builtin_bswap16(DNS_FLAG_RD);  // Recursion desired
+    header->qdcount = __builtin_bswap16(1);
+    header->ancount = 0;
+    header->nscount = 0;
+    header->arcount = 0;
+    
+    // Encode domain name
+    size_t encoded_name_len = dns_encode_name(hostname, query + sizeof(dns_header_t), 256);
+    if (encoded_name_len == 0) {
+        kerror("DNS: Failed to encode domain name\n");
+        kfree(query);
+        socket_close(sockfd);
+        return ERR_INVALID_ARG;
+    }
+    
+    // Add question (AAAA record type)
+    size_t q_offset = sizeof(dns_header_t) + encoded_name_len;
+    uint16_t* qtype = (uint16_t*)(query + q_offset);
+    qtype[0] = __builtin_bswap16(DNS_TYPE_AAAA);  // AAAA for IPv6
+    qtype[1] = __builtin_bswap16(DNS_CLASS_IN);
+    
+    size_t query_len = q_offset + 4;
+    
+    // Send query
+    sockaddr_in_t server_addr = {0};
+    server_addr.family = 2;  // AF_INET
+    server_addr.port = __builtin_bswap16(DNS_PORT);
+    server_addr.addr = dns_state.nameserver_ip;
+    
+    error_code_t err = socket_connect(sockfd, &server_addr);
+    if (err != ERR_OK) {
+        kerror("DNS: Failed to connect to nameserver\n");
+        kfree(query);
+        socket_close(sockfd);
+        return err;
+    }
+    
+    err = socket_send(sockfd, query, query_len, 0);
+    if (err != ERR_OK) {
+        kerror("DNS: Failed to send query\n");
+        kfree(query);
+        socket_close(sockfd);
+        return err;
+    }
+    
+    // Receive response
+    uint8_t* response = (uint8_t*)kmalloc(512);
+    if (!response) {
+        kfree(query);
+        socket_close(sockfd);
+        return ERR_OUT_OF_MEMORY;
+    }
+    
+    size_t response_len = 512;
+    err = socket_recv(sockfd, response, &response_len, 0);
+    if (err != ERR_OK || response_len < sizeof(dns_header_t)) {
+        kerror("DNS: Failed to receive response\n");
+        kfree(query);
+        kfree(response);
+        socket_close(sockfd);
+        return err;
+    }
+    
+    // Parse response
+    dns_header_t* resp_header = (dns_header_t*)response;
+    uint16_t flags = __builtin_bswap16(resp_header->flags);
+    uint16_t rcode = flags & DNS_FLAG_RCODE;
+    
+    if (rcode != DNS_RCODE_NOERROR) {
+        kerror("DNS: Query failed with code %u\n", rcode);
+        kfree(query);
+        kfree(response);
+        socket_close(sockfd);
+        return ERR_NOT_FOUND;
+    }
+    
+    uint16_t ancount = __builtin_bswap16(resp_header->ancount);
+    if (ancount == 0) {
+        kerror("DNS: No answers in response\n");
+        kfree(query);
+        kfree(response);
+        socket_close(sockfd);
+        return ERR_NOT_FOUND;
+    }
+    
+    // Skip question section
+    size_t offset = sizeof(dns_header_t);
+    offset += dns_decode_name(response, response_len, offset, NULL, 0);  // Skip name
+    offset += 4;  // Skip qtype and qclass
+    
+    // Parse answer section
+    for (uint16_t i = 0; i < ancount && offset < response_len; i++) {
+        // Skip name
+        offset += dns_decode_name(response, response_len, offset, NULL, 0);
+        
+        if (offset + 10 > response_len) {
+            break;
+        }
+        
+        uint16_t type = __builtin_bswap16(*(uint16_t*)(response + offset));
+        offset += 2;
+        uint16_t class = __builtin_bswap16(*(uint16_t*)(response + offset));
+        offset += 2;
+        uint32_t ttl = __builtin_bswap32(*(uint32_t*)(response + offset));
+        offset += 4;
+        uint16_t rdlength = __builtin_bswap16(*(uint16_t*)(response + offset));
+        offset += 2;
+        
+        (void)class;
+        (void)ttl;
+        
+        if (type == DNS_TYPE_AAAA && rdlength == 16) {
+            if (offset + 16 <= response_len) {
+                memcpy(ipv6_address, response + offset, 16);
+                kinfo("DNS: Resolved %s to IPv6 address\n", hostname);
+                kfree(query);
+                kfree(response);
+                socket_close(sockfd);
+                return ERR_OK;
+            }
+        }
+        
+        offset += rdlength;
+    }
+    
+    kerror("DNS: No AAAA record found in response\n");
+    kfree(query);
+    kfree(response);
+    socket_close(sockfd);
+    return ERR_NOT_FOUND;
 }
 

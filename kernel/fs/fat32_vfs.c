@@ -184,9 +184,18 @@ static error_code_t fat32_stat(vfs_filesystem_t* fs, const char* path, vfs_stat_
     
     stat->uid = 0;  // Root for now
     stat->gid = 0;  // Root group for now
-    stat->atime = 0;  // TODO: Convert FAT32 dates
-    stat->mtime = 0;  // TODO: Convert FAT32 dates
-    stat->ctime = 0;  // TODO: Convert FAT32 dates
+    
+    // Convert FAT32 dates to Unix timestamps
+    extern uint64_t fat32_date_to_unix(uint16_t fat_date, uint16_t fat_time);
+    
+    // Access time (atime) - use access_date
+    stat->atime = fat32_date_to_unix(entry.access_date, 0);
+    
+    // Modification time (mtime) - use modification_date and modification_time
+    stat->mtime = fat32_date_to_unix(entry.modification_date, entry.modification_time);
+    
+    // Creation time (ctime) - use creation_date and creation_time
+    stat->ctime = fat32_date_to_unix(entry.creation_date, entry.creation_time);
     
     return ERR_OK;
 }

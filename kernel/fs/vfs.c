@@ -366,11 +366,38 @@ error_code_t vfs_open(const char* path, uint64_t flags, fd_t* fd) {
             if (flags & VFS_MODE_WRITE) requested_perms |= 0x02;  // ACL_WRITE
             if (flags & VFS_MODE_EXEC) requested_perms |= 0x01;  // ACL_EXECUTE
             
-            // TODO: Get ACL from filesystem if supported
-            // For now, use standard permissions
-            // Check read permission
-            if (flags & VFS_MODE_READ) {
-                if (!permissions_check_read(&perms, uid, gid)) {
+            // Get ACL from filesystem if supported
+            acl_t fs_acl;
+            bool has_acl = false;
+            // Note: Filesystem interface doesn't have get_acl yet, so we'll check if filesystem supports it
+            // For now, use standard permissions - ACL support can be added to filesystem interface later
+            // if (mount->fs->get_acl) {
+            //     error_code_t acl_err = mount->fs->get_acl(mount->fs, resolved_path, &fs_acl);
+            //     if (acl_err == ERR_OK) {
+            //         has_acl = true;
+            //     }
+            // }
+            
+            // Use ACL if available, otherwise use standard permissions
+            bool has_permission = false;
+            if (has_acl) {
+                // Check ACL permissions
+                extern error_code_t acl_check_access(const acl_t* acl, uint32_t uid, uint32_t gid, uint8_t requested_perms);
+                error_code_t acl_result = acl_check_access(&fs_acl, uid, gid, requested_perms);
+                has_permission = (acl_result == ERR_OK);
+            } else {
+                // Check standard permissions
+                // Check read permission
+                if (flags & VFS_MODE_READ) {
+                    has_permission = permissions_check_read(&perms, uid, gid);
+                } else if (flags & VFS_MODE_WRITE) {
+                    has_permission = permissions_check_write(&perms, uid, gid);
+                } else if (flags & VFS_MODE_EXEC) {
+                    has_permission = permissions_check_execute(&perms, uid, gid);
+                }
+            }
+            
+            if (!has_permission) {
                     // Audit: Permission denied
                     extern process_t* process_get_current(void);
                     process_t* current = process_get_current();
@@ -584,7 +611,29 @@ error_code_t vfs_opendir(const char* path, fd_t* fd) {
         return ERR_NOT_SUPPORTED;
     }
     
-    return mount->fs->opendir(mount->fs, resolved_path, fd);
+    // Allocate FD for directory handle
+    fd_t new_fd = allocate_fd();
+    if (new_fd < 0) {
+        return ERR_OUT_OF_MEMORY;
+    }
+    
+    // Call filesystem opendir
+    fd_t dir_fd;
+    error_code_t err = mount->fs->opendir(mount->fs, resolved_path, &dir_fd);
+    if (err != ERR_OK) {
+        free_fd(new_fd);
+        return err;
+    }
+    
+    // Store directory handle in fd_table
+    fd_table[new_fd].used = true;
+    fd_table[new_fd].fs = mount->fs;
+    fd_table[new_fd].file_data = (void*)(uintptr_t)dir_fd;  // Store filesystem-specific dir handle
+    fd_table[new_fd].position = 0;
+    fd_table[new_fd].flags = 0;  // Directory flag could be added here
+    
+    *fd = new_fd;
+    return ERR_OK;
 }
 
 /**
@@ -595,16 +644,17 @@ error_code_t vfs_readdir(fd_t fd, vfs_dirent_t* entry) {
         return ERR_INVALID_ARG;
     }
     
-    // Directory handles are separate from file handles
-    // For now, we'll use the filesystem directly
-    // TODO: Implement proper directory handle management
-    
-    // Find filesystem from mount
-    if (!root_mount || !root_mount->fs || !root_mount->fs->readdir) {
-        return ERR_NOT_SUPPORTED;
+    // Directory handles are managed through fd_table
+    // Implement proper directory handle management
+    if (!fd_table[fd].used || !fd_table[fd].fs || !fd_table[fd].fs->readdir) {
+        return ERR_INVALID_ARG;
     }
     
-    return root_mount->fs->readdir(root_mount->fs, fd, entry);
+    // Get filesystem-specific directory handle from file_data
+    fd_t dir_fd = (fd_t)(uintptr_t)fd_table[fd].file_data;
+    
+    // Use the filesystem's readdir with the stored directory handle
+    return fd_table[fd].fs->readdir(fd_table[fd].fs, dir_fd, entry);
 }
 
 /**

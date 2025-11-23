@@ -11,6 +11,7 @@
 #include "../include/mm/heap.h"
 #include "../include/string.h"
 #include "../include/sync/spinlock.h"
+#include "../include/time.h"
 
 // ARP cache
 #define ARP_CACHE_SIZE 64
@@ -74,7 +75,7 @@ void arp_update_cache(uint32_t ip_address, uint8_t* mac_address) {
     // Update entry
     entry->ip_address = ip_address;
     memcpy(entry->mac_address, mac_address, 6);
-    entry->timestamp = 0;  // Simplified - would use actual timestamp
+    entry->timestamp = time_get_uptime_ms();  // Use actual timestamp
     entry->valid = true;
     
     spinlock_unlock(&arp_state.lock);

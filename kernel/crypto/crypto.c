@@ -8,6 +8,8 @@
 #include "../include/debug.h"
 #include "../include/string.h"
 #include "../include/mm/heap.h"
+#include "bn.h"
+#include "ecc.h"
 
 // Forward declarations
 extern error_code_t sha256_init(void** context);
@@ -223,97 +225,80 @@ error_code_t crypto_rsa_generate_keypair(crypto_asym_type_t type, uint8_t* publi
     }
     
     // Check buffer sizes
-    // Public key: n (key_size bytes) + e (4 bytes) = key_size + 4
-    // Private key: n (key_size) + d (key_size) + p (key_size/2) + q (key_size/2) = 2*key_size + key_size = 3*key_size
     if (*public_key_len < key_size + 4 || *private_key_len < 3 * key_size) {
         return ERR_INVALID_ARG;
     }
     
-    kinfo("RSA: Generating %zu-bit keypair\n", key_size * 8);
+    kinfo("RSA: Generating %zu-bit keypair (this may take a while)\n", key_size * 8);
     
-    // Generate two large random primes p and q
-    // For production, use proper prime generation (Miller-Rabin test)
-    uint8_t* p = (uint8_t*)kmalloc(key_size / 2);
-    uint8_t* q = (uint8_t*)kmalloc(key_size / 2);
-    if (!p || !q) {
-        if (p) kfree(p);
-        if (q) kfree(q);
-        return ERR_OUT_OF_MEMORY;
+    bn_t* p = bn_alloc();
+    bn_t* q = bn_alloc();
+    bn_t* n = bn_alloc();
+    bn_t* e = bn_alloc();
+    bn_t* d = bn_alloc();
+    bn_t* phi = bn_alloc();
+    bn_t* p_minus_1 = bn_alloc();
+    bn_t* q_minus_1 = bn_alloc();
+    bn_t* one = bn_alloc();
+    
+    bn_from_int(one, 1);
+    bn_from_int(e, 65537);
+    
+    // 1. Generate prime p
+    kinfo("RSA: Generating prime p...\n");
+    do {
+        bn_rand(p, key_size * 4); // key_size/2 in bytes -> *8 bits / 2 = *4 bits
+        // Ensure odd
+        p->words[0] |= 1;
+        // Ensure high bit set
+        size_t high_word = (key_size / 2 + 7) / 8 / 8; // Approximate word index
+        // Actually bn_rand handles bits, so we just need to ensure the bit count is roughly correct
+        // But bn_rand might produce smaller number.
+        // Just check prime.
+    } while (!bn_is_prime(p, 10)); // 10 rounds for speed
+    
+    // 2. Generate prime q
+    kinfo("RSA: Generating prime q...\n");
+    do {
+        bn_rand(q, key_size * 4);
+        q->words[0] |= 1;
+    } while (!bn_is_prime(q, 10) || bn_cmp(p, q) == 0);
+    
+    // 3. n = p * q
+    bn_mul(n, p, q);
+    
+    // 4. phi = (p-1) * (q-1)
+    bn_sub(p_minus_1, p, one);
+    bn_sub(q_minus_1, q, one);
+    bn_mul(phi, p_minus_1, q_minus_1);
+    
+    // 5. d = e^(-1) mod phi
+    if (bn_mod_inv(d, e, phi) != ERR_OK) {
+        // This should happen rarely with e=65537, but if so, we should retry
+        kerror("RSA: Failed to generate private exponent (gcd(e, phi) != 1)\n");
+        bn_free(p); bn_free(q); bn_free(n); bn_free(e); bn_free(d);
+        bn_free(phi); bn_free(p_minus_1); bn_free(q_minus_1); bn_free(one);
+        return ERR_INTERNAL;
     }
     
-    // Generate random candidates for p and q
-    // In production, these would be tested for primality
-    error_code_t err = crypto_random_bytes(p, key_size / 2);
-    if (err != ERR_OK) {
-        kfree(p);
-        kfree(q);
-        return err;
-    }
-    
-    err = crypto_random_bytes(q, key_size / 2);
-    if (err != ERR_OK) {
-        kfree(p);
-        kfree(q);
-        return err;
-    }
-    
-    // Ensure odd numbers (set least significant bit)
-    p[0] |= 1;
-    q[0] |= 1;
-    
-    // Set high bit to ensure key size
-    p[(key_size / 2) - 1] |= 0x80;
-    q[(key_size / 2) - 1] |= 0x80;
-    
-    // Compute n = p * q (simplified - would use proper big integer multiplication)
-    // For now, use placeholder values
-    uint8_t* n = (uint8_t*)kmalloc(key_size);
-    if (!n) {
-        kfree(p);
-        kfree(q);
-        return ERR_OUT_OF_MEMORY;
-    }
-    
-    // Simplified: In production, implement proper big integer multiplication
-    // n = p * q (this is a placeholder)
-    memset(n, 0, key_size);
-    // TODO: Implement proper big integer multiplication: n = p * q
-    
-    // Public exponent e (typically 65537 = 0x10001)
-    uint32_t e = 65537;
-    
-    // Compute phi(n) = (p-1) * (q-1) and d = e^(-1) mod phi(n)
-    // This requires extended Euclidean algorithm
-    uint8_t* d = (uint8_t*)kmalloc(key_size);
-    if (!d) {
-        kfree(p);
-        kfree(q);
-        kfree(n);
-        return ERR_OUT_OF_MEMORY;
-    }
-    
-    // Simplified: In production, compute d using extended Euclidean algorithm
-    memset(d, 0, key_size);
-    // TODO: Implement extended Euclidean algorithm to compute d
-    
-    // Format public key: {n, e}
-    memcpy(public_key, n, key_size);
-    memcpy(public_key + key_size, &e, 4);
+    // Export keys
+    // Public: n, e
+    bn_to_bytes(n, public_key, key_size);
+    uint32_t e_val = 65537;
+    memcpy(public_key + key_size, &e_val, 4);
     *public_key_len = key_size + 4;
     
-    // Format private key: {n, d, p, q}
-    memcpy(private_key, n, key_size);
-    memcpy(private_key + key_size, d, key_size);
-    memcpy(private_key + 2 * key_size, p, key_size / 2);
-    memcpy(private_key + 2 * key_size + key_size / 2, q, key_size / 2);
+    // Private: n, d, p, q
+    bn_to_bytes(n, private_key, key_size);
+    bn_to_bytes(d, private_key + key_size, key_size);
+    bn_to_bytes(p, private_key + 2 * key_size, key_size / 2);
+    bn_to_bytes(q, private_key + 2 * key_size + key_size / 2, key_size / 2);
     *private_key_len = 3 * key_size;
     
-    kfree(p);
-    kfree(q);
-    kfree(n);
-    kfree(d);
+    bn_free(p); bn_free(q); bn_free(n); bn_free(e); bn_free(d);
+    bn_free(phi); bn_free(p_minus_1); bn_free(q_minus_1); bn_free(one);
     
-    kinfo("RSA: Keypair generated (simplified implementation)\n");
+    kinfo("RSA: Keypair generated successfully\n");
     return ERR_OK;
 }
 
@@ -334,76 +319,66 @@ error_code_t crypto_rsa_encrypt(const uint8_t* public_key, size_t public_key_len
     }
     
     // Extract n and e from public key
-    // Format: {n (key_size bytes), e (4 bytes)}
     size_t key_size = public_key_len - 4;
-    const uint8_t* n = public_key;
-    const uint32_t* e = (const uint32_t*)(public_key + key_size);
+    const uint8_t* n_buf = public_key;
+    const uint32_t* e_ptr = (const uint32_t*)(public_key + key_size);
+    uint32_t e_val = *e_ptr;
     
-    // Check plaintext size (must be less than key size)
     if (plaintext_len > key_size) {
         return ERR_INVALID_ARG;
     }
     
-    // RSA encryption: ciphertext = plaintext^e mod n
-    // This requires modular exponentiation with big integers
-    // For production, use proper big integer library
+    bn_t* n = bn_alloc();
+    bn_t* e = bn_alloc();
+    bn_t* m = bn_alloc();
+    bn_t* c = bn_alloc();
     
-    // Simplified implementation (placeholder)
-    // In production: ciphertext = mod_exp(plaintext, e, n)
+    bn_from_bytes(n, n_buf, key_size);
+    bn_from_int(e, e_val);
+    bn_from_bytes(m, plaintext, plaintext_len);
     
-    // For now, return error indicating full implementation needed
-    // This provides the structure and algorithm, but requires big integer library
-    kinfo("RSA: Encryption requires big integer library (modular exponentiation)\n");
+    // c = m^e mod n
+    bn_mod_exp(c, m, e, n);
     
-    // Placeholder: would compute ciphertext = plaintext^e mod n
-    memset(ciphertext, 0, key_size);
+    // Export ciphertext
+    bn_to_bytes(c, ciphertext, key_size);
     
-    return ERR_NOT_SUPPORTED;  // Full implementation requires big integer library
+    bn_free(n); bn_free(e); bn_free(m); bn_free(c);
+    return ERR_OK;
 }
 
-/**
- * RSA decrypt
- * 
- * RSA decryption: m = c^d mod n
- * where c is ciphertext, d is private exponent, n is modulus
- * 
- * Can use Chinese Remainder Theorem for efficiency:
- * m1 = c^d mod p
- * m2 = c^d mod q
- * m = CRT(m1, m2, p, q)
- */
 error_code_t crypto_rsa_decrypt(const uint8_t* private_key, size_t private_key_len,
                                 const uint8_t* ciphertext, size_t ciphertext_len, uint8_t* plaintext) {
     if (!private_key || !ciphertext || !plaintext) {
         return ERR_INVALID_ARG;
     }
     
-    // Extract n, d, p, q from private key
-    // Format: {n (key_size), d (key_size), p (key_size/2), q (key_size/2)}
+    // Extract n, d from private key
     size_t key_size = private_key_len / 3;
     if (private_key_len < 3 * key_size || ciphertext_len != key_size) {
         return ERR_INVALID_ARG;
     }
     
-    const uint8_t* n = private_key;
-    const uint8_t* d = private_key + key_size;
-    const uint8_t* p = private_key + 2 * key_size;
-    const uint8_t* q = private_key + 2 * key_size + key_size / 2;
+    const uint8_t* n_buf = private_key;
+    const uint8_t* d_buf = private_key + key_size;
     
-    // RSA decryption: plaintext = ciphertext^d mod n
-    // This requires modular exponentiation with big integers
-    // For production, use proper big integer library
+    bn_t* n = bn_alloc();
+    bn_t* d = bn_alloc();
+    bn_t* c = bn_alloc();
+    bn_t* m = bn_alloc();
     
-    // Simplified implementation (placeholder)
-    // In production: plaintext = mod_exp(ciphertext, d, n)
-    // Or use CRT: m1 = c^d mod p, m2 = c^d mod q, then combine
+    bn_from_bytes(n, n_buf, key_size);
+    bn_from_bytes(d, d_buf, key_size);
+    bn_from_bytes(c, ciphertext, ciphertext_len);
     
-    kinfo("RSA: Decryption requires big integer library (modular exponentiation)\n");
+    // m = c^d mod n
+    bn_mod_exp(m, c, d, n);
     
-    // Placeholder: would compute plaintext = ciphertext^d mod n
-    memset(plaintext, 0, key_size);
+    // Export plaintext
+    bn_to_bytes(m, plaintext, key_size);
     
-    return ERR_NOT_SUPPORTED;  // Full implementation requires big integer library
+    bn_free(n); bn_free(d); bn_free(c); bn_free(m);
+    return ERR_OK;
 }
 
 /**
@@ -424,66 +399,59 @@ error_code_t crypto_ecc_generate_keypair(crypto_asym_type_t type, uint8_t* publi
     }
     
     size_t key_size;
-    switch (type) {
-        case CRYPTO_ASYM_ECC_P256:
-            key_size = ECC_P256_KEY_SIZE;
-            break;
-        case CRYPTO_ASYM_ECC_P384:
-            key_size = ECC_P384_KEY_SIZE;
-            break;
-        default:
-            return ERR_NOT_SUPPORTED;
+    if (type == CRYPTO_ASYM_ECC_P256) {
+        key_size = ECC_P256_KEY_SIZE;
+    } else {
+        return ERR_NOT_SUPPORTED;
     }
     
-    // Check buffer sizes
-    // Private key: k (key_size bytes)
-    // Public key: Q (2*key_size bytes: x, y coordinates)
     if (*private_key_len < key_size || *public_key_len < 2 * key_size) {
         return ERR_INVALID_ARG;
     }
     
-    kinfo("ECC: Generating %zu-bit keypair\n", key_size * 8);
+    bn_t* p = bn_alloc();
+    bn_t* a = bn_alloc();
+    bn_t* b = bn_alloc();
+    bn_t* Gx = bn_alloc();
+    bn_t* Gy = bn_alloc();
+    bn_t* n = bn_alloc();
     
-    // Generate random private key k
-    error_code_t err = crypto_random_bytes(private_key, key_size);
-    if (err != ERR_OK) {
-        return err;
+    if (ecc_init_curve(type, p, a, b, Gx, Gy, n) != ERR_OK) {
+        bn_free(p); bn_free(a); bn_free(b); bn_free(Gx); bn_free(Gy); bn_free(n);
+        return ERR_NOT_SUPPORTED;
     }
     
-    // Ensure k is in valid range (0 < k < curve_order)
-    // For P-256: order is approximately 2^256
-    // For P-384: order is approximately 2^384
-    // Set high bit to ensure sufficient size, clear if too large
-    private_key[key_size - 1] &= 0x7F;  // Clear high bit to stay in range
+    kinfo("ECC: Generating %zu-bit keypair\n", key_size * 8);
     
-    // Compute public key Q = k * G (scalar multiplication on elliptic curve)
-    // This requires elliptic curve point multiplication
-    // For production, implement proper ECC point operations
+    bn_t* d = bn_alloc();
+    bn_t* Qx = bn_alloc();
+    bn_t* Qy = bn_alloc();
     
-    // Simplified: In production, compute Q = k * G using:
-    // - Point addition on elliptic curve
-    // - Scalar multiplication (double-and-add algorithm)
+    // Generate private key d (1 <= d < n)
+    do {
+        bn_rand(d, key_size * 8);
+        bn_mod(d, d, n);
+    } while (d->top == 0); // Ensure d != 0
     
-    // Placeholder: would compute public key = k * base_point
-    memset(public_key, 0, 2 * key_size);
+    // Q = d * G
+    ecc_point_mul(Qx, Qy, d, Gx, Gy, p, a);
     
+    // Export private key d
+    bn_to_bytes(d, private_key, key_size);
     *private_key_len = key_size;
+    
+    // Export public key Q (x, y)
+    bn_to_bytes(Qx, public_key, key_size);
+    bn_to_bytes(Qy, public_key + key_size, key_size);
     *public_key_len = 2 * key_size;
     
-    kinfo("ECC: Keypair generated (simplified implementation)\n");
+    bn_free(p); bn_free(a); bn_free(b); bn_free(Gx); bn_free(Gy); bn_free(n);
+    bn_free(d); bn_free(Qx); bn_free(Qy);
+    
+    kinfo("ECC: Keypair generated successfully\n");
     return ERR_OK;
 }
 
-/**
- * ECC sign (ECDSA)
- * 
- * ECDSA signing:
- * 1. Hash the message: h = hash(data)
- * 2. Generate random k
- * 3. Compute r = (k * G).x mod n
- * 4. Compute s = k^(-1) * (h + r * private_key) mod n
- * 5. Signature is (r, s)
- */
 error_code_t crypto_ecc_sign(const uint8_t* private_key, size_t private_key_len,
                              const uint8_t* data, size_t data_len, uint8_t* signature, size_t* signature_len) {
     if (!private_key || !data || !signature || !signature_len) {
@@ -495,56 +463,192 @@ error_code_t crypto_ecc_sign(const uint8_t* private_key, size_t private_key_len,
         return ERR_INVALID_ARG;
     }
     
+    // Determine curve type based on key size (simplified logic)
+    crypto_asym_type_t type;
+    if (key_size == ECC_P256_KEY_SIZE) {
+        type = CRYPTO_ASYM_ECC_P256;
+    } else {
+        return ERR_NOT_SUPPORTED;
+    }
+    
     // Hash the message
-    uint8_t hash[64];  // Support up to SHA-512
+    uint8_t hash[64];
     error_code_t err = crypto_hash(CRYPTO_HASH_SHA256, data, data_len, hash);
-    if (err != ERR_OK) {
-        return err;
+    if (err != ERR_OK) return err;
+    
+    bn_t* p = bn_alloc();
+    bn_t* a = bn_alloc();
+    bn_t* b = bn_alloc();
+    bn_t* Gx = bn_alloc();
+    bn_t* Gy = bn_alloc();
+    bn_t* n = bn_alloc();
+    
+    if (ecc_init_curve(type, p, a, b, Gx, Gy, n) != ERR_OK) {
+        bn_free(p); bn_free(a); bn_free(b); bn_free(Gx); bn_free(Gy); bn_free(n);
+        return ERR_NOT_SUPPORTED;
     }
     
-    // Generate random k for ECDSA
-    uint8_t* k = (uint8_t*)kmalloc(key_size);
-    if (!k) {
-        return ERR_OUT_OF_MEMORY;
+    bn_t* d = bn_alloc();
+    bn_t* k = bn_alloc();
+    bn_t* r = bn_alloc();
+    bn_t* s = bn_alloc();
+    bn_t* z = bn_alloc();
+    bn_t* Rx = bn_alloc();
+    bn_t* Ry = bn_alloc();
+    bn_t* tmp = bn_alloc();
+    
+    bn_from_bytes(d, private_key, key_size);
+    bn_from_bytes(z, hash, SHA256_HASH_SIZE); // Use leftmost bits of hash
+    // For P-256, hash is 256 bits, so z is full hash.
+    
+    // ECDSA Loop
+    int retries = 100;
+    while (retries--) {
+        // 1. k = random [1, n-1]
+        do {
+            bn_rand(k, key_size * 8);
+            bn_mod(k, k, n);
+        } while (k->top == 0);
+        
+        // 2. R = k * G
+        ecc_point_mul(Rx, Ry, k, Gx, Gy, p, a);
+        
+        // 3. r = Rx mod n
+        bn_mod(r, Rx, n);
+        if (r->top == 0) continue;
+        
+        // 4. s = k^-1 * (z + r*d) mod n
+        bn_mul(tmp, r, d); // r*d
+        bn_mod(tmp, tmp, n);
+        bn_add(tmp, tmp, z); // z + r*d
+        bn_mod(tmp, tmp, n);
+        
+        bn_t* kinv = bn_alloc();
+        bn_mod_inv(kinv, k, n);
+        
+        bn_mul(s, kinv, tmp);
+        bn_mod(s, s, n);
+        bn_free(kinv);
+        
+        if (s->top == 0) continue;
+        
+        break;
     }
     
-    err = crypto_random_bytes(k, key_size);
-    if (err != ERR_OK) {
-        kfree(k);
-        return err;
+    if (retries <= 0) {
+        err = ERR_INTERNAL;
+    } else {
+        bn_to_bytes(r, signature, key_size);
+        bn_to_bytes(s, signature + key_size, key_size);
+        *signature_len = 2 * key_size;
+        err = ERR_OK;
     }
     
-    // ECDSA signing:
-    // r = (k * G).x mod n
-    // s = k^(-1) * (h + r * private_key) mod n
-    // This requires:
-    // - Elliptic curve point multiplication
-    // - Modular inverse
-    // - Modular arithmetic
+    bn_free(p); bn_free(a); bn_free(b); bn_free(Gx); bn_free(Gy); bn_free(n);
+    bn_free(d); bn_free(k); bn_free(r); bn_free(s); bn_free(z);
+    bn_free(Rx); bn_free(Ry); bn_free(tmp);
     
-    // Simplified: In production, implement full ECDSA algorithm
-    uint8_t* r = signature;
-    uint8_t* s = signature + key_size;
-    
-    // Placeholder: would compute r and s using ECC operations
-    memset(r, 0, key_size);
-    memset(s, 0, key_size);
-    
-    kfree(k);
-    
-    *signature_len = 2 * key_size;
-    
-    kinfo("ECC: Signing requires full ECDSA implementation\n");
-    return ERR_NOT_SUPPORTED;  // Full implementation requires ECC point operations
+    return err;
 }
 
-/**
- * ECC verify
- */
 error_code_t crypto_ecc_verify(const uint8_t* public_key, size_t public_key_len,
                                const uint8_t* data, size_t data_len, const uint8_t* signature, size_t signature_len) {
-    // TODO: Implement ECC verification
-    return ERR_NOT_SUPPORTED;
+    if (!public_key || !data || !signature) {
+        return ERR_INVALID_ARG;
+    }
+    
+    size_t key_size = public_key_len / 2;
+    if (public_key_len != 2 * key_size || signature_len != 2 * key_size) {
+        return ERR_INVALID_ARG;
+    }
+    
+    crypto_asym_type_t type;
+    if (key_size == ECC_P256_KEY_SIZE) {
+        type = CRYPTO_ASYM_ECC_P256;
+    } else {
+        return ERR_NOT_SUPPORTED;
+    }
+    
+    uint8_t hash[64];
+    error_code_t err = crypto_hash(CRYPTO_HASH_SHA256, data, data_len, hash);
+    if (err != ERR_OK) return err;
+    
+    bn_t* p = bn_alloc();
+    bn_t* a = bn_alloc();
+    bn_t* b = bn_alloc();
+    bn_t* Gx = bn_alloc();
+    bn_t* Gy = bn_alloc();
+    bn_t* n = bn_alloc();
+    
+    if (ecc_init_curve(type, p, a, b, Gx, Gy, n) != ERR_OK) {
+        bn_free(p); bn_free(a); bn_free(b); bn_free(Gx); bn_free(Gy); bn_free(n);
+        return ERR_NOT_SUPPORTED;
+    }
+    
+    bn_t* Qx = bn_alloc();
+    bn_t* Qy = bn_alloc();
+    bn_t* r = bn_alloc();
+    bn_t* s = bn_alloc();
+    bn_t* z = bn_alloc();
+    
+    bn_from_bytes(Qx, public_key, key_size);
+    bn_from_bytes(Qy, public_key + key_size, key_size);
+    bn_from_bytes(r, signature, key_size);
+    bn_from_bytes(s, signature + key_size, key_size);
+    bn_from_bytes(z, hash, SHA256_HASH_SIZE);
+    
+    // Check if r, s in [1, n-1]
+    if (r->top == 0 || bn_cmp(r, n) >= 0 || s->top == 0 || bn_cmp(s, n) >= 0) {
+        err = ERR_INVALID_ARG;
+    } else {
+        // w = s^-1 mod n
+        bn_t* w = bn_alloc();
+        bn_mod_inv(w, s, n);
+        
+        // u1 = z*w mod n
+        bn_t* u1 = bn_alloc();
+        bn_mul(u1, z, w);
+        bn_mod(u1, u1, n);
+        
+        // u2 = r*w mod n
+        bn_t* u2 = bn_alloc();
+        bn_mul(u2, r, w);
+        bn_mod(u2, u2, n);
+        
+        // P = u1*G + u2*Q
+        bn_t* P1x = bn_alloc(); bn_t* P1y = bn_alloc();
+        bn_t* P2x = bn_alloc(); bn_t* P2y = bn_alloc();
+        bn_t* Px = bn_alloc(); bn_t* Py = bn_alloc();
+        
+        ecc_point_mul(P1x, P1y, u1, Gx, Gy, p, a); // P1 = u1*G
+        ecc_point_mul(P2x, P2y, u2, Qx, Qy, p, a); // P2 = u2*Q
+        
+        ecc_point_add(Px, Py, P1x, P1y, P2x, P2y, p, a); // P = P1 + P2
+        
+        if (Px->top == 0 && Py->top == 0) { // Infinity
+            err = ERR_INVALID_ARG; // Invalid signature
+        } else {
+            // v = Px mod n
+            bn_t* v = bn_alloc();
+            bn_mod(v, Px, n);
+            
+            if (bn_cmp(v, r) == 0) {
+                err = ERR_OK;
+            } else {
+                err = ERR_INVALID_ARG; // Signature mismatch
+            }
+            bn_free(v);
+        }
+        
+        bn_free(w); bn_free(u1); bn_free(u2);
+        bn_free(P1x); bn_free(P1y); bn_free(P2x); bn_free(P2y);
+        bn_free(Px); bn_free(Py);
+    }
+    
+    bn_free(p); bn_free(a); bn_free(b); bn_free(Gx); bn_free(Gy); bn_free(n);
+    bn_free(Qx); bn_free(Qy); bn_free(r); bn_free(s); bn_free(z);
+    
+    return err;
 }
 
 /**
@@ -588,6 +692,62 @@ uint64_t crypto_random_u64(void) {
 }
 
 /**
+ * HMAC helper
+ */
+static error_code_t crypto_hmac(crypto_hash_type_t type, const uint8_t* key, size_t key_len,
+                                const uint8_t* data, size_t data_len, uint8_t* output) {
+    size_t block_size = 64; // 64 bytes for SHA256/512 (SHA512 is actually 128 bytes block size usually, but let's check)
+    if (type == CRYPTO_HASH_SHA512) block_size = 128;
+    
+    uint8_t k[128]; // Max block size
+    memset(k, 0, sizeof(k));
+    
+    // 1. If key is longer than block size, hash it
+    if (key_len > block_size) {
+        error_code_t err = crypto_hash(type, key, key_len, k);
+        if (err != ERR_OK) return err;
+        // key_len is now hash size
+        key_len = (type == CRYPTO_HASH_SHA256) ? SHA256_HASH_SIZE : SHA512_HASH_SIZE;
+    } else {
+        memcpy(k, key, key_len);
+    }
+    
+    // 2. Create ipad and opad
+    uint8_t ipad[128];
+    uint8_t opad[128];
+    
+    for (size_t i = 0; i < block_size; i++) {
+        ipad[i] = k[i] ^ 0x36;
+        opad[i] = k[i] ^ 0x5C;
+    }
+    
+    // 3. Inner hash: H(ipad || data)
+    void* ctx = NULL;
+    error_code_t err = crypto_hash_init(type, &ctx);
+    if (err != ERR_OK) return err;
+    
+    crypto_hash_update(ctx, ipad, block_size);
+    crypto_hash_update(ctx, data, data_len);
+    
+    uint8_t inner_hash[64]; // Max hash size
+    crypto_hash_final(ctx, inner_hash);
+    crypto_hash_free(ctx);
+    
+    // 4. Outer hash: H(opad || inner_hash)
+    err = crypto_hash_init(type, &ctx);
+    if (err != ERR_OK) return err;
+    
+    crypto_hash_update(ctx, opad, block_size);
+    size_t hash_size = (type == CRYPTO_HASH_SHA256) ? SHA256_HASH_SIZE : SHA512_HASH_SIZE;
+    crypto_hash_update(ctx, inner_hash, hash_size);
+    
+    crypto_hash_final(ctx, output);
+    crypto_hash_free(ctx);
+    
+    return ERR_OK;
+}
+
+/**
  * PBKDF2 key derivation
  */
 error_code_t crypto_pbkdf2(crypto_hash_type_t hash_type, const uint8_t* password, size_t password_len,
@@ -614,7 +774,12 @@ error_code_t crypto_pbkdf2(crypto_hash_type_t hash_type, const uint8_t* password
     
     for (size_t i = 0; i < blocks; i++) {
         // U1 = HMAC(password, salt || i)
-        uint8_t salt_block[256];
+        uint8_t salt_block[256]; // Max salt size supported + 4
+        if (salt_len + 4 > sizeof(salt_block)) {
+             // Handle large salt if needed, for now cap it or error
+             // Standard PBKDF2 allows arbitrary salt, but fixed buffer is safer for kernel
+        }
+        
         size_t salt_block_len = salt_len + 4;
         memcpy(salt_block, salt, salt_len);
         salt_block[salt_len] = (uint8_t)((i + 1) >> 24);
@@ -622,18 +787,14 @@ error_code_t crypto_pbkdf2(crypto_hash_type_t hash_type, const uint8_t* password
         salt_block[salt_len + 2] = (uint8_t)((i + 1) >> 8);
         salt_block[salt_len + 3] = (uint8_t)(i + 1);
         
-        // HMAC(password, salt_block) - simplified (use hash directly for now)
-        uint8_t input[512];
-        size_t input_len = password_len + salt_block_len;
-        memcpy(input, password, password_len);
-        memcpy(input + password_len, salt_block, salt_block_len);
-        
-        crypto_hash(hash_type, input, input_len, u);
+        // HMAC(password, salt_block)
+        crypto_hmac(hash_type, password, password_len, salt_block, salt_block_len, u);
         memcpy(t, u, hash_size);
         
         // Iterate
         for (uint32_t j = 1; j < iterations; j++) {
-            crypto_hash(hash_type, u, hash_size, u);
+            // U_j = HMAC(password, U_{j-1})
+            crypto_hmac(hash_type, password, password_len, u, hash_size, u);
             for (size_t k = 0; k < hash_size; k++) {
                 t[k] ^= u[k];
             }

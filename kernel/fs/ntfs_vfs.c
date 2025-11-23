@@ -84,11 +84,37 @@ static error_code_t ntfs_vfs_open(vfs_filesystem_t* fs, const char* path, uint64
     
     ntfs_fs_t* ntfs_fs = (ntfs_fs_t*)fs->private_data;
     
-    // TODO: Resolve path to MFT record
-    (void)ntfs_fs;
-    (void)flags;
+    // Resolve path to MFT record
+    uint64_t mft_record;
+    error_code_t err = ntfs_find_file(ntfs_fs, path, &mft_record);
+    if (err != ERR_OK) {
+        return err;
+    }
     
-    return ERR_NOT_SUPPORTED;
+    // Store MFT record in fd
+    extern fd_entry_t fd_table[];
+    
+    // Find free fd slot
+    fd_t new_fd = -1;
+    for (int i = 0; i < 256; i++) {
+        if (!fd_table[i].used) {
+            new_fd = i;
+            break;
+        }
+    }
+    
+    if (new_fd < 0) {
+        return ERR_OUT_OF_MEMORY;
+    }
+    
+    fd_table[new_fd].used = true;
+    fd_table[new_fd].fs = fs;
+    fd_table[new_fd].file_data = (void*)(uintptr_t)mft_record;
+    fd_table[new_fd].position = 0;
+    fd_table[new_fd].flags = flags;
+    
+    *fd = new_fd;
+    return ERR_OK;
 }
 
 /**
@@ -110,13 +136,28 @@ static error_code_t ntfs_vfs_read(vfs_filesystem_t* fs, fd_t fd, void* buf, size
     
     ntfs_fs_t* ntfs_fs = (ntfs_fs_t*)fs->private_data;
     
-    // TODO: Get MFT record from fd and read data
-    (void)ntfs_fs;
-    (void)fd;
-    (void)count;
+    // Get MFT record from fd and read data
+    extern fd_entry_t fd_table[];
     
-    *bytes_read = 0;
-    return ERR_NOT_SUPPORTED;
+    if (fd < 0 || fd >= 256 || !fd_table[fd].used) {
+        return ERR_INVALID_ARG;
+    }
+    
+    uint64_t mft_record = (uint64_t)(uintptr_t)fd_table[fd].file_data;
+    if (mft_record == 0) {
+        return ERR_NOT_FOUND;
+    }
+    
+    // Use current position from fd
+    size_t offset = fd_table[fd].position;
+    error_code_t err = ntfs_read_file(ntfs_fs, mft_record, buf, offset, count, bytes_read);
+    
+    if (err == ERR_OK) {
+        // Update position
+        fd_table[fd].position += *bytes_read;
+    }
+    
+    return err;
 }
 
 /**
@@ -162,10 +203,82 @@ static error_code_t ntfs_vfs_stat(vfs_filesystem_t* fs, const char* path, vfs_st
     
     ntfs_fs_t* ntfs_fs = (ntfs_fs_t*)fs->private_data;
     
-    // TODO: Resolve path and read MFT record
-    (void)ntfs_fs;
+    // Resolve path and read MFT record
+    uint64_t mft_record;
+    error_code_t err = ntfs_find_file(ntfs_fs, path, &mft_record);
+    if (err != ERR_OK) {
+        return err;
+    }
     
-    return ERR_NOT_SUPPORTED;
+    // Read MFT record
+    uint8_t* mft_buffer = (uint8_t*)kmalloc(ntfs_fs->mft_record_size);
+    if (!mft_buffer) {
+        return ERR_OUT_OF_MEMORY;
+    }
+    
+    err = ntfs_read_mft_record(ntfs_fs, mft_record, mft_buffer);
+    if (err != ERR_OK) {
+        kfree(mft_buffer);
+        return err;
+    }
+    
+    // Parse attributes to fill stat structure
+    ntfs_mft_record_t* record = (ntfs_mft_record_t*)mft_buffer;
+    
+    // Find $STANDARD_INFORMATION attribute (type 0x10) for timestamps
+    uint16_t attr_offset = record->attribute_offset;
+    uint8_t* attr_ptr = mft_buffer + attr_offset;
+    uint64_t file_size = 0;
+    uint64_t mtime = 0;
+    uint64_t atime = 0;
+    uint64_t ctime = 0;
+    
+    while (attr_offset < ntfs_fs->mft_record_size) {
+        uint32_t attr_type = *(uint32_t*)attr_ptr;
+        uint32_t attr_length = *(uint32_t*)(attr_ptr + 4);
+        
+        if (attr_type == 0xFFFFFFFF) {
+            break;
+        }
+        
+        if (attr_type == NTFS_ATTR_STANDARD_INFORMATION) {
+            // Extract timestamps (simplified - actual structure is more complex)
+            // Standard information contains timestamps at specific offsets
+            // This is a simplified extraction
+            if (attr_ptr[8] == 0) {  // Resident
+                // Timestamps are at offsets 24, 32, 40, 48 (mtime, atime, ctime, mft_change_time)
+                // NTFS uses Windows FILETIME format (100-nanosecond intervals since 1601-01-01)
+                // For now, extract as-is
+                mtime = *(uint64_t*)(attr_ptr + 24);
+                atime = *(uint64_t*)(attr_ptr + 32);
+                ctime = *(uint64_t*)(attr_ptr + 40);
+            }
+        } else if (attr_type == NTFS_ATTR_DATA) {
+            // Extract file size
+            if (attr_ptr[8] == 0) {  // Resident
+                file_size = *(uint32_t*)(attr_ptr + 16);
+            } else {  // Non-resident
+                file_size = *(uint64_t*)(attr_ptr + 48);
+            }
+        }
+        
+        attr_offset += attr_length;
+        attr_ptr += attr_length;
+    }
+    
+    // Fill stat structure
+    stat->ino = mft_record;
+    stat->type = VFS_TYPE_FILE;  // Would need to check from $FILE_NAME attribute
+    stat->size = file_size;
+    stat->mode = 0644;  // Default permissions
+    stat->uid = 0;
+    stat->gid = 0;
+    stat->atime = atime / 10000000 - 11644473600ULL;  // Convert FILETIME to Unix timestamp (simplified)
+    stat->mtime = mtime / 10000000 - 11644473600ULL;
+    stat->ctime = ctime / 10000000 - 11644473600ULL;
+    
+    kfree(mft_buffer);
+    return ERR_OK;
 }
 
 /**

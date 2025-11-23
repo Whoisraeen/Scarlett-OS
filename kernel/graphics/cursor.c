@@ -9,6 +9,8 @@
 #include "../include/kprintf.h"
 #include "../include/debug.h"
 #include "../include/string.h"
+#include "../include/math.h"
+#include "../include/time.h"
 
 // Cursor state
 static cursor_t g_cursor = {
@@ -241,6 +243,66 @@ static void render_crosshair_cursor(uint32_t x, uint32_t y) {
 }
 
 /**
+ * Render diagonal resize cursor (top-left to bottom-right)
+ */
+static void render_resize_diag1_cursor(uint32_t x, uint32_t y) {
+    // Main diagonal line
+    gfx_draw_line(x, y, x + 16, y + 16, 0xFFFFFF);
+    
+    // Top-left arrow
+    gfx_draw_line(x + 2, y, x, y + 2, 0xFFFFFF);
+    gfx_draw_line(x, y + 2, x + 2, y + 4, 0xFFFFFF);
+    
+    // Bottom-right arrow
+    gfx_draw_line(x + 14, y + 14, x + 16, y + 16, 0xFFFFFF);
+    gfx_draw_line(x + 12, y + 14, x + 14, y + 16, 0xFFFFFF);
+}
+
+/**
+ * Render diagonal resize cursor (top-right to bottom-left)
+ */
+static void render_resize_diag2_cursor(uint32_t x, uint32_t y) {
+    // Main diagonal line
+    gfx_draw_line(x + 16, y, x, y + 16, 0xFFFFFF);
+    
+    // Top-right arrow
+    gfx_draw_line(x + 14, y, x + 16, y + 2, 0xFFFFFF);
+    gfx_draw_line(x + 16, y + 2, x + 14, y + 4, 0xFFFFFF);
+    
+    // Bottom-left arrow
+    gfx_draw_line(x + 2, y + 14, x, y + 16, 0xFFFFFF);
+    gfx_draw_line(x, y + 14, x + 2, y + 16, 0xFFFFFF);
+}
+
+/**
+ * Render animated wait cursor (rotating spinner)
+ */
+static void render_wait_cursor(uint32_t x, uint32_t y) {
+    // Get current time for animation
+    extern uint64_t time_get_uptime_ms(void);
+    uint64_t uptime_ms = time_get_uptime_ms();
+    
+    uint32_t center_x = x + 8;
+    uint32_t center_y = y + 8;
+    
+    // Draw rotating spinner (8 spokes)
+    // Rotate based on time (one full rotation every 1000ms)
+    uint32_t radius = 6;
+    uint32_t base_angle = (uptime_ms / 10) % 360;  // Rotate every 10ms
+    
+    for (int i = 0; i < 8; i++) {
+        uint32_t angle = (i * 45 + base_angle) % 360;
+        double rad = (angle * M_PI) / 180.0;
+        
+        uint32_t end_x = center_x + (uint32_t)(radius * cos(rad));
+        uint32_t end_y = center_y + (uint32_t)(radius * sin(rad));
+        
+        // Draw spoke from center to edge
+        gfx_draw_line(center_x, center_y, end_x, end_y, 0xFFFFFF);
+    }
+}
+
+/**
  * Render cursor at current position
  */
 void cursor_render(void) {
@@ -284,13 +346,16 @@ void cursor_render_at(uint32_t x, uint32_t y) {
             render_resize_v_cursor(x, y);
             break;
         case CURSOR_RESIZE_DIAG1:
+            // Diagonal resize cursor (top-left to bottom-right)
+            render_resize_diag1_cursor(x, y);
+            break;
         case CURSOR_RESIZE_DIAG2:
-            // TODO: Implement diagonal resize cursors
-            render_crosshair_cursor(x, y);
+            // Diagonal resize cursor (top-right to bottom-left)
+            render_resize_diag2_cursor(x, y);
             break;
         case CURSOR_WAIT:
-            // TODO: Implement animated wait cursor
-            render_crosshair_cursor(x, y);
+            // Animated wait cursor (rotating spinner)
+            render_wait_cursor(x, y);
             break;
         case CURSOR_CROSSHAIR:
             render_crosshair_cursor(x, y);

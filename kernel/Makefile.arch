@@ -216,6 +216,8 @@ COMMON_C_SRCS = core/main.c \
                 auth/user.c \
                 auth/user_persistence.c \
                 auth/password_hash.c \
+                crypto/bn.c \
+                crypto/ecc.c \
                 crypto/crypto.c \
                 crypto/sha256.c \
                 crypto/sha512.c \

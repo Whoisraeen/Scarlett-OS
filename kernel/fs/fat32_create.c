@@ -180,7 +180,59 @@ error_code_t fat32_delete_file(fat32_fs_t* fs, const char* path) {
     }
     
     // Mark directory entry as deleted (0xE5)
-    // TODO: Find and mark the directory entry
+    // Find directory entry location
+    extern error_code_t fat32_find_in_dir_location(fat32_fs_t* fs, uint32_t cluster, const char* name,
+                                                    uint32_t* out_cluster, uint32_t* out_entry_index);
+    
+    // Parse path to get parent directory and filename
+    char components[32][12];
+    uint32_t component_count = 0;
+    error_code_t err = fat32_parse_path(path, components, &component_count);
+    if (err != ERR_OK || component_count == 0) {
+        return err;
+    }
+    
+    // Get parent directory cluster
+    uint32_t parent_cluster = fs->root_cluster;
+    for (uint32_t i = 0; i < component_count - 1; i++) {
+        fat32_dir_entry_t dir_entry;
+        err = fat32_find_in_dir(fs, parent_cluster, components[i], &dir_entry);
+        if (err != ERR_OK) {
+            return err;
+        }
+        parent_cluster = dir_entry.cluster_low | ((uint32_t)dir_entry.cluster_high << 16);
+    }
+    
+    // Find entry location in parent directory
+    uint32_t entry_cluster, entry_index;
+    err = fat32_find_in_dir_location(fs, parent_cluster, components[component_count - 1], 
+                                     &entry_cluster, &entry_index);
+    if (err != ERR_OK) {
+        return err;
+    }
+    
+    // Read cluster containing the entry
+    uint8_t* cluster_data = (uint8_t*)kmalloc(fs->bytes_per_cluster);
+    if (!cluster_data) {
+        return ERR_OUT_OF_MEMORY;
+    }
+    
+    err = fat32_read_cluster(fs, entry_cluster, cluster_data);
+    if (err != ERR_OK) {
+        kfree(cluster_data);
+        return err;
+    }
+    
+    // Mark entry as deleted (0xE5)
+    fat32_dir_entry_t* entries = (fat32_dir_entry_t*)cluster_data;
+    entries[entry_index].name[0] = 0xE5;
+    
+    // Write back cluster
+    err = fat32_write_cluster(fs, entry_cluster, cluster_data);
+    kfree(cluster_data);
+    if (err != ERR_OK) {
+        return err;
+    }
     
     kinfo("FAT32: File deleted successfully\n");
     return ERR_OK;
