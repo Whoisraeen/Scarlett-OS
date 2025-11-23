@@ -118,7 +118,26 @@ pub extern "C" fn _start() -> ! {
 }
 
 fn register_with_driver_manager() {
-    // TODO: Send registration message to driver manager
+    const DRIVER_MANAGER_PORT: u32 = 100;
+    const MSG_REGISTER_DRIVER: u32 = 1;
+    const DRIVER_TYPE_INPUT: u32 = 4;
+    const KEYBOARD_DRIVER_PORT: u32 = 201; // Well-known port for keyboard driver
+    
+    // Create registration message
+    let mut msg = IpcMessage {
+        sender_tid: 0,  // Will be filled by kernel
+        msg_type: 1,    // IPC_MSG_REQUEST
+        data: [0; 256],
+    };
+    
+    // Pack driver type (Input = 4) and port into message data
+    msg.data[0] = DRIVER_TYPE_INPUT as u8;
+    msg.data[1..5].copy_from_slice(&KEYBOARD_DRIVER_PORT.to_le_bytes());
+    
+    // Send registration message to driver manager
+    unsafe {
+        let _ = sys_ipc_send(DRIVER_MANAGER_PORT, &msg);
+    }
 }
 
 fn init_keyboard() {
