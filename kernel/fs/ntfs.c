@@ -85,7 +85,7 @@ error_code_t ntfs_init(block_device_t* device, ntfs_fs_t* fs) {
  */
 error_code_t ntfs_mount(ntfs_fs_t* fs, const char* mountpoint) {
     if (!fs || !fs->initialized) {
-        return ERR_NOT_INITIALIZED;
+        return ERR_INVALID_STATE;
     }
     
     (void)mountpoint;
@@ -185,6 +185,6 @@ error_code_t ntfs_read_file(ntfs_fs_t* fs, uint64_t mft_record, void* buffer, si
     // For now, return not implemented
     kfree(mft_buffer);
     *bytes_read = 0;
-    return ERR_NOT_IMPLEMENTED;
+    return ERR_NOT_SUPPORTED;
 }
 

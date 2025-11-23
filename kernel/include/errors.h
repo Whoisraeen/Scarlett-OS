@@ -29,6 +29,7 @@ typedef enum {
     ERR_INVALID_STATE = -9,
     ERR_AGAIN = -10,
     ERR_FAILED = -11,
+    ERR_NOT_INITIALIZED = -100,
     
     // Memory errors
     ERR_INVALID_ADDRESS = -12,

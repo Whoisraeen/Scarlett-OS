@@ -10,6 +10,8 @@
 #include "../include/debug.h"
 #include "../include/errors.h"
 #include "../include/string.h"
+#include "../include/auth/user.h"
+#include "../include/security/audit.h"
 
 /**
  * Spawn a new process

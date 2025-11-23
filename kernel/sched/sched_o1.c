@@ -4,6 +4,9 @@
  */
 
 #include "sched_o1.h"
+#include "../include/sync/spinlock.h"
+#include "../include/process/process.h"
+#include "../include/mm/heap.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -50,7 +53,24 @@ int sched_o1_init(uint32_t num_cpus) {
         rq->nr_running = 0;
         rq->load = 0;
         rq->current = NULL;
-        rq->idle_task = NULL;  // TODO: Create idle task
+        
+        // Create idle task for this CPU
+        task_t* idle = (task_t*)kmalloc(sizeof(task_t));
+        if (idle) {
+            memset(idle, 0, sizeof(task_t));
+            idle->pid = 0;  // Idle task has PID 0
+            idle->priority = MAX_PRIORITY - 1;  // Lowest priority
+            idle->cpu = cpu;
+            idle->state = TASK_READY;
+            idle->time_slice = 1;
+            idle->vruntime = 0;
+            idle->load_weight = 1;
+            idle->next = NULL;
+            idle->prev = NULL;
+            rq->idle_task = idle;
+        } else {
+            rq->idle_task = NULL;
+        }
         
         // Initialize priority queues
         for (int prio = 0; prio < MAX_PRIORITY; prio++) {
@@ -66,7 +86,14 @@ int sched_o1_init(uint32_t num_cpus) {
         rq->priority_bitmap[0] = 0;
         rq->priority_bitmap[1] = 0;
         
-        // TODO: Initialize lock
+        // Initialize spinlock for this run queue
+        spinlock_t* lock = (spinlock_t*)kmalloc(sizeof(spinlock_t));
+        if (lock) {
+            spinlock_init(lock);
+            rq->lock = lock;
+        } else {
+            rq->lock = NULL;
+        }
     }
     
     global_sched.initialized = true;
@@ -143,9 +170,15 @@ void sched_add_task(task_t* task) {
     
     cpu_runqueue_t* rq = &global_sched.per_cpu_rq[task->cpu];
     
-    // TODO: Acquire lock
+    // Acquire lock
+    if (rq->lock) {
+        spinlock_lock((spinlock_t*)rq->lock);
+    }
     enqueue_task(rq, task, true);
-    // TODO: Release lock
+    // Release lock
+    if (rq->lock) {
+        spinlock_unlock((spinlock_t*)rq->lock);
+    }
 }
 
 void sched_remove_task(task_t* task) {
@@ -153,9 +186,15 @@ void sched_remove_task(task_t* task) {
     
     cpu_runqueue_t* rq = &global_sched.per_cpu_rq[task->cpu];
     
-    // TODO: Acquire lock
+    // Acquire lock
+    if (rq->lock) {
+        spinlock_lock((spinlock_t*)rq->lock);
+    }
     dequeue_task(rq, task);
-    // TODO: Release lock
+    // Release lock
+    if (rq->lock) {
+        spinlock_unlock((spinlock_t*)rq->lock);
+    }
 }
 
 // Pick next task to run (O(1) operation)
@@ -222,7 +261,10 @@ void sched_set_priority(task_t* task, uint32_t priority) {
     
     cpu_runqueue_t* rq = &global_sched.per_cpu_rq[task->cpu];
     
-    // TODO: Acquire lock
+    // Acquire lock
+    if (rq->lock) {
+        spinlock_lock((spinlock_t*)rq->lock);
+    }
     
     // Remove from current priority queue
     dequeue_task(rq, task);
@@ -233,7 +275,10 @@ void sched_set_priority(task_t* task, uint32_t priority) {
     // Re-enqueue with new priority
     enqueue_task(rq, task, true);
     
-    // TODO: Release lock
+    // Release lock
+    if (rq->lock) {
+        spinlock_unlock((spinlock_t*)rq->lock);
+    }
 }
 
 // Load balancing
@@ -268,4 +313,37 @@ uint32_t sched_get_nr_running(uint32_t cpu) {
 uint64_t sched_get_cpu_load(uint32_t cpu) {
     if (cpu >= global_sched.num_cpus) return 0;
     return global_sched.per_cpu_rq[cpu].load;
+}
+
+// Migrate task to different CPU
+void sched_migrate_task(task_t* task, uint32_t target_cpu) {
+    if (!task || target_cpu >= global_sched.num_cpus) return;
+    
+    uint32_t old_cpu = task->cpu;
+    if (old_cpu == target_cpu) return;  // Already on target CPU
+    
+    cpu_runqueue_t* old_rq = &global_sched.per_cpu_rq[old_cpu];
+    cpu_runqueue_t* new_rq = &global_sched.per_cpu_rq[target_cpu];
+    
+    // Acquire both locks (always in same order to avoid deadlock)
+    if (old_cpu < target_cpu) {
+        if (old_rq->lock) spinlock_lock((spinlock_t*)old_rq->lock);
+        if (new_rq->lock) spinlock_lock((spinlock_t*)new_rq->lock);
+    } else {
+        if (new_rq->lock) spinlock_lock((spinlock_t*)new_rq->lock);
+        if (old_rq->lock) spinlock_lock((spinlock_t*)old_rq->lock);
+    }
+    
+    // Remove from old run queue
+    dequeue_task(old_rq, task);
+    
+    // Update task CPU
+    task->cpu = target_cpu;
+    
+    // Add to new run queue
+    enqueue_task(new_rq, task, true);
+    
+    // Release locks
+    if (old_rq->lock) spinlock_unlock((spinlock_t*)old_rq->lock);
+    if (new_rq->lock) spinlock_unlock((spinlock_t*)new_rq->lock);
 }

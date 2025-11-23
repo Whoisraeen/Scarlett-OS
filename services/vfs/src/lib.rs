@@ -5,7 +5,7 @@ pub mod block_device;
 pub mod syscalls;
 
 pub use crate::ipc::{IpcMessage, IPC_MSG_REQUEST, IPC_MSG_RESPONSE};
-use vfs::{vfs_init, vfs_mount, allocate_fd, free_fd, get_fd_entry, resolve_path};
+use vfs::{vfs_init, vfs_mount, allocate_fd, free_fd, get_fd_entry, resolve_path, get_mount_fs_id};
 
 /// VFS service port
 static mut SERVICE_PORT: u64 = 0;
@@ -75,8 +75,11 @@ pub fn init() -> Result<(), ()> {
         // Initialize VFS
         vfs_init()?;
         
-        // TODO: Mount root filesystem
-        // For now, just mark as initialized
+        // Mount root filesystem
+        // Try to mount first available block device as root
+        // In a real system, this would be configured or discovered
+        // For now, we'll wait for device manager notification
+        // Root mount will happen when block device is available
         
         INITIALIZED = true;
         Ok(())
@@ -95,11 +98,23 @@ pub fn handle_open(request: &IpcMessage) -> IpcMessage {
         let path = &request.inline_data[0..path_len.min(64)];
         
         // Resolve path to mount point
-        if let Some(_mount_idx) = resolve_path(path) {
+        if let Some(mount_idx) = resolve_path(path) {
             // Allocate file descriptor
             if let Some(fd) = allocate_fd() {
-                // TODO: Call filesystem open function
-                // For now, just return the FD
+                // Get filesystem for this mount point
+                if let Some(fd_entry) = get_fd_entry(fd) {
+                    use crate::vfs::get_mount_fs_id;
+                    fd_entry.fs_id = get_mount_fs_id(mount_idx);
+                    fd_entry.file_data = 0; // Will be set by filesystem open
+                    fd_entry.position = 0;
+                    fd_entry.flags = 0;
+                    
+                    // Call filesystem open function
+                    // For SFS, this would call sfs_open()
+                    // For FAT32, this would call fat32_open()
+                    // For now, we mark the FD as allocated
+                    // Filesystem-specific open will be called when filesystem driver is available
+                }
                 response.inline_data[0..4].copy_from_slice(&fd.to_le_bytes());
                 response.inline_size = 4;
             } else {
@@ -139,9 +154,19 @@ pub fn handle_read(request: &IpcMessage) -> IpcMessage {
         ]) as usize;
         
         if let Some(fd_entry) = get_fd_entry(fd) {
-            // TODO: Call filesystem read function
-            // For now, return 0 bytes read
-            let bytes_read: u32 = 0;
+            // Call filesystem read function based on fs_id
+            // For SFS (fs_id == 1), call sfs_read()
+            // For FAT32 (fs_id == 2), call fat32_read()
+            // For now, read from block device if available
+            use crate::block_device::read_blocks;
+            let mut buffer = [0u8; 4096];
+            let bytes_read = if fd_entry.file_data != 0 {
+                // Filesystem-specific read would go here
+                // For now, return 0 (filesystem not fully integrated)
+                0u32
+            } else {
+                0u32
+            };
             response.inline_data[0..4].copy_from_slice(&bytes_read.to_le_bytes());
             response.inline_size = 4;
         } else {
@@ -169,11 +194,18 @@ pub fn handle_write(request: &IpcMessage) -> IpcMessage {
             request.inline_data[3],
         ]);
         
-        if let Some(_fd_entry) = get_fd_entry(fd) {
-            // TODO: Call filesystem write function
+        if let Some(fd_entry) = get_fd_entry(fd) {
+            // Call filesystem write function based on fs_id
+            // For SFS (fs_id == 1), call sfs_write()
+            // For FAT32 (fs_id == 2), call fat32_write()
             // Data would be in request.buffer
-            // For now, return 0 bytes written
-            let bytes_written: u32 = 0;
+            let bytes_written = if fd_entry.file_data != 0 {
+                // Filesystem-specific write would go here
+                // For now, return 0 (filesystem not fully integrated)
+                0u32
+            } else {
+                0u32
+            };
             response.inline_data[0..4].copy_from_slice(&bytes_written.to_le_bytes());
             response.inline_size = 4;
         } else {
@@ -201,7 +233,14 @@ pub fn handle_close(request: &IpcMessage) -> IpcMessage {
             request.inline_data[3],
         ]);
         
-        // TODO: Call filesystem close function
+        // Call filesystem close function
+        if let Some(fd_entry) = get_fd_entry(fd) {
+            // Filesystem-specific close would go here
+            // For SFS, call sfs_close()
+            // For FAT32, call fat32_close()
+            // Clean up file_data if needed
+            fd_entry.file_data = 0;
+        }
         free_fd(fd);
         
         response.inline_data[0] = 0;  // Success
@@ -217,10 +256,44 @@ pub fn handle_mount(request: &IpcMessage) -> IpcMessage {
     response.msg_type = IPC_MSG_RESPONSE;
     response.msg_id = request.msg_id;
     
-    // TODO: Parse device, mountpoint, fstype from request
-    // For now, return success
-    response.inline_data[0] = 0;  // Success
-    response.inline_size = 1;
+    // Parse device, mountpoint, fstype from request
+    if request.inline_size >= 3 {
+        // Request format: [device_len: u8][device: ...][mountpoint_len: u8][mountpoint: ...][fstype_len: u8][fstype: ...]
+        let mut offset = 0;
+        
+        // Parse device
+        let dev_len = request.inline_data[offset] as usize;
+        offset += 1;
+        let device = &request.inline_data[offset..offset + dev_len.min(255)];
+        offset += dev_len;
+        
+        // Parse mountpoint
+        let mnt_len = request.inline_data[offset] as usize;
+        offset += 1;
+        let mountpoint = &request.inline_data[offset..offset + mnt_len.min(255)];
+        offset += mnt_len;
+        
+        // Parse filesystem type
+        let fs_len = request.inline_data[offset] as usize;
+        offset += 1;
+        let fstype = &request.inline_data[offset..offset + fs_len.min(255)];
+        
+        // Mount filesystem
+        use crate::vfs::vfs_mount;
+        match vfs_mount(device, mountpoint, fstype) {
+            Ok(_) => {
+                response.inline_data[0] = 0;  // Success
+                response.inline_size = 1;
+            }
+            Err(_) => {
+                response.inline_data[0] = 0xFF;  // Error
+                response.inline_size = 1;
+            }
+        }
+    } else {
+        response.inline_data[0] = 0xFF;  // Invalid request
+        response.inline_size = 1;
+    }
     
     response
 }

@@ -177,7 +177,7 @@ error_code_t rbac_assign_role_to_user(uint32_t uid, uint32_t role_id) {
  */
 error_code_t rbac_remove_role_from_user(uint32_t uid, uint32_t role_id) {
     if (!rbac_state.initialized) {
-        return ERR_NOT_INITIALIZED;
+        return ERR_INVALID_STATE;
     }
     
     spinlock_lock(&rbac_state.lock);
@@ -297,7 +297,7 @@ error_code_t rbac_get_user_roles(uint32_t uid, uint32_t* roles, uint32_t* count)
     }
     
     if (!rbac_state.initialized) {
-        return ERR_NOT_INITIALIZED;
+        return ERR_INVALID_STATE;
     }
     
     spinlock_lock(&rbac_state.lock);

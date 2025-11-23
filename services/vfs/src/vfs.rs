@@ -100,8 +100,24 @@ pub fn vfs_mount(device: &[u8], mountpoint: &[u8], fs_type: &[u8]) -> Result<(),
         mount.device[0..dev_len].copy_from_slice(&device[0..dev_len]);
         mount.device[dev_len] = 0;
         
-        // TODO: Look up filesystem type and get fs_id
-        mount.fs_id = 1;  // Placeholder
+        // Look up filesystem type and get fs_id
+        // Filesystem type mapping:
+        // "sfs" -> 1 (Scarlett File System)
+        // "fat32" -> 2
+        // "ext4" -> 3
+        // "ntfs" -> 4
+        let fstype_str = core::str::from_utf8(fs_type).unwrap_or("");
+        mount.fs_id = if fstype_str == "sfs" {
+            1
+        } else if fstype_str == "fat32" {
+            2
+        } else if fstype_str == "ext4" {
+            3
+        } else if fstype_str == "ntfs" {
+            4
+        } else {
+            0  // Unknown filesystem type
+        };
         
         // If mounting at root, set as root mount
         if mountpoint.len() == 1 && mountpoint[0] == b'/' {
@@ -116,12 +132,43 @@ pub fn vfs_mount(device: &[u8], mountpoint: &[u8], fs_type: &[u8]) -> Result<(),
 /// Resolve path to mount point
 pub fn resolve_path(path: &[u8]) -> Option<usize> {
     unsafe {
-        // For now, just return root mount
-        // TODO: Implement proper path resolution
-        if ROOT_MOUNT < MOUNT_COUNT {
-            Some(ROOT_MOUNT)
+        // Implement proper path resolution
+        // Find the mount point that matches the longest prefix of the path
+        let mut best_match: Option<usize> = None;
+        let mut best_match_len = 0;
+        
+        // Convert path to string for comparison
+        let path_str = core::str::from_utf8(path).unwrap_or("");
+        
+        for i in 0..MOUNT_COUNT {
+            let mount = &MOUNT_POINTS[i];
+            let mnt_str = core::str::from_utf8(&mount.mountpoint[..mount.mountpoint.iter().position(|&b| b == 0).unwrap_or(0)]).unwrap_or("");
+            
+            // Check if path starts with mountpoint
+            if path_str.starts_with(mnt_str) && mnt_str.len() > best_match_len {
+                best_match = Some(i);
+                best_match_len = mnt_str.len();
+            }
+        }
+        
+        // If no match found, use root mount
+        best_match.or_else(|| {
+            if ROOT_MOUNT < MOUNT_COUNT {
+                Some(ROOT_MOUNT)
+            } else {
+                None
+            }
+        })
+    }
+}
+
+/// Get filesystem ID for a mount point
+pub fn get_mount_fs_id(mount_idx: usize) -> u64 {
+    unsafe {
+        if mount_idx < MOUNT_COUNT {
+            MOUNT_POINTS[mount_idx].fs_id
         } else {
-            None
+            0
         }
     }
 }

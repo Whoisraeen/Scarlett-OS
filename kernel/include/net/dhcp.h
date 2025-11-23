@@ -8,6 +8,7 @@
 
 #include "../types.h"
 #include "../errors.h"
+#include "network.h"
 
 // DHCP ports
 #define DHCP_SERVER_PORT 67

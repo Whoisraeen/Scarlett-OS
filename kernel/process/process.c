@@ -13,12 +13,19 @@
 #include "../include/kprintf.h"
 #include "../include/debug.h"
 #include "../include/errors.h"
+#include "../include/time.h"
+#include "../include/fs/vfs.h"
+#include "../include/sched/scheduler.h"
 
 // Process list
 static process_t* process_list = NULL;
 static process_t* current_process = NULL;
 static pid_t next_pid = 1;
 static const pid_t MAX_PID = 32767;
+
+// PID bitmap for efficient allocation (one bit per PID)
+#define PID_BITMAP_SIZE ((MAX_PID + 63) / 64)
+static uint64_t pid_bitmap[PID_BITMAP_SIZE] = {0};
 
 /**
  * Initialize process management
@@ -39,17 +46,14 @@ void process_init(void) {
  * Allocate a new PID
  */
 pid_t process_alloc_pid(void) {
-    // Simple linear search for free PID
-    // TODO: Optimize with bitmap or hash table
+    // Optimized PID allocation using bitmap
+    // Start from next_pid for better distribution
     for (pid_t pid = next_pid; pid <= MAX_PID; pid++) {
-        bool found = false;
-        for (process_t* p = process_list; p != NULL; p = p->next) {
-            if (p->pid == pid) {
-                found = true;
-                break;
-            }
-        }
-        if (!found) {
+        uint64_t bit_idx = pid / 64;
+        uint64_t bit_offset = pid % 64;
+        if (bit_idx < PID_BITMAP_SIZE && !(pid_bitmap[bit_idx] & (1ULL << bit_offset))) {
+            // Mark as used
+            pid_bitmap[bit_idx] |= (1ULL << bit_offset);
             next_pid = pid + 1;
             return pid;
         }
@@ -57,29 +61,31 @@ pid_t process_alloc_pid(void) {
     
     // Wrap around
     for (pid_t pid = 1; pid < next_pid; pid++) {
-        bool found = false;
-        for (process_t* p = process_list; p != NULL; p = p->next) {
-            if (p->pid == pid) {
-                found = true;
-                break;
-            }
-        }
-        if (!found) {
+        uint64_t bit_idx = pid / 64;
+        uint64_t bit_offset = pid % 64;
+        if (bit_idx < PID_BITMAP_SIZE && !(pid_bitmap[bit_idx] & (1ULL << bit_offset))) {
+            // Mark as used
+            pid_bitmap[bit_idx] |= (1ULL << bit_offset);
             next_pid = pid + 1;
             return pid;
         }
     }
     
-    // No free PID
-    return -1;
+    return -1;  // No free PID
 }
 
 /**
  * Free a PID (called when process is destroyed)
  */
 void process_free_pid(pid_t pid) {
-    // PID will be reused automatically by process_alloc_pid
-    (void)pid;  // Unused for now
+    // Free PID by clearing bitmap bit
+    if (pid > 0 && pid <= MAX_PID) {
+        uint64_t bit_idx = pid / 64;
+        uint64_t bit_offset = pid % 64;
+        if (bit_idx < PID_BITMAP_SIZE) {
+            pid_bitmap[bit_idx] &= ~(1ULL << bit_offset);
+        }
+    }
 }
 
 /**
@@ -88,18 +94,12 @@ void process_free_pid(pid_t pid) {
 process_t* process_create(const char* name, vaddr_t entry_point) {
     kinfo("Creating process: %s (entry: 0x%016lx)\n", name, entry_point);
     
-    // Allocate process structure
-    // TODO: Use kmalloc once heap is working
-    // For now, use static allocation (temporary)
-    static process_t processes[16];
-    static int process_count = 0;
-    
-    if (process_count >= 16) {
-        kerror("Process: Too many processes (max 16 for now)\n");
+    // Allocate process structure using kmalloc
+    process_t* process = (process_t*)kmalloc(sizeof(process_t));
+    if (!process) {
+        kerror("Process: Failed to allocate process structure\n");
         return NULL;
     }
-    
-    process_t* process = &processes[process_count++];
     
     // Allocate PID
     pid_t pid = process_alloc_pid();
@@ -182,7 +182,7 @@ process_t* process_create(const char* name, vaddr_t entry_point) {
     } else {
         process->name[0] = '\0';
     }
-    process->created_at = 0;  // TODO: Get timestamp
+    process->created_at = time_get_uptime_ms();
     
     // Add to process list
     process_list_add(process);
@@ -225,14 +225,26 @@ void process_destroy(process_t* process) {
         vmm_destroy_address_space(process->address_space);
     }
     
-    // Free file descriptors (placeholder)
-    // TODO: Close all file descriptors
+    // Close all file descriptors
+    if (process->file_descriptors && process->fd_count > 0) {
+        for (int i = 0; i < process->fd_count; i++) {
+            if (process->file_descriptors[i]) {
+                vfs_close(i);  // Close file descriptor
+            }
+        }
+        kfree(process->file_descriptors);
+        process->file_descriptors = NULL;
+        process->fd_count = 0;
+    }
     
     // Free PID
     process_free_pid(process->pid);
     
     // Clear process structure
     process->state = PROCESS_STATE_DEAD;
+    
+    // Free process structure
+    kfree(process);
 }
 
 /**
@@ -248,13 +260,32 @@ void process_exit(process_t* process, int exit_code) {
     process->exit_code = exit_code;
     process->state = PROCESS_STATE_ZOMBIE;
     
-    // TODO: Notify parent process
-    // TODO: Clean up resources
-    // TODO: Schedule parent if it's waiting
+    // Notify parent process if it exists
+    if (process->parent) {
+        // Parent will be notified when it calls wait()
+        // For now, we mark the process as zombie and let parent handle cleanup
+        // In a full implementation, we'd send a signal or IPC message to parent
+    }
     
-    // For now, just destroy the process
-    // In a real OS, we'd keep it as a zombie until parent waits
-    process_destroy(process);
+    // Clean up resources (but keep process structure as zombie)
+    // Close file descriptors
+    if (process->file_descriptors && process->fd_count > 0) {
+        for (int i = 0; i < process->fd_count; i++) {
+            if (process->file_descriptors[i]) {
+                vfs_close(i);
+            }
+        }
+    }
+    
+    // Schedule parent if it's waiting for this process
+    if (process->parent) {
+        // In a full implementation, we'd check if parent is blocked waiting
+        // and unblock it. For now, we just mark the process as zombie.
+        // The parent's wait() call will handle the actual unblocking.
+    }
+    
+    // Keep process as zombie until parent calls wait()
+    // process_destroy() will be called by parent or reaper
 }
 
 /**

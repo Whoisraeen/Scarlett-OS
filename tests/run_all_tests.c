@@ -34,10 +34,19 @@ void run_all_kernel_tests(void) {
     run_vmm_tests();
     run_heap_tests();
 
-    // Phase 2 tests (when implemented)
-    // run_scheduler_tests();
-    // run_ipc_tests();
-    // run_syscall_tests();
+    // Phase 2 tests
+    kinfo("\n");
+    kinfo("╔══════════════════════════════════════════════════╗\n");
+    kinfo("║           PHASE 2: Core Services                ║\n");
+    kinfo("╚══════════════════════════════════════════════════╝\n");
+
+    extern void run_scheduler_tests(void);
+    extern void run_ipc_tests(void);
+    extern void run_syscall_tests(void);
+
+    run_scheduler_tests();
+    run_ipc_tests();
+    run_syscall_tests();
 
     test_summary();
 }

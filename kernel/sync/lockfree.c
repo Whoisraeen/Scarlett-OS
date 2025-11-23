@@ -18,7 +18,7 @@ static inline bool atomic_compare_exchange(volatile void* ptr, void* expected, v
 }
 
 static inline void* atomic_exchange(volatile void* ptr, void* value) {
-    return __sync_lock_test_and_set((volatile void**)ptr, value);
+    return (void*)__sync_lock_test_and_set((void**)ptr, value);
 }
 
 static inline void atomic_store(volatile void* ptr, void* value) {
@@ -29,7 +29,7 @@ static inline void atomic_store(volatile void* ptr, void* value) {
 
 static inline void* atomic_load(volatile void* ptr) {
     __sync_synchronize();
-    void* value = *(volatile void**)ptr;
+    void* value = *(void**)ptr;
     __sync_synchronize();
     return value;
 }
@@ -179,7 +179,7 @@ uint32_t lf_queue_size(lf_queue_t* queue) {
         return 0;
     }
     
-    return atomic_load((volatile void*)&queue->size);
+    return (uint32_t)(uintptr_t)atomic_load((volatile void*)&queue->size);
 }
 
 /**
@@ -269,7 +269,7 @@ uint32_t lf_stack_size(lf_stack_t* stack) {
         return 0;
     }
     
-    return atomic_load((volatile void*)&stack->size);
+    return (uint32_t)(uintptr_t)atomic_load((volatile void*)&stack->size);
 }
 
 /**

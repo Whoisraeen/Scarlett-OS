@@ -67,22 +67,38 @@ impl BlockCache {
 
     /// Evict least recently used block
     fn evict_lru(&mut self) {
-        if let Some((&block_num, _)) = self
+        if let Some((&block_num, block)) = self
             .cache
             .iter()
-            .min_by_key(|(_, block)| block.access_time)
+            .min_by_key(|(_, b)| b.access_time)
         {
-            // TODO: Write back if dirty
+            // Write back if dirty
+            if block.dirty {
+                // Write to disk via block device
+                use crate::block_device::write_blocks;
+                let _ = write_blocks(0, block_num, 1, &block.data);
+            }
             self.cache.remove(&block_num);
         }
     }
 
     /// Flush all dirty blocks
     pub fn flush_all(&mut self) {
-        // TODO: Write back all dirty blocks
-        for block in self.cache.values_mut() {
+        // Write back all dirty blocks
+        use crate::block_device::write_blocks;
+        let mut blocks_to_flush = Vec::new();
+        
+        // Collect dirty blocks
+        for (block_num, block) in self.cache.iter() {
             if block.dirty {
-                // TODO: Write to disk
+                blocks_to_flush.push((*block_num, block.data.clone()));
+            }
+        }
+        
+        // Write dirty blocks to disk
+        for (block_num, data) in blocks_to_flush {
+            let _ = write_blocks(0, block_num, 1, &data);
+            if let Some(block) = self.cache.get_mut(&block_num) {
                 block.dirty = false;
             }
         }

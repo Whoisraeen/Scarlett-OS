@@ -13,6 +13,17 @@
 #include "../include/string.h"
 #include "../include/config.h"
 
+// Helper to convert physical to virtual for page table access (same as vmm.c)
+#define PHYS_MAP_BASE 0xFFFF800000000000ULL
+extern bool phys_map_ready;
+static inline void* phys_to_virt_pt(paddr_t paddr) {
+    if (phys_map_ready) {
+        return (void*)(paddr + PHYS_MAP_BASE);
+    } else {
+        return (void*)paddr;  // Identity mapping during early boot
+    }
+}
+
 // Memory mapping list per address space
 // For now, we'll use a global list (should be per-address-space)
 static memory_mapping_t* mapping_list = NULL;
@@ -262,8 +273,49 @@ error_code_t mmap_protect(address_space_t* as, vaddr_t addr, size_t size, uint64
         }
         
         // Get current page table entry and update flags
-        // TODO: Implement page table entry modification
-        // For now, just update the mapping structure
+        // Modify page table entry to update protection flags
+        // Walk page tables to find the PTE
+        uint64_t* table = as->pml4;
+        int indices[4];
+        indices[0] = (page_vaddr >> 39) & 0x1FF;  // PML4
+        indices[1] = (page_vaddr >> 30) & 0x1FF;  // PDPT
+        indices[2] = (page_vaddr >> 21) & 0x1FF;  // PD
+        indices[3] = (page_vaddr >> 12) & 0x1FF;  // PT
+        
+        // Walk page tables
+        for (int level = 0; level < 4; level++) {
+            if (!table) break;
+            uint64_t entry = table[indices[level]];
+            if (!(entry & VMM_PRESENT)) break;
+            
+            if (level == 3) {
+                // This is the page table entry
+                uint64_t* pte = &table[indices[level]];
+                
+                // Get current flags
+                uint64_t current_flags = *pte & 0xFFF;  // Lower 12 bits are flags
+                
+                // Update protection flags (bits 0-2: Present, Write, User)
+                uint64_t new_flags = (current_flags & ~0x07ULL) | (prot & 0x07ULL);
+                
+                // Preserve other flags (bits 3-11)
+                uint64_t preserved_flags = current_flags & 0xFF8ULL;
+                
+                // Combine: physical address + new protection + preserved flags
+                uint64_t new_entry = (*pte & 0xFFFFFFFFF000ULL) | new_flags | preserved_flags;
+                
+                // Update page table entry atomically
+                *pte = new_entry;
+                
+                // Flush TLB for this page
+                __asm__ volatile("invlpg (%0)" :: "r"(page_vaddr) : "memory");
+                break;
+            } else {
+                // Get next level table
+                paddr_t next_table_phys = entry & 0xFFFFFFFFF000ULL;
+                table = (uint64_t*)phys_to_virt_pt(next_table_phys);
+            }
+        }
     }
     
     return ERR_OK;

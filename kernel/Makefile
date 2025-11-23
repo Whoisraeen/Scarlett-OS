@@ -43,7 +43,7 @@ endif
 
 %.o: %.S
 	@echo "[AS] $< (ARCH=$(ARCH))"
-	@$(AS) $(ASFLAGS) $< -o $@
+	@$(CC) $(CFLAGS) -c $< -o $@
 
 %.o: %.asm
 	@echo "[NASM] $<"

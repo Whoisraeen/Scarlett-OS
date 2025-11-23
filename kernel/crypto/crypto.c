@@ -155,7 +155,7 @@ error_code_t crypto_encrypt(crypto_cipher_type_t type, const uint8_t* key, const
         case CRYPTO_CIPHER_AES128:
         case CRYPTO_CIPHER_AES192:
             // TODO: Implement AES128 and AES192
-            return ERR_NOT_IMPLEMENTED;
+            return ERR_NOT_SUPPORTED;
         default:
             return ERR_NOT_SUPPORTED;
     }
@@ -176,7 +176,7 @@ error_code_t crypto_decrypt(crypto_cipher_type_t type, const uint8_t* key, const
         case CRYPTO_CIPHER_AES128:
         case CRYPTO_CIPHER_AES192:
             // TODO: Implement AES128 and AES192
-            return ERR_NOT_IMPLEMENTED;
+            return ERR_NOT_SUPPORTED;
         default:
             return ERR_NOT_SUPPORTED;
     }
@@ -188,7 +188,7 @@ error_code_t crypto_decrypt(crypto_cipher_type_t type, const uint8_t* key, const
 error_code_t crypto_rsa_generate_keypair(crypto_asym_type_t type, uint8_t* public_key, size_t* public_key_len,
                                          uint8_t* private_key, size_t* private_key_len) {
     // TODO: Implement RSA key generation
-    return ERR_NOT_IMPLEMENTED;
+    return ERR_NOT_SUPPORTED;
 }
 
 /**
@@ -197,7 +197,7 @@ error_code_t crypto_rsa_generate_keypair(crypto_asym_type_t type, uint8_t* publi
 error_code_t crypto_rsa_encrypt(const uint8_t* public_key, size_t public_key_len,
                                 const uint8_t* plaintext, size_t plaintext_len, uint8_t* ciphertext) {
     // TODO: Implement RSA encryption
-    return ERR_NOT_IMPLEMENTED;
+    return ERR_NOT_SUPPORTED;
 }
 
 /**
@@ -206,7 +206,7 @@ error_code_t crypto_rsa_encrypt(const uint8_t* public_key, size_t public_key_len
 error_code_t crypto_rsa_decrypt(const uint8_t* private_key, size_t private_key_len,
                                 const uint8_t* ciphertext, size_t ciphertext_len, uint8_t* plaintext) {
     // TODO: Implement RSA decryption
-    return ERR_NOT_IMPLEMENTED;
+    return ERR_NOT_SUPPORTED;
 }
 
 /**
@@ -215,7 +215,7 @@ error_code_t crypto_rsa_decrypt(const uint8_t* private_key, size_t private_key_l
 error_code_t crypto_ecc_generate_keypair(crypto_asym_type_t type, uint8_t* public_key, size_t* public_key_len,
                                           uint8_t* private_key, size_t* private_key_len) {
     // TODO: Implement ECC key generation
-    return ERR_NOT_IMPLEMENTED;
+    return ERR_NOT_SUPPORTED;
 }
 
 /**
@@ -224,7 +224,7 @@ error_code_t crypto_ecc_generate_keypair(crypto_asym_type_t type, uint8_t* publi
 error_code_t crypto_ecc_sign(const uint8_t* private_key, size_t private_key_len,
                              const uint8_t* data, size_t data_len, uint8_t* signature, size_t* signature_len) {
     // TODO: Implement ECC signing
-    return ERR_NOT_IMPLEMENTED;
+    return ERR_NOT_SUPPORTED;
 }
 
 /**
@@ -233,7 +233,7 @@ error_code_t crypto_ecc_sign(const uint8_t* private_key, size_t private_key_len,
 error_code_t crypto_ecc_verify(const uint8_t* public_key, size_t public_key_len,
                                const uint8_t* data, size_t data_len, const uint8_t* signature, size_t signature_len) {
     // TODO: Implement ECC verification
-    return ERR_NOT_IMPLEMENTED;
+    return ERR_NOT_SUPPORTED;
 }
 
 /**

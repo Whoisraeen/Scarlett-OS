@@ -20,6 +20,9 @@ typedef uint64_t pfn_t;
 // Process ID
 typedef int32_t pid_t;
 
+// Signed size type
+typedef int64_t ssize_t;
+
 // NULL definition
 #ifndef NULL
 #define NULL ((void*)0)

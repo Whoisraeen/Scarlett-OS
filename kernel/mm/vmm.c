@@ -8,6 +8,9 @@
 #include "../include/mm/vmm.h"
 #include "../include/mm/pmm.h"
 #include "../include/mm/bootstrap.h"
+#include "../include/mm/heap.h"
+#include "../include/process.h"
+#include "../include/string.h"
 #include "../include/kprintf.h"
 #include "../include/debug.h"
 

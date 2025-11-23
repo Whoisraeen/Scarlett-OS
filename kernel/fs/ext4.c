@@ -76,7 +76,7 @@ error_code_t ext4_init(block_device_t* device, ext4_fs_t* fs) {
  */
 error_code_t ext4_mount(ext4_fs_t* fs, const char* mountpoint) {
     if (!fs || !fs->initialized) {
-        return ERR_NOT_INITIALIZED;
+        return ERR_INVALID_STATE;
     }
     
     (void)mountpoint;  // For now, just verify filesystem is valid
@@ -171,18 +171,17 @@ static error_code_t ext4_read_inode_block(ext4_fs_t* fs, ext4_inode_t* inode, ui
     }
     // Indirect block (12)
     else if (block_index < 12 + (fs->block_size / 4)) {
-        // TODO: Read indirect block
-        return ERR_NOT_IMPLEMENTED;
+        return ERR_NOT_SUPPORTED;
     }
     // Double indirect (13)
     else if (block_index < 12 + (fs->block_size / 4) + (fs->block_size / 4) * (fs->block_size / 4)) {
         // TODO: Read double indirect block
-        return ERR_NOT_IMPLEMENTED;
+        return ERR_NOT_SUPPORTED;
     }
     // Triple indirect (14)
     else {
         // TODO: Read triple indirect block
-        return ERR_NOT_IMPLEMENTED;
+        return ERR_NOT_SUPPORTED;
     }
     
     if (block_num == 0) {
@@ -221,7 +220,6 @@ error_code_t ext4_find_file(ext4_fs_t* fs, uint32_t parent_inode, const char* na
     size_t file_size = parent.size_lo | ((uint64_t)parent.size_hi << 32);
     size_t blocks_to_read = (file_size + fs->block_size - 1) / fs->block_size;
     
-    size_t offset = 0;
     for (size_t i = 0; i < blocks_to_read && i < 12; i++) {  // Only check direct blocks for now
         err = ext4_read_inode_block(fs, &parent, i, block_buffer);
         if (err != ERR_OK) {

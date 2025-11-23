@@ -137,12 +137,12 @@ error_code_t dhcp_request_config(net_device_t* device, dhcp_config_t* config) {
     local_addr.port = __builtin_bswap16(DHCP_CLIENT_PORT);
     local_addr.addr = 0;    // Any interface
     
-    error_code_t err = socket_bind(sockfd, &local_addr);
-    if (err != ERR_OK) {
+    error_code_t bind_err = socket_bind(sockfd, &local_addr);
+    if (bind_err != ERR_OK) {
         kerror("DHCP: Failed to bind socket\n");
         kfree(discover);
         socket_close(sockfd);
-        return err;
+        return bind_err;
     }
     
     // Wait for OFFER with timeout (retry up to 3 times)
@@ -248,22 +248,22 @@ error_code_t dhcp_request_config(net_device_t* device, dhcp_config_t* config) {
     request->options[3] = 99;
     
     // DHCP message type: REQUEST
-    size_t opt_offset = 4;
-    uint8_t msg_type = DHCP_REQUEST;
-    opt_offset = dhcp_add_option(request->options, opt_offset, DHCP_OPT_MESSAGE_TYPE, &msg_type, 1);
+    size_t req_opt_offset = 4;
+    uint8_t req_msg_type = DHCP_REQUEST;
+    req_opt_offset = dhcp_add_option(request->options, req_opt_offset, DHCP_OPT_MESSAGE_TYPE, &req_msg_type, 1);
     
     // Requested IP
-    opt_offset = dhcp_add_option(request->options, opt_offset, DHCP_OPT_REQUESTED_IP, &offered_ip, 4);
+    req_opt_offset = dhcp_add_option(request->options, req_opt_offset, DHCP_OPT_REQUESTED_IP, &offered_ip, 4);
     
     // Server ID
-    opt_offset = dhcp_add_option(request->options, opt_offset, DHCP_OPT_SERVER_ID, &server_ip, 4);
+    req_opt_offset = dhcp_add_option(request->options, req_opt_offset, DHCP_OPT_SERVER_ID, &server_ip, 4);
     
     // Parameter request list
-    uint8_t param_list[] = {DHCP_OPT_SUBNET_MASK, DHCP_OPT_ROUTER, DHCP_OPT_DNS_SERVER};
-    opt_offset = dhcp_add_option(request->options, opt_offset, DHCP_OPT_PARAMETER_REQUEST, param_list, sizeof(param_list));
+    uint8_t req_param_list[] = {DHCP_OPT_SUBNET_MASK, DHCP_OPT_ROUTER, DHCP_OPT_DNS_SERVER};
+    req_opt_offset = dhcp_add_option(request->options, req_opt_offset, DHCP_OPT_PARAMETER_REQUEST, req_param_list, sizeof(req_param_list));
     
     // End option
-    request->options[opt_offset++] = DHCP_OPT_END;
+    request->options[req_opt_offset++] = DHCP_OPT_END;
     
     // Send REQUEST
     err = udp_send(broadcast_ip, DHCP_SERVER_PORT, DHCP_CLIENT_PORT, request, sizeof(dhcp_message_t));
@@ -347,43 +347,43 @@ error_code_t dhcp_request_config(net_device_t* device, dhcp_config_t* config) {
     
     // Parse options for subnet mask, router, DNS, lease time
     uint8_t* options = ack->options;
-    size_t opt_offset = 4;
-    while (opt_offset < sizeof(ack->options) - 2) {
-        uint8_t opt_code = options[opt_offset];
+    size_t ack_opt_offset = 4;
+    while (ack_opt_offset < sizeof(ack->options) - 2) {
+        uint8_t opt_code = options[ack_opt_offset];
         if (opt_code == DHCP_OPT_END) {
             break;
         }
         if (opt_code == DHCP_OPT_PAD) {
-            opt_offset++;
+            ack_opt_offset++;
             continue;
         }
         
-        uint8_t opt_len = options[opt_offset + 1];
-        if (opt_len > 0 && opt_offset + 2 + opt_len <= sizeof(ack->options)) {
+        uint8_t opt_len = options[ack_opt_offset + 1];
+        if (opt_len > 0 && ack_opt_offset + 2 + opt_len <= sizeof(ack->options)) {
             switch (opt_code) {
                 case DHCP_OPT_SUBNET_MASK:
                     if (opt_len == 4) {
-                        config->subnet_mask = *(uint32_t*)(options + opt_offset + 2);
+                        config->subnet_mask = *(uint32_t*)(options + ack_opt_offset + 2);
                     }
                     break;
                 case DHCP_OPT_ROUTER:
                     if (opt_len >= 4) {
-                        config->gateway = *(uint32_t*)(options + opt_offset + 2);
+                        config->gateway = *(uint32_t*)(options + ack_opt_offset + 2);
                     }
                     break;
                 case DHCP_OPT_DNS_SERVER:
                     if (opt_len >= 4) {
-                        config->dns_server = *(uint32_t*)(options + opt_offset + 2);
+                        config->dns_server = *(uint32_t*)(options + ack_opt_offset + 2);
                     }
                     break;
                 case DHCP_OPT_LEASE_TIME:
                     if (opt_len == 4) {
-                        config->lease_time = __builtin_bswap32(*(uint32_t*)(options + opt_offset + 2));
+                        config->lease_time = __builtin_bswap32(*(uint32_t*)(options + ack_opt_offset + 2));
                     }
                     break;
             }
         }
-        opt_offset += 2 + opt_len;
+        ack_opt_offset += 2 + opt_len;
     }
     
     kfree(response);
@@ -415,6 +415,6 @@ error_code_t dhcp_release_config(net_device_t* device) {
     kinfo("DHCP: Releasing configuration for device %s\n", device->name);
     
     // TODO: Send DHCP RELEASE message
-    return ERR_NOT_IMPLEMENTED;
+    return ERR_NOT_SUPPORTED;
 }
 

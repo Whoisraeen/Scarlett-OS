@@ -9,6 +9,8 @@ members = [
     "serial",
     "bus/usb/common",
     "bus/usb/xhci",
+    "storage/nvme",
+    "network/wifi",
 ]
 
 [workspace.package]

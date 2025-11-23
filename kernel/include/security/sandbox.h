@@ -51,7 +51,7 @@ error_code_t sandbox_check_file(pid_t pid);
 error_code_t sandbox_check_process(pid_t pid);
 error_code_t sandbox_check_fd(pid_t pid);
 error_code_t sandbox_check_flag(pid_t pid, uint32_t flag);
-error_code_t sandbox_update_memory(pid_t pid, size_t delta);
+error_code_t sandbox_update_memory(pid_t pid, ssize_t delta);
 error_code_t sandbox_update_files(pid_t pid, int delta);
 error_code_t sandbox_update_processes(pid_t pid, int delta);
 error_code_t sandbox_update_fds(pid_t pid, int delta);

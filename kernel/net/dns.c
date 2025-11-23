@@ -4,6 +4,7 @@
  */
 
 #include "../include/net/dns.h"
+#include "../include/net/socket.h"
 #include "../include/net/udp.h"
 #include "../include/net/ip.h"
 #include "../include/net/network.h"
@@ -351,6 +352,6 @@ error_code_t dns_resolve_ipv6(const char* hostname, uint8_t* ipv6_address) {
     (void)hostname;
     (void)ipv6_address;
     // TODO: Implement IPv6 DNS resolution
-    return ERR_NOT_IMPLEMENTED;
+    return ERR_NOT_SUPPORTED;
 }
 

@@ -4,6 +4,7 @@ members = [
     "init",
     "vfs",
     "network",
+    "acpi",
 ]
 
 [workspace.package]

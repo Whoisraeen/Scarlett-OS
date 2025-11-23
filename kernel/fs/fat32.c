@@ -273,7 +273,7 @@ error_code_t fat32_read_dir(fat32_fs_t* fs, uint32_t cluster, fat32_dir_entry_t*
         if (dir_entries[i].name[0] == 0x00) {
             break;  // End of directory
         }
-        if (dir_entries[i].name[0] == 0xE5) {
+        if ((uint8_t)dir_entries[i].name[0] == 0xE5) {
             continue;  // Deleted entry
         }
         

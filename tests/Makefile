@@ -8,7 +8,7 @@ LDFLAGS =
 TEST_FRAMEWORK = test_framework.c
 
 # Unit tests
-UNIT_TESTS = unit/test_memory unit/test_scheduler
+UNIT_TESTS = unit/test_memory unit/test_scheduler unit/test_ipc unit/test_syscall
 
 # Integration tests
 INTEGRATION_TESTS = integration/test_ipc

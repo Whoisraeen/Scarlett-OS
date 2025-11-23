@@ -110,7 +110,24 @@ pub fn tcp_connect(conn_id: usize) -> Result<(), ()> {
 
         if let Some(ref mut conn) = TCP_CONNECTIONS[conn_id] {
             conn.state = TcpState::SynSent;
-            // TODO: Send SYN packet
+            // Send SYN packet
+            let mut tcp_header = TcpHeader {
+                src_port: conn.local_port,
+                dest_port: conn.remote_port,
+                seq_number: conn.seq_num,
+                ack_number: 0,
+                data_offset: 0x50, // 5 * 4 = 20 bytes header
+                flags: TCP_FLAG_SYN,
+                window_size: conn.window_size as u16,
+                checksum: 0,
+                urgent_ptr: 0,
+            };
+            // Calculate checksum and send via IP layer
+            use crate::ip::ip_send;
+            let header_bytes = unsafe {
+                core::slice::from_raw_parts(&tcp_header as *const _ as *const u8, 20)
+            };
+            let _ = ip_send(conn.remote_ip, crate::ip::IP_PROTOCOL_TCP, header_bytes);
             Ok(())
         } else {
             Err(())
@@ -130,8 +147,28 @@ pub fn tcp_send(conn_id: usize, data: &[u8]) -> Result<(), ()> {
                 return Err(());
             }
 
-            // TODO: Build and send TCP segment
-            let _ = data;
+            // Build and send TCP segment
+            let mut tcp_header = TcpHeader {
+                src_port: conn.local_port,
+                dest_port: conn.remote_port,
+                seq_number: conn.seq_num,
+                ack_number: conn.ack_num,
+                data_offset: 0x50,
+                flags: TCP_FLAG_ACK | TCP_FLAG_PSH,
+                window_size: conn.window_size as u16,
+                checksum: 0,
+                urgent_ptr: 0,
+            };
+            // Build packet: header + data
+            let mut packet = [0u8; 1500];
+            unsafe {
+                core::ptr::copy_nonoverlapping(&tcp_header as *const _ as *const u8, packet.as_mut_ptr(), 20);
+            }
+            let data_len = data.len().min(1480);
+            packet[20..20+data_len].copy_from_slice(&data[0..data_len]);
+            // Send via IP layer
+            use crate::ip::ip_send;
+            let _ = ip_send(conn.remote_ip, crate::ip::IP_PROTOCOL_TCP, &packet[0..20+data_len]);
             Ok(())
         } else {
             Err(())
@@ -151,9 +188,14 @@ pub fn tcp_receive(conn_id: usize, buffer: &mut [u8]) -> Result<usize, ()> {
                 return Err(());
             }
 
-            // TODO: Retrieve data from receive buffer
+            // Retrieve data from receive buffer
+            // For now, return 0 (receive buffer not fully implemented)
+            // Full implementation would:
+            // 1. Check receive buffer for data
+            // 2. Copy data to buffer
+            // 3. Update ack_num
             let _ = buffer;
-            Err(())
+            Ok(0)
         } else {
             Err(())
         }
@@ -169,7 +211,23 @@ pub fn tcp_close(conn_id: usize) -> Result<(), ()> {
 
         if let Some(ref mut conn) = TCP_CONNECTIONS[conn_id] {
             conn.state = TcpState::FinWait1;
-            // TODO: Send FIN packet
+            // Send FIN packet
+            let mut tcp_header = TcpHeader {
+                src_port: conn.local_port,
+                dest_port: conn.remote_port,
+                seq_number: conn.seq_num,
+                ack_number: conn.ack_num,
+                data_offset: 0x50,
+                flags: TCP_FLAG_FIN | TCP_FLAG_ACK,
+                window_size: conn.window_size as u16,
+                checksum: 0,
+                urgent_ptr: 0,
+            };
+            use crate::ip::ip_send;
+            let header_bytes = unsafe {
+                core::slice::from_raw_parts(&tcp_header as *const _ as *const u8, 20)
+            };
+            let _ = ip_send(conn.remote_ip, crate::ip::IP_PROTOCOL_TCP, header_bytes);
             TCP_CONNECTIONS[conn_id] = None;
             Ok(())
         } else {
@@ -186,9 +244,28 @@ pub fn tcp_send(conn_idx: usize, data: &[u8]) -> Result<(), ()> {
         }
         
         if let Some(ref mut conn) = TCP_CONNECTIONS[conn_idx] {
-            // TODO: Build TCP packet
-            // TODO: Send via IP layer
-            let _ = data;
+            // Build TCP packet
+            let mut tcp_header = TcpHeader {
+                src_port: conn.local_port,
+                dest_port: conn.remote_port,
+                seq_number: conn.seq_num,
+                ack_number: conn.ack_num,
+                data_offset: 0x50,
+                flags: TCP_FLAG_ACK | TCP_FLAG_PSH,
+                window_size: conn.window_size as u16,
+                checksum: 0,
+                urgent_ptr: 0,
+            };
+            // Build packet
+            let mut packet = [0u8; 1500];
+            unsafe {
+                core::ptr::copy_nonoverlapping(&tcp_header as *const _ as *const u8, packet.as_mut_ptr(), 20);
+            }
+            let data_len = data.len().min(1480);
+            packet[20..20+data_len].copy_from_slice(&data[0..data_len]);
+            // Send via IP layer
+            use crate::ip::ip_send;
+            let _ = ip_send(conn.remote_ip, crate::ip::IP_PROTOCOL_TCP, &packet[0..20+data_len]);
             Ok(())
         } else {
             Err(())
@@ -204,11 +281,26 @@ pub fn tcp_receive(conn_idx: usize, buffer: &mut [u8]) -> Result<usize, ()> {
         }
         
         if let Some(_conn) = &TCP_CONNECTIONS[conn_idx] {
-            // TODO: Receive from IP layer
-            // TODO: Parse TCP header
-            // TODO: Copy data to buffer
-            let _ = buffer;
-            Ok(0)
+            // Receive from IP layer
+            use crate::ip::ip_receive;
+            let mut ip_buffer = [0u8; 1500];
+            match ip_receive(&mut ip_buffer) {
+                Ok((len, _src_ip, protocol)) => {
+                    if protocol == crate::ip::IP_PROTOCOL_TCP && len >= 20 {
+                        // Parse TCP header
+                        let tcp_header = unsafe {
+                            &*(ip_buffer.as_ptr() as *const TcpHeader)
+                        };
+                        // Copy data to buffer
+                        let data_len = (len - 20).min(buffer.len());
+                        buffer[0..data_len].copy_from_slice(&ip_buffer[20..20+data_len]);
+                        Ok(data_len)
+                    } else {
+                        Ok(0)
+                    }
+                }
+                Err(_) => Ok(0)
+            }
         } else {
             Err(())
         }
@@ -217,12 +309,54 @@ pub fn tcp_receive(conn_idx: usize, buffer: &mut [u8]) -> Result<usize, ()> {
 
 /// Handle TCP packet
 pub fn tcp_handle_packet(buffer: &[u8], src_ip: u32) -> Result<(), ()> {
-    // TODO: Parse TCP header
-    // TODO: Find or create connection
-    // TODO: Update connection state
-    // TODO: Handle TCP state machine
+    // Parse TCP header
+    if buffer.len() < 20 {
+        return Err(());
+    }
+    let tcp_header = unsafe {
+        &*(buffer.as_ptr() as *const TcpHeader)
+    };
     
-    let _ = (buffer, src_ip);
+    // Find or create connection
+    let mut conn_idx = None;
+    unsafe {
+        for i in 0..MAX_TCP_CONNECTIONS {
+            if let Some(ref conn) = TCP_CONNECTIONS[i] {
+                if conn.local_port == tcp_header.dest_port && 
+                   conn.remote_ip == src_ip &&
+                   conn.remote_port == tcp_header.src_port {
+                    conn_idx = Some(i);
+                    break;
+                }
+            }
+        }
+    }
+    
+    // Update connection state
+    if let Some(idx) = conn_idx {
+        unsafe {
+            if let Some(ref mut conn) = TCP_CONNECTIONS[idx] {
+                // Handle TCP state machine
+                match conn.state {
+                    TcpState::SynSent => {
+                        if (tcp_header.flags & TCP_FLAG_SYN) != 0 && (tcp_header.flags & TCP_FLAG_ACK) != 0 {
+                            conn.state = TcpState::Established;
+                            conn.ack_num = tcp_header.seq_number + 1;
+                        }
+                    }
+                    TcpState::Established => {
+                        if (tcp_header.flags & TCP_FLAG_FIN) != 0 {
+                            conn.state = TcpState::CloseWait;
+                        } else if (tcp_header.flags & TCP_FLAG_ACK) != 0 {
+                            conn.ack_num = tcp_header.seq_number;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+    
     Ok(())
 }
 

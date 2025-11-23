@@ -92,7 +92,7 @@ error_code_t sandbox_create(pid_t pid, const sandbox_limits_t* limits) {
  */
 error_code_t sandbox_destroy(pid_t pid) {
     if (!sandbox_state.initialized) {
-        return ERR_NOT_INITIALIZED;
+        return ERR_INVALID_STATE;
     }
     
     spinlock_lock(&sandbox_state.lock);
@@ -218,7 +218,7 @@ error_code_t sandbox_check_flag(pid_t pid, uint32_t flag) {
 /**
  * Update memory usage
  */
-error_code_t sandbox_update_memory(pid_t pid, size_t delta) {
+error_code_t sandbox_update_memory(pid_t pid, ssize_t delta) {
     sandbox_t* sandbox = sandbox_get(pid);
     if (!sandbox) {
         return ERR_OK;  // No sandbox

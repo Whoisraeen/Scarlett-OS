@@ -84,7 +84,7 @@ static error_code_t ext4_vfs_open(vfs_filesystem_t* fs, const char* path, uint64
     (void)ext4_fs;
     (void)flags;
     
-    return ERR_NOT_IMPLEMENTED;
+    return ERR_NOT_SUPPORTED;
 }
 
 /**
@@ -96,35 +96,25 @@ static error_code_t ext4_vfs_close(vfs_filesystem_t* fs, fd_t fd) {
     return ERR_OK;
 }
 
-/**
- * ext4 read operation
- */
 static error_code_t ext4_vfs_read(vfs_filesystem_t* fs, fd_t fd, void* buf, size_t count, size_t* bytes_read) {
     if (!fs || !fs->private_data || !buf || !bytes_read) {
         return ERR_INVALID_ARG;
     }
-    
+    uint32_t inode_num = (uint32_t)(uintptr_t)fd_table[fd].file_data;
+    if (inode_num == 0) {
+        return ERR_NOT_FOUND;
+    }
     ext4_fs_t* ext4_fs = (ext4_fs_t*)fs->private_data;
-    
-    // TODO: Get inode from fd and read data
-    (void)ext4_fs;
-    (void)fd;
-    (void)count;
-    
-    *bytes_read = 0;
-    return ERR_NOT_IMPLEMENTED;
+    return ext4_read_file(ext4_fs, inode_num, buf, 0, count, bytes_read);
 }
 
-/**
- * ext4 write operation
- */
 static error_code_t ext4_vfs_write(vfs_filesystem_t* fs, fd_t fd, const void* buf, size_t count, size_t* bytes_written) {
     (void)fs;
     (void)fd;
     (void)buf;
     (void)count;
     (void)bytes_written;
-    return ERR_NOT_IMPLEMENTED;  // Read-only for now
+    return ERR_NOT_SUPPORTED;  // Read-only for now
 }
 
 /**
@@ -135,7 +125,7 @@ static error_code_t ext4_vfs_seek(vfs_filesystem_t* fs, fd_t fd, int64_t offset,
     (void)fd;
     (void)offset;
     (void)whence;
-    return ERR_NOT_IMPLEMENTED;
+    return ERR_NOT_SUPPORTED;
 }
 
 /**
@@ -145,7 +135,7 @@ static error_code_t ext4_vfs_tell(vfs_filesystem_t* fs, fd_t fd, size_t* positio
     (void)fs;
     (void)fd;
     (void)position;
-    return ERR_NOT_IMPLEMENTED;
+    return ERR_NOT_SUPPORTED;
 }
 
 /**
@@ -161,7 +151,7 @@ static error_code_t ext4_vfs_stat(vfs_filesystem_t* fs, const char* path, vfs_st
     // TODO: Resolve path and read inode
     (void)ext4_fs;
     
-    return ERR_NOT_IMPLEMENTED;
+    return ERR_NOT_SUPPORTED;
 }
 
 /**

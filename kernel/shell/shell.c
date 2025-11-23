@@ -12,6 +12,7 @@
 #include "../include/debug.h"
 #include "../include/process.h"
 #include "../include/elf.h"
+#include "../include/string.h"
 #include <stddef.h>
 
 // Shell state

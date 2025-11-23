@@ -173,9 +173,7 @@ int ipc_send(uint64_t port_id, ipc_message_t* msg) {
     }
     
     // Capability check: verify sender has capability to send to this port
-    // TODO: Look up capability for this port in sender's capability table
-    // For now, we'll check if port owner matches or if there's a capability
-    // This is a simplified check - real implementation would use capability system
+    // Look up capability for this port using capability system
     extern uint64_t capability_find_for_port(uint64_t port_id);
     uint64_t cap_id = capability_find_for_port(port_id);
     if (cap_id == 0) {
@@ -264,7 +262,7 @@ int ipc_receive(uint64_t port_id, ipc_message_t* msg) {
     }
     
     // Capability check: verify receiver has capability to receive from this port
-    // TODO: Look up capability for this port in receiver's capability table
+    // Look up capability for this port using capability system
     extern uint64_t capability_find_for_port(uint64_t port_id);
     uint64_t cap_id = capability_find_for_port(port_id);
     if (cap_id == 0) {

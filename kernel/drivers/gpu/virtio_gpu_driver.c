@@ -89,7 +89,7 @@ static error_code_t virtio_gpu_driver_submit_command(gpu_device_t* gpu, const gp
         case GPU_CMD_DRAW_RECT:
             // Draw rectangle (would use framebuffer directly)
             // TODO: Implement rectangle drawing
-            return ERR_NOT_IMPLEMENTED;
+            return ERR_NOT_SUPPORTED;
             
         default:
             return ERR_NOT_SUPPORTED;

@@ -32,8 +32,10 @@ typedef struct capability_table {
 #define MAX_CAPABILITIES_PER_PROCESS 256
 
 // Global capability tables (one per process)
-static capability_table_t* capability_tables = NULL;
-static size_t max_processes = 0;
+// Use a simple array indexed by PID (for now - could use hash table for scalability)
+#define MAX_PROCESSES 32768
+static capability_table_t capability_tables[MAX_PROCESSES];
+static bool capability_tables_initialized = false;
 static spinlock_t global_lock = SPINLOCK_INIT;
 
 // Capability storage (simplified - one table for all processes)
@@ -46,17 +48,43 @@ static uint64_t next_cap_id = 1;
  * Get capability table for current process
  */
 static capability_table_t* get_capability_table(void) {
-    // TODO: Get table for current process
-    // For now, use a global table
+    // Get table for current process
     extern process_t* process_get_current(void);
     process_t* proc = process_get_current();
-    if (!proc) {
+    if (!proc || !capability_tables_initialized) {
         return NULL;
     }
     
-    // TODO: Allocate per-process capability table
-    // For now, return NULL (will use global storage)
-    return NULL;
+    // Allocate per-process capability table if not already allocated
+    pid_t pid = proc->pid;
+    if (pid < 0 || pid >= MAX_PROCESSES) {
+        return NULL;
+    }
+    
+    capability_table_t* table = &capability_tables[pid];
+    
+    // Initialize table if needed (first access)
+    if (table->capabilities == NULL && table->count == 0) {
+        // Allocate capability list for this process
+        table->capabilities = (capability_t*)kmalloc(sizeof(capability_t) * MAX_CAPABILITIES_PER_PROCESS);
+        if (!table->capabilities) {
+            return NULL;
+        }
+        
+        // Initialize all capabilities to zero
+        for (size_t i = 0; i < MAX_CAPABILITIES_PER_PROCESS; i++) {
+            table->capabilities[i].cap_id = 0;
+            table->capabilities[i].type = 0;
+            table->capabilities[i].resource_id = 0;
+            table->capabilities[i].rights = 0;
+            table->capabilities[i].next = NULL;
+        }
+        
+        table->count = 0;
+        table->max_count = MAX_CAPABILITIES_PER_PROCESS;
+    }
+    
+    return table;
 }
 
 /**
@@ -95,6 +123,15 @@ void capability_init(void) {
         capabilities[i].next = NULL;
     }
     
+    // Initialize per-process capability tables
+    for (size_t i = 0; i < MAX_PROCESSES; i++) {
+        capability_tables[i].capabilities = NULL;
+        capability_tables[i].count = 0;
+        capability_tables[i].max_count = MAX_CAPABILITIES_PER_PROCESS;
+        spinlock_init(&capability_tables[i].lock);
+    }
+    
+    capability_tables_initialized = true;
     kinfo("Capability system initialized\n");
 }
 

@@ -29,7 +29,7 @@ error_code_t hal_init(void) {
     
     kinfo("Detected architecture: %s\n", hal_get_architecture_name(arch));
     
-    if (arch == ARCH_UNKNOWN) {
+    if (arch == HAL_ARCH_UNKNOWN) {
         kerror("Unknown architecture - cannot initialize HAL\n");
         return ERR_NOT_SUPPORTED;
     }

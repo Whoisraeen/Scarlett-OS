@@ -27,7 +27,7 @@ extern void* get_boot_info(void);
 // ============================================================================
 
 architecture_t hal_detect_architecture(void) {
-    return ARCH_X86_64;
+    return HAL_ARCH_X86_64;
 }
 
 // ============================================================================

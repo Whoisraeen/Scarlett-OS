@@ -43,6 +43,8 @@ typedef struct {
     uint32_t flags;
     char title[128];
     void* framebuffer;      // Window's pixel buffer
+    void* texture;          // UGAL texture for window (created from framebuffer)
+    uint32_t shm_id;       // Shared memory ID for framebuffer
     uint32_t z_order;
     bool dirty;             // Needs redraw
     bool visible;
@@ -67,6 +69,10 @@ typedef struct {
     uint32_t screen_height;
     uint32_t mouse_x, mouse_y;
     bool running;
+    // Window dragging state
+    bool dragging;
+    uint32_t drag_window;
+    int32_t drag_offset_x, drag_offset_y;
 } compositor_ctx_t;
 
 // Compositor operations

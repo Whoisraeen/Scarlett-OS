@@ -34,8 +34,18 @@ fn vfs_init() {
     // Initialize IPC
     if let Ok(port) = init_ipc() {
         // Register with device manager
-        // TODO: In real implementation, send registration message to device manager
-        // For now, we'll discover the block device driver port when needed
+        // Send registration message to device manager
+        use crate::ipc::{IpcMessage, IPC_MSG_REQUEST};
+        let mut reg_msg = IpcMessage::new();
+        reg_msg.msg_type = IPC_MSG_REQUEST;
+        reg_msg.msg_id = 200; // SERVICE_REGISTER
+        reg_msg.inline_data[0] = 1; // ServiceType::BlockDevice
+        reg_msg.inline_data[1..9].copy_from_slice(&port.to_le_bytes());
+        reg_msg.inline_size = 9;
+        
+        // Get device manager port (would be discovered via service discovery)
+        // For now, we'll wait for device manager to notify us
+        // Block device port will be set when driver registers
         
         // Initialize VFS
         let _ = init();

@@ -242,7 +242,7 @@ pci_device_t* pci_get_device(uint32_t index) {
  */
 error_code_t pci_decode_bar(pci_device_t* dev, uint8_t bar_index, pci_bar_info_t* info) {
     if (!dev || !info || bar_index >= 6) {
-        return ERR_INVALID_PARAM;
+        return ERR_INVALID_ARG;
     }
     
     uint32_t bar = (uint32_t)dev->bars[bar_index];

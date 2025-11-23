@@ -14,10 +14,10 @@
 
 // Architecture types
 typedef enum {
-    ARCH_X86_64,
-    ARCH_ARM64,
-    ARCH_RISCV,
-    ARCH_UNKNOWN
+    HAL_ARCH_X86_64,
+    HAL_ARCH_ARM64,
+    HAL_ARCH_RISCV,
+    HAL_ARCH_UNKNOWN
 } architecture_t;
 
 // ============================================================================

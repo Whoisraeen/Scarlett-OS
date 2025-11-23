@@ -88,7 +88,7 @@ static error_code_t ntfs_vfs_open(vfs_filesystem_t* fs, const char* path, uint64
     (void)ntfs_fs;
     (void)flags;
     
-    return ERR_NOT_IMPLEMENTED;
+    return ERR_NOT_SUPPORTED;
 }
 
 /**
@@ -116,7 +116,7 @@ static error_code_t ntfs_vfs_read(vfs_filesystem_t* fs, fd_t fd, void* buf, size
     (void)count;
     
     *bytes_read = 0;
-    return ERR_NOT_IMPLEMENTED;
+    return ERR_NOT_SUPPORTED;
 }
 
 /**
@@ -139,7 +139,7 @@ static error_code_t ntfs_vfs_seek(vfs_filesystem_t* fs, fd_t fd, int64_t offset,
     (void)fd;
     (void)offset;
     (void)whence;
-    return ERR_NOT_IMPLEMENTED;
+    return ERR_NOT_SUPPORTED;
 }
 
 /**
@@ -149,7 +149,7 @@ static error_code_t ntfs_vfs_tell(vfs_filesystem_t* fs, fd_t fd, size_t* positio
     (void)fs;
     (void)fd;
     (void)position;
-    return ERR_NOT_IMPLEMENTED;
+    return ERR_NOT_SUPPORTED;
 }
 
 /**
@@ -165,7 +165,7 @@ static error_code_t ntfs_vfs_stat(vfs_filesystem_t* fs, const char* path, vfs_st
     // TODO: Resolve path and read MFT record
     (void)ntfs_fs;
     
-    return ERR_NOT_IMPLEMENTED;
+    return ERR_NOT_SUPPORTED;
 }
 
 /**

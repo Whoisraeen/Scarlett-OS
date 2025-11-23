@@ -20,7 +20,7 @@ static int test_memcpy(void) {
     
     for (size_t i = 0; i < strlen(src) + 1; i++) {
         if (dest[i] != src[i]) {
-            kprintf("  [FAIL] memcpy failed at index %d\n", i);
+            kprintf("  [FAIL] memcpy failed at index %lu\n", i);
             return 1;
         }
     }

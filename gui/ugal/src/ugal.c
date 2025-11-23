@@ -42,6 +42,7 @@ struct ugal_texture {
     uint32_t width;
     uint32_t height;
     ugal_format_t format;
+    void* data;  // Software fallback: pixel data (RGBA8 format)
 };
 
 // UGAL framebuffer structure
@@ -191,9 +192,18 @@ ugal_texture_t* ugal_create_texture(ugal_device_t* device, uint32_t width, uint3
     texture->width = width;
     texture->height = height;
     texture->format = format;
-
-    // TODO: Call vendor-specific texture creation
     texture->driver_texture = NULL;
+
+    // Allocate software fallback pixel buffer (RGBA8)
+    size_t pixel_size = 4; // RGBA8 = 4 bytes per pixel
+    texture->data = malloc(width * height * pixel_size);
+    if (!texture->data) {
+        free(texture);
+        return NULL;
+    }
+    memset(texture->data, 0, width * height * pixel_size);
+
+    // TODO: Call vendor-specific texture creation when driver available
 
     return texture;
 }
@@ -202,7 +212,13 @@ ugal_texture_t* ugal_create_texture(ugal_device_t* device, uint32_t width, uint3
 void ugal_destroy_texture(ugal_texture_t* texture) {
     if (!texture) return;
 
-    // TODO: Call vendor-specific texture destruction
+    // TODO: Call vendor-specific texture destruction when driver available
+
+    // Free software fallback pixel buffer
+    if (texture->data) {
+        free(texture->data);
+        texture->data = NULL;
+    }
 
     free(texture);
 }
@@ -211,7 +227,26 @@ void ugal_destroy_texture(ugal_texture_t* texture) {
 void ugal_update_texture(ugal_texture_t* texture, const void* data, uint32_t x, uint32_t y, uint32_t width, uint32_t height) {
     if (!texture || !data) return;
 
-    // TODO: Call vendor-specific texture update
+    // Validate bounds
+    if (x + width > texture->width || y + height > texture->height) {
+        return;
+    }
+
+    // Software fallback: copy pixel data
+    if (texture->data) {
+        uint32_t* dst = (uint32_t*)texture->data;
+        const uint32_t* src = (const uint32_t*)data;
+        
+        // Copy row by row
+        for (uint32_t row = 0; row < height; row++) {
+            uint32_t dst_y = y + row;
+            uint32_t src_offset = row * width;
+            uint32_t dst_offset = dst_y * texture->width + x;
+            memcpy(&dst[dst_offset], &src[src_offset], width * sizeof(uint32_t));
+        }
+    }
+
+    // TODO: Call vendor-specific texture update when driver available
 }
 
 // Create framebuffer
@@ -246,28 +281,120 @@ void ugal_destroy_framebuffer(ugal_framebuffer_t* framebuffer) {
 void ugal_clear(ugal_device_t* device, ugal_framebuffer_t* framebuffer, uint32_t color) {
     if (!device || !framebuffer) return;
 
-    // TODO: Call vendor-specific clear
+    // Software fallback: clear color texture
+    if (framebuffer->color_texture && framebuffer->color_texture->data) {
+        uint32_t* pixels = (uint32_t*)framebuffer->color_texture->data;
+        uint32_t pixel_count = framebuffer->color_texture->width * framebuffer->color_texture->height;
+        for (uint32_t i = 0; i < pixel_count; i++) {
+            pixels[i] = color;
+        }
+    }
+
+    // TODO: Call vendor-specific clear when driver available
 }
 
 // 2D acceleration - Fill rectangle
 void ugal_fill_rect(ugal_device_t* device, ugal_framebuffer_t* fb, int32_t x, int32_t y, uint32_t width, uint32_t height, uint32_t color) {
-    if (!device || !fb) return;
+    if (!device || !fb || !fb->color_texture) return;
 
-    // TODO: Call vendor-specific fill
+    // Clamp to framebuffer bounds
+    int32_t fb_width = (int32_t)fb->color_texture->width;
+    int32_t fb_height = (int32_t)fb->color_texture->height;
+    
+    if (x < 0) { width += x; x = 0; }
+    if (y < 0) { height += y; y = 0; }
+    if (x + (int32_t)width > fb_width) { width = fb_width - x; }
+    if (y + (int32_t)height > fb_height) { height = fb_height - y; }
+    
+    if (width == 0 || height == 0) return;
+
+    // Software fallback: fill pixels
+    if (fb->color_texture->data) {
+        uint32_t* pixels = (uint32_t*)fb->color_texture->data;
+        for (uint32_t row = 0; row < height; row++) {
+            uint32_t* row_ptr = &pixels[(y + row) * fb_width + x];
+            for (uint32_t col = 0; col < width; col++) {
+                row_ptr[col] = color;
+            }
+        }
+    }
+
+    // TODO: Call vendor-specific fill when driver available
 }
 
 // 2D acceleration - Draw line
 void ugal_draw_line(ugal_device_t* device, ugal_framebuffer_t* fb, int32_t x1, int32_t y1, int32_t x2, int32_t y2, uint32_t color) {
-    if (!device || !fb) return;
+    if (!device || !fb || !fb->color_texture) return;
 
-    // TODO: Call vendor-specific line draw
+    // Software fallback: Bresenham's line algorithm
+    if (!fb->color_texture->data) return;
+
+    int32_t fb_width = (int32_t)fb->color_texture->width;
+    int32_t fb_height = (int32_t)fb->color_texture->height;
+    uint32_t* pixels = (uint32_t*)fb->color_texture->data;
+
+    int32_t dx = abs(x2 - x1);
+    int32_t dy = abs(y2 - y1);
+    int32_t sx = (x1 < x2) ? 1 : -1;
+    int32_t sy = (y1 < y2) ? 1 : -1;
+    int32_t err = dx - dy;
+
+    int32_t x = x1;
+    int32_t y = y1;
+
+    while (true) {
+        // Draw pixel if within bounds
+        if (x >= 0 && x < fb_width && y >= 0 && y < fb_height) {
+            pixels[y * fb_width + x] = color;
+        }
+
+        if (x == x2 && y == y2) break;
+
+        int32_t e2 = 2 * err;
+        if (e2 > -dy) {
+            err -= dy;
+            x += sx;
+        }
+        if (e2 < dx) {
+            err += dx;
+            y += sy;
+        }
+    }
+
+    // TODO: Call vendor-specific line draw when driver available
 }
 
 // 2D acceleration - Blit
 void ugal_blit(ugal_device_t* device, ugal_texture_t* src, ugal_texture_t* dst, int32_t sx, int32_t sy, int32_t dx, int32_t dy, uint32_t width, uint32_t height) {
-    if (!device || !src || !dst) return;
+    if (!device || !src || !dst || !src->data || !dst->data) return;
 
-    // TODO: Call vendor-specific blit
+    // Clamp source bounds
+    if (sx < 0) { width += sx; dx -= sx; sx = 0; }
+    if (sy < 0) { height += sy; dy -= sy; sy = 0; }
+    if (sx + (int32_t)width > (int32_t)src->width) { width = src->width - sx; }
+    if (sy + (int32_t)height > (int32_t)src->height) { height = src->height - sy; }
+
+    // Clamp destination bounds
+    if (dx < 0) { width += dx; sx -= dx; dx = 0; }
+    if (dy < 0) { height += dy; sy -= dy; dy = 0; }
+    if (dx + (int32_t)width > (int32_t)dst->width) { width = dst->width - dx; }
+    if (dy + (int32_t)height > (int32_t)dst->height) { height = dst->height - dy; }
+
+    if (width == 0 || height == 0) return;
+
+    // Software fallback: copy pixels row by row
+    uint32_t* src_pixels = (uint32_t*)src->data;
+    uint32_t* dst_pixels = (uint32_t*)dst->data;
+
+    for (uint32_t row = 0; row < height; row++) {
+        uint32_t src_row = sy + row;
+        uint32_t dst_row = dy + row;
+        uint32_t src_offset = src_row * src->width + sx;
+        uint32_t dst_offset = dst_row * dst->width + dx;
+        memcpy(&dst_pixels[dst_offset], &src_pixels[src_offset], width * sizeof(uint32_t));
+    }
+
+    // TODO: Call vendor-specific blit when driver available
 }
 
 // Present framebuffer to display
@@ -277,9 +404,22 @@ void ugal_present(ugal_device_t* device, ugal_framebuffer_t* framebuffer) {
     // TODO: Call vendor-specific present
 }
 
+// Attach color texture to framebuffer
+void ugal_attach_color_texture(ugal_framebuffer_t* framebuffer, ugal_texture_t* texture) {
+    if (!framebuffer || !texture) return;
+    framebuffer->color_texture = texture;
+}
+
+// Attach depth texture to framebuffer
+void ugal_attach_depth_texture(ugal_framebuffer_t* framebuffer, ugal_texture_t* texture) {
+    if (!framebuffer || !texture) return;
+    framebuffer->depth_texture = texture;
+}
+
 // Set VSync
 void ugal_set_vsync(ugal_device_t* device, bool enable) {
     if (!device) return;
 
     // TODO: Call vendor-specific vsync
+    // For now, no-op (software rendering doesn't need vsync)
 }

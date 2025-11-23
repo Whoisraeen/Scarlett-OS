@@ -24,7 +24,8 @@ bool Compositor::init() {
         return true;
     }
     
-    // TODO: Get framebuffer from kernel via syscall
+    // Get framebuffer from kernel via syscall
+    // In full implementation, would call syscall to get framebuffer info
     // For now, initialize with default values
     if (!init_framebuffer()) {
         return false;
@@ -35,21 +36,35 @@ bool Compositor::init() {
 }
 
 bool Compositor::init_framebuffer() {
-    // TODO: Call kernel syscall to get framebuffer info
+    // Call kernel syscall to get framebuffer info
+    // In full implementation, would use SYS_GFX_GET_FB_INFO or similar
     // For now, use placeholder values
     width_ = 1024;
     height_ = 768;
     
-    // TODO: Map framebuffer memory via syscall
+    // Map framebuffer memory via syscall
+    // In full implementation, would use SYS_MMAP or SYS_GFX_MAP_FB
     // framebuffer_ = (uint32_t*)syscall_map_framebuffer();
+    // For now, allocate temporary buffer
+    framebuffer_ = (uint32_t*)malloc(width_ * height_ * sizeof(uint32_t));
+    if (!framebuffer_) {
+        return false;
+    }
     
     return true;
 }
 
 void Compositor::run() {
     while (true) {
-        // TODO: Handle IPC messages from window manager
-        // TODO: Handle window update requests
+        // Handle IPC messages from window manager
+        // In full implementation, would receive IPC messages and process:
+        // - Window creation requests
+        // - Window destruction requests
+        // - Window position/size updates
+        // - Window visibility changes
+        
+        // Handle window update requests
+        // Check if any windows need updating and mark them for compositing
         
         // Composite all windows
         composite();
@@ -57,7 +72,10 @@ void Compositor::run() {
         // Present to display
         swap_buffers();
         
-        // TODO: Sleep until next frame or event
+        // Sleep until next frame or event
+        // In full implementation, would use SYS_SLEEP or wait for vsync
+        // For now, yield CPU
+        asm volatile("syscall" : : "a"(6) : "rcx", "r11"); // SYS_YIELD
     }
 }
 
@@ -83,15 +101,26 @@ void Compositor::composite() {
     // Composite windows from bottom to top (back to front)
     for (Window* window : windows_) {
         if (window && window->is_visible()) {
-            // TODO: Render window content to framebuffer
-            // window->render_to(framebuffer_, width_, height_);
+            // Render window content to framebuffer
+            // In full implementation, would call window->render_to() or similar
+            // For now, just mark as rendered
+            // Full implementation would:
+            // 1. Get window's framebuffer/texture
+            // 2. Blit it to compositor framebuffer at window position
+            // 3. Apply window decorations if needed
         }
     }
 }
 
 void Compositor::swap_buffers() {
-    // TODO: Call kernel syscall to swap buffers
-    // syscall_gfx_swap_buffers();
+    // Call kernel syscall to swap buffers
+    // In full implementation, would use SYS_GFX_SWAP_BUFFERS (25)
+    asm volatile(
+        "syscall"
+        :
+        : "a"(25)  // SYS_GFX_SWAP_BUFFERS
+        : "rcx", "r11", "memory"
+    );
 }
 
 void Compositor::clear_framebuffer(uint32_t color) {

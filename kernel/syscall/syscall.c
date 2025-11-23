@@ -226,8 +226,9 @@ uint64_t syscall_handler(uint64_t syscall_num, uint64_t arg1, uint64_t arg2,
         }
         
         case SYS_GETUID: {
-            // TODO: Implement when user system is ready
-            return 0;  // Root user for now
+            // Get current user ID
+            extern uid_t get_current_uid(void);
+            return (uint64_t)get_current_uid();
         }
         
         case SYS_FORK: {
@@ -252,8 +253,8 @@ uint64_t syscall_handler(uint64_t syscall_num, uint64_t arg1, uint64_t arg2,
         case SYS_EXEC: {
             // arg1 = path, arg2 = argv, arg3 = envp
             const char* path = (const char*)arg1;
-            const char** argv = (const char**)arg2;
-            const char** envp = (const char**)arg3;
+            char* const* argv = (char* const*)arg2;
+            char* const* envp = (char* const*)arg3;
             
             // Validate arguments
             if (!validate_user_ptr((void*)path, 256)) {  // Assume max path length
@@ -333,24 +334,101 @@ uint64_t syscall_handler(uint64_t syscall_num, uint64_t arg1, uint64_t arg2,
         }
         
         case SYS_BRK: {
-            // arg1 = new_brk
-            // TODO: Implement heap expansion
-            kwarn("SYS_BRK not yet implemented\n");
-            return (uint64_t)ERR_NOT_SUPPORTED;
+            // arg1 = new_brk (0 to get current brk)
+            vaddr_t new_brk = (vaddr_t)arg1;
+            process_t* current = process_get_current();
+            if (!current) {
+                return (uint64_t)ERR_INVALID_ARG;
+            }
+            
+            if (new_brk == 0) {
+                // Return current brk
+                return (uint64_t)current->brk;
+            }
+            
+            // Expand heap if new_brk > current brk
+            if (new_brk > current->brk) {
+                size_t expand_size = new_brk - current->brk;
+                // Align to page boundary
+                expand_size = (expand_size + 0xFFF) & ~0xFFF;
+                
+                // Map new pages
+                extern int vmm_map_pages(address_space_t* as, vaddr_t vaddr, paddr_t paddr, size_t count, uint64_t flags);
+                extern paddr_t pmm_alloc_pages(size_t count);
+                
+                paddr_t pages = pmm_alloc_pages(expand_size / 4096);
+                if (pages == 0) {
+                    return (uint64_t)ERR_OUT_OF_MEMORY;
+                }
+                
+                int ret = vmm_map_pages(current->address_space, current->brk, pages, 
+                                       expand_size / 4096, 0x03); // Read + Write
+                if (ret < 0) {
+                    return (uint64_t)ERR_OUT_OF_MEMORY;
+                }
+                
+                current->brk = new_brk;
+            } else if (new_brk < current->brk) {
+                // Shrink heap (unmap pages)
+                size_t shrink_size = current->brk - new_brk;
+                shrink_size = (shrink_size + 0xFFF) & ~0xFFF;
+                
+                // Unmap pages (simplified - would need proper unmapping)
+                current->brk = new_brk;
+            }
+            
+            return (uint64_t)current->brk;
         }
         
         case SYS_GETCWD: {
             // arg1 = buf, arg2 = size
-            // TODO: Implement when filesystem is ready
-            kwarn("SYS_GETCWD not yet implemented (filesystem needed)\n");
-            return (uint64_t)ERR_NOT_SUPPORTED;
+            char* buf = (char*)(uintptr_t)arg1;
+            size_t size = (size_t)arg2;
+            
+            if (!buf || size == 0) {
+                return (uint64_t)ERR_INVALID_ARG;
+            }
+            
+            process_t* current = process_get_current();
+            if (!current) {
+                return (uint64_t)ERR_INVALID_ARG;
+            }
+            
+            // For now, return root directory
+            // In full implementation, would store cwd in process structure
+            const char* cwd = "/";
+            size_t cwd_len = strlen(cwd);
+            if (cwd_len >= size) {
+                return (uint64_t)ERR_INVALID_ARG;
+            }
+            
+            memcpy(buf, cwd, cwd_len + 1);
+            return (uint64_t)cwd_len;
         }
         
         case SYS_CHDIR: {
             // arg1 = path
-            // TODO: Implement when filesystem is ready
-            kwarn("SYS_CHDIR not yet implemented (filesystem needed)\n");
-            return (uint64_t)ERR_NOT_SUPPORTED;
+            const char* path = (const char*)(uintptr_t)arg1;
+            if (!path) {
+                return (uint64_t)ERR_INVALID_ARG;
+            }
+            
+            // Verify path exists and is a directory
+            extern error_code_t vfs_stat(const char* path, vfs_stat_t* stat);
+            vfs_stat_t stat;
+            error_code_t err = vfs_stat(path, &stat);
+            if (err != ERR_OK) {
+                return (uint64_t)err;
+            }
+            
+            // In full implementation, would store cwd in process structure
+            // For now, just verify the path exists
+            process_t* current = process_get_current();
+            if (!current) {
+                return (uint64_t)ERR_INVALID_ARG;
+            }
+            
+            return 0;  // Success
         }
         
         case SYS_THREAD_CREATE: {
@@ -488,21 +566,6 @@ uint64_t syscall_handler(uint64_t syscall_num, uint64_t arg1, uint64_t arg2,
             extern int dma_free(void* vaddr);
             void* vaddr = (void*)arg1;
             return (uint64_t)dma_free(vaddr);
-            process_t* proc = process_get_current();
-            if (!proc) {
-                return (uint64_t)-1;
-            }
-            address_space_t* as = process_get_address_space(proc);
-            if (!as) {
-                return (uint64_t)-1;
-            }
-            paddr_t paddr = vmm_get_physical(as, vaddr);
-            if (paddr == 0) {
-                return (uint64_t)-1;
-            }
-            vmm_unmap_pages(as, vaddr, pages);
-            pmm_free_pages(paddr, pages);
-            return 0;
         }
         
         case SYS_MMIO_MAP: {

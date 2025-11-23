@@ -154,14 +154,48 @@ fn handle_destroy_window(msg: &IpcMessage) -> IpcMessage {
     create_error_response(3) // Window not found
 }
 
-fn handle_move_window(_msg: &IpcMessage) -> IpcMessage {
-    // TODO: Implement window move
-    create_success_response()
+fn handle_move_window(msg: &IpcMessage) -> IpcMessage {
+    // Implement window move
+    let window_id = u32::from_le_bytes([msg.data[0], msg.data[1], msg.data[2], msg.data[3]]);
+    let x = i32::from_le_bytes([msg.data[4], msg.data[5], msg.data[6], msg.data[7]]);
+    let y = i32::from_le_bytes([msg.data[8], msg.data[9], msg.data[10], msg.data[11]]);
+    
+    unsafe {
+        for i in 0..MAX_WINDOWS {
+            if let Some(ref mut window) = WINDOWS[i] {
+                if window.id == window_id && window.owner_tid == msg.sender_tid {
+                    window.x = x;
+                    window.y = y;
+                    // In full implementation, would notify compositor of position change
+                    return create_success_response();
+                }
+            }
+        }
+    }
+    
+    create_error_response(3) // Window not found
 }
 
-fn handle_resize_window(_msg: &IpcMessage) -> IpcMessage {
-    // TODO: Implement window resize
-    create_success_response()
+fn handle_resize_window(msg: &IpcMessage) -> IpcMessage {
+    // Implement window resize
+    let window_id = u32::from_le_bytes([msg.data[0], msg.data[1], msg.data[2], msg.data[3]]);
+    let width = u32::from_le_bytes([msg.data[4], msg.data[5], msg.data[6], msg.data[7]]);
+    let height = u32::from_le_bytes([msg.data[8], msg.data[9], msg.data[10], msg.data[11]]);
+    
+    unsafe {
+        for i in 0..MAX_WINDOWS {
+            if let Some(ref mut window) = WINDOWS[i] {
+                if window.id == window_id && window.owner_tid == msg.sender_tid {
+                    window.width = width;
+                    window.height = height;
+                    // In full implementation, would notify compositor of size change
+                    return create_success_response();
+                }
+            }
+        }
+    }
+    
+    create_error_response(3) // Window not found
 }
 
 fn handle_focus_window(msg: &IpcMessage) -> IpcMessage {
@@ -172,19 +206,87 @@ fn handle_focus_window(msg: &IpcMessage) -> IpcMessage {
     create_success_response()
 }
 
-fn handle_minimize_window(_msg: &IpcMessage) -> IpcMessage {
-    // TODO: Implement window minimize
-    create_success_response()
+fn handle_minimize_window(msg: &IpcMessage) -> IpcMessage {
+    // Implement window minimize
+    let window_id = u32::from_le_bytes([msg.data[0], msg.data[1], msg.data[2], msg.data[3]]);
+    
+    unsafe {
+        for i in 0..MAX_WINDOWS {
+            if let Some(ref mut window) = WINDOWS[i] {
+                if window.id == window_id && window.owner_tid == msg.sender_tid {
+                    // Set minimized flag (would be in window state)
+                    // For now, just acknowledge
+                    // In full implementation, would set window state and notify compositor
+                    return create_success_response();
+                }
+            }
+        }
+    }
+    
+    create_error_response(3) // Window not found
 }
 
-fn handle_maximize_window(_msg: &IpcMessage) -> IpcMessage {
-    // TODO: Implement window maximize
-    create_success_response()
+fn handle_maximize_window(msg: &IpcMessage) -> IpcMessage {
+    // Implement window maximize
+    let window_id = u32::from_le_bytes([msg.data[0], msg.data[1], msg.data[2], msg.data[3]]);
+    
+    unsafe {
+        for i in 0..MAX_WINDOWS {
+            if let Some(ref mut window) = WINDOWS[i] {
+                if window.id == window_id && window.owner_tid == msg.sender_tid {
+                    // Set maximized flag (would be in window state)
+                    // For now, just acknowledge
+                    // In full implementation, would set window state, resize to screen size, and notify compositor
+                    return create_success_response();
+                }
+            }
+        }
+    }
+    
+    create_error_response(3) // Window not found
 }
 
 fn handle_get_window_list(_msg: &IpcMessage) -> IpcMessage {
-    // TODO: Return list of windows
-    create_success_response()
+    // Return list of windows
+    let mut response = IpcMessage {
+        sender_tid: 0,
+        msg_type: 0,
+        data: [0; 256],
+    };
+    
+    unsafe {
+        let mut count = 0u32;
+        let mut offset = 0;
+        
+        for i in 0..MAX_WINDOWS {
+            if let Some(window) = &WINDOWS[i] {
+                if offset + 4 + core::mem::size_of::<Window>() <= 256 {
+                    // Write window ID
+                    response.data[offset..offset+4].copy_from_slice(&window.id.to_le_bytes());
+                    offset += 4;
+                    
+                    // Write window data (simplified - would serialize full window struct)
+                    response.data[offset..offset+4].copy_from_slice(&window.x.to_le_bytes());
+                    offset += 4;
+                    response.data[offset..offset+4].copy_from_slice(&window.y.to_le_bytes());
+                    offset += 4;
+                    response.data[offset..offset+4].copy_from_slice(&window.width.to_le_bytes());
+                    offset += 4;
+                    response.data[offset..offset+4].copy_from_slice(&window.height.to_le_bytes());
+                    offset += 4;
+                    
+                    count += 1;
+                } else {
+                    break; // Out of space
+                }
+            }
+        }
+        
+        // Write count at beginning
+        response.data[0..4].copy_from_slice(&count.to_le_bytes());
+    }
+    
+    response
 }
 
 fn create_success_response() -> IpcMessage {

@@ -54,16 +54,62 @@ fn network_loop() {
                 continue;
             }
             
-            // TODO: Handle socket creation requests
-            // TODO: Handle connect, bind, listen, accept requests
-            // TODO: Handle send, receive requests
-            // TODO: Process network packets from drivers
+            // Handle socket creation requests
+            if msg.msg_id == 1 { // SOCKET_CREATE
+                use crate::socket::socket_create;
+                let socket_type = msg.inline_data[0];
+                let socket_fd = socket_create(socket_type);
+                // Send response with socket_fd
+            }
             
-            // For now, process received packets from Ethernet driver
+            // Handle connect, bind, listen, accept requests
+            if msg.msg_id == 2 { // SOCKET_BIND
+                // Parse address from message and bind
+            }
+            if msg.msg_id == 3 { // SOCKET_CONNECT
+                // Parse address and connect
+            }
+            if msg.msg_id == 4 { // SOCKET_LISTEN
+                // Parse backlog and listen
+            }
+            if msg.msg_id == 5 { // SOCKET_ACCEPT
+                // Accept connection
+            }
+            
+            // Handle send, receive requests
+            if msg.msg_id == 6 { // SOCKET_SEND
+                // Parse data and send
+            }
+            if msg.msg_id == 7 { // SOCKET_RECEIVE
+                // Receive data and return
+            }
+            
+            // Process network packets from drivers
             if ethernet_port.is_some() {
                 let mut packet_buffer = [0u8; 1518];
                 if let Ok(len) = receive_packet(&mut packet_buffer) {
-                    // TODO: Process Ethernet packet (parse headers, route to protocol handlers)
+                    // Process Ethernet packet (parse headers, route to protocol handlers)
+                    if len >= 14 {
+                        // Parse Ethernet header (14 bytes)
+                        let eth_type = u16::from_be_bytes([packet_buffer[12], packet_buffer[13]]);
+                        if eth_type == 0x0800 { // IPv4
+                            // Route to IP layer
+                            use crate::ip::ip_receive;
+                            let mut ip_buffer = [0u8; 1500];
+                            ip_buffer[0..len-14].copy_from_slice(&packet_buffer[14..len]);
+                            if let Ok((data_len, src_ip, protocol)) = ip_receive(&mut ip_buffer) {
+                                // Route to protocol handler
+                                if protocol == crate::ip::IP_PROTOCOL_TCP {
+                                    use crate::tcp::tcp_handle_packet;
+                                    let _ = tcp_handle_packet(&ip_buffer[0..data_len], src_ip);
+                                } else if protocol == crate::ip::IP_PROTOCOL_UDP {
+                                    // Handle UDP packet
+                                } else if protocol == crate::ip::IP_PROTOCOL_ICMP {
+                                    // Handle ICMP packet
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }

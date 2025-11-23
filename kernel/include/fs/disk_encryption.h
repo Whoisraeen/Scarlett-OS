@@ -19,10 +19,11 @@ typedef struct {
 } disk_encryption_config_t;
 
 // Encrypted block device wrapper
-typedef struct {
+typedef struct encrypted_block_device {
     block_device_t* underlying_dev;    // Underlying block device
     disk_encryption_config_t config;   // Encryption configuration
     uint64_t encrypted_block_offset;   // Offset to encrypted region (skip header)
+    struct encrypted_block_device* next; // Next in list
 } encrypted_block_device_t;
 
 // Initialize disk encryption system

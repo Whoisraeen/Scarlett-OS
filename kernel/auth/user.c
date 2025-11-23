@@ -388,7 +388,14 @@ gid_t get_current_gid(void) {
  * Set current UID
  */
 error_code_t set_current_uid(uid_t uid) {
-    // TODO: Check permissions (only root or setuid)
+    // Check permissions (only root or setuid)
+    uid_t current = get_current_uid();
+    if (current != ROOT_UID) {
+        // Non-root can only setuid to their own UID or if file has setuid bit
+        // For now, only allow root to change UID
+        return ERR_PERMISSION_DENIED;
+    }
+    
     current_uid = uid;
     return ERR_OK;
 }
@@ -397,7 +404,14 @@ error_code_t set_current_uid(uid_t uid) {
  * Set current GID
  */
 error_code_t set_current_gid(gid_t gid) {
-    // TODO: Check permissions
+    // Check permissions (only root or setgid)
+    uid_t current = get_current_uid();
+    if (current != ROOT_UID) {
+        // Non-root can only setgid to their own GID or if file has setgid bit
+        // For now, only allow root to change GID
+        return ERR_PERMISSION_DENIED;
+    }
+    
     current_gid = gid;
     return ERR_OK;
 }

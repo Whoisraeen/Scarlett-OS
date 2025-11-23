@@ -44,7 +44,7 @@ impl SnapshotManager {
             name: String::from(name),
             generation,
             root_inode,
-            timestamp: 0, // TODO: Get current time
+            timestamp: get_uptime_ms(),
             parent_snapshot: None,
         };
 
