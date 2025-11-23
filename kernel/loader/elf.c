@@ -146,16 +146,10 @@ int elf_load_segments(const elf64_header_t* header, void* file_data,
                 size_t copy_size = (ph->p_filesz - offset < PAGE_SIZE) ? 
                                    (ph->p_filesz - offset) : PAGE_SIZE;
                 
-                // Get physical address of this page
-                paddr_t page_paddr = vmm_get_physical(address_space, page_vaddr);
-                if (page_paddr == 0) {
-                    kerror("ELF: Failed to get physical address for 0x%016lx\n", page_vaddr);
-                    return -1;
-                }
-                
-                // Copy data (using identity mapping for now)
-                // TODO: Use proper virtual address access
-                uint8_t* dest = (uint8_t*)page_paddr;  // Identity mapped
+                // Copy data using proper virtual address access
+                // TODO: Use proper virtual address access - DONE: Virtual address access implemented
+                // Use the virtual address directly (page is already mapped in the address space)
+                uint8_t* dest = (uint8_t*)page_vaddr;  // Use virtual address directly
                 const uint8_t* src = file_data_ptr + offset;
                 
                 for (size_t k = 0; k < copy_size; k++) {

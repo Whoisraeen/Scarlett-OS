@@ -6,6 +6,7 @@
 #include "../include/net/ip.h"
 #include "../include/net/ethernet.h"
 #include "../include/net/network.h"
+#include "../include/net/arp.h"
 #include "../include/kprintf.h"
 #include "../include/debug.h"
 #include "../include/mm/heap.h"
@@ -69,20 +70,33 @@ error_code_t ip_send(uint32_t dest_ip, uint8_t protocol, void* data, size_t len)
     // Calculate checksum
     packet->checksum = ip_checksum(packet);
     
-    // Determine destination MAC (for now, use ARP or broadcast)
-    // This is simplified - real implementation would use ARP
+    // Determine destination MAC
     uint8_t dest_mac[6];
+    uint32_t next_hop_ip;
     
-    // Check if destination is on same network
-    uint32_t src_net = device->ip_address & device->netmask;
-    uint32_t dest_net = dest_ip & device->netmask;
-    
-    if (src_net == dest_net) {
-        // Same network - need ARP (for now, use broadcast)
+    // Check if destination is broadcast
+    if (dest_ip == 0xFFFFFFFF) {
         memset(dest_mac, 0xFF, 6);
     } else {
-        // Different network - send to gateway (for now, use broadcast)
-        memset(dest_mac, 0xFF, 6);
+        // Check if destination is on same network
+        uint32_t src_net = device->ip_address & device->netmask;
+        uint32_t dest_net = dest_ip & device->netmask;
+        
+        if (src_net == dest_net) {
+            // Same network
+            next_hop_ip = dest_ip;
+        } else {
+            // Different network - send to gateway
+            next_hop_ip = device->gateway;
+        }
+        
+        // Resolve MAC address via ARP
+        error_code_t err = arp_resolve(next_hop_ip, dest_mac);
+        if (err != ERR_OK) {
+            kfree(packet);
+            kerror("IP: ARP resolution failed for %08x\n", next_hop_ip);
+            return err;
+        }
     }
     
     // Send via Ethernet
@@ -95,32 +109,14 @@ error_code_t ip_send(uint32_t dest_ip, uint8_t protocol, void* data, size_t len)
 /**
  * Receive IP packet
  */
-error_code_t ip_receive(void* buffer, size_t* len, uint32_t* src_ip, uint8_t* protocol) {
-    if (!buffer || !len || !src_ip || !protocol) {
+error_code_t ip_receive(net_device_t* device, void* buffer, size_t len) {
+    if (!device || !buffer) {
         return ERR_INVALID_ARG;
     }
     
-    // Find a network device
-    net_device_t* device = network_find_device("eth0");
-    if (!device || !device->up) {
-        return ERR_DEVICE_NOT_FOUND;
-    }
-    
-    // Receive Ethernet frame
-    size_t frame_len = *len;
-    error_code_t err = ethernet_receive(device, buffer, &frame_len);
-    if (err != ERR_OK) {
-        return err;
-    }
-    
-    // Check if it's an IP packet
-    ethernet_frame_t* eth_frame = (ethernet_frame_t*)buffer;
-    if (__builtin_bswap16(eth_frame->type) != ETH_TYPE_IPV4) {
-        return ERR_NOT_SUPPORTED;
-    }
-    
-    // Extract IP header
-    ip_header_t* ip_header = (ip_header_t*)eth_frame->data;
+    // Cast buffer to IP header (Ethernet header already stripped or we point to payload)
+    // ethernet.c passes pointer to payload
+    ip_header_t* ip_header = (ip_header_t*)buffer;
     
     // Verify checksum
     uint16_t checksum = ip_header->checksum;
@@ -147,15 +143,12 @@ error_code_t ip_receive(void* buffer, size_t* len, uint32_t* src_ip, uint8_t* pr
     uint8_t proto = ip_header->protocol;
     uint32_t src = ip_header->src_ip;
     
-    memmove(buffer, ip_header->data, payload_len);
-    *len = payload_len;
-    *src_ip = src;
-    *protocol = proto;
+    void* payload = (uint8_t*)buffer + header_len;
     
     // Handle ICMP packets
     if (proto == IP_PROTOCOL_ICMP) {
         extern error_code_t icmp_handle_packet(void* buffer, size_t len, uint32_t src_ip);
-        icmp_handle_packet(buffer, payload_len, src);
+        icmp_handle_packet(payload, payload_len, src);
     }
     
     return ERR_OK;

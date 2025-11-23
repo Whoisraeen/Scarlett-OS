@@ -22,6 +22,14 @@ typedef struct {
     uint32_t size_dt_struct;
 } dtb_header_t;
 
+// Device tree property
+typedef struct dtb_property {
+    char name[64];
+    void* data;
+    uint32_t length;
+    struct dtb_property* next;
+} dtb_property_t;
+
 // Device tree node
 typedef struct dtb_node {
     char name[64];
@@ -29,14 +37,8 @@ typedef struct dtb_node {
     struct dtb_node* parent;
     struct dtb_node* child;
     struct dtb_node* sibling;
+    dtb_property_t* properties;
 } dtb_node_t;
-
-// Device tree property
-typedef struct {
-    char name[64];
-    void* data;
-    uint32_t length;
-} dtb_property_t;
 
 // DTB parser functions
 int dtb_parse(void* dtb_addr);
@@ -49,5 +51,6 @@ const char* dtb_get_string(dtb_property_t* prop);
 // Device enumeration
 int dtb_enumerate_devices(void);
 void dtb_print_tree(void);
+dtb_node_t* dtb_get_root_node(void);  // Get root node
 
 #endif // DTB_PARSER_H

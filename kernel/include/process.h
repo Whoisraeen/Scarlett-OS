@@ -63,6 +63,10 @@ typedef struct process {
     // IPC
     uint64_t ipc_port;          // Default IPC port for this process
     
+    // Security
+    uint32_t uid;               // User ID
+    uint32_t gid;               // Group ID
+    
     // Linked list
     struct process* next;       // Next process in list
 } process_t;

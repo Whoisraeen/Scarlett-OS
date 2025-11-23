@@ -9,6 +9,24 @@
 #include "../../include/kprintf.h"
 #include "../../include/debug.h"
 #include "arm64_hal.h"
+#include "dtb_parser.h"
+#include "cpu.h"
+
+// ============================================================================
+// I/O Ports (ARM64 - No IO ports, MMIO only)
+// ============================================================================
+
+void outb(uint16_t port, uint8_t value) {
+    (void)port;
+    (void)value;
+    // ARM64 uses MMIO, not I/O ports. This is a stub for compatibility.
+    // Drivers should check HAL_ARCH before using port I/O.
+}
+
+uint8_t inb(uint16_t port) {
+    (void)port;
+    return 0xFF;
+}
 
 // ============================================================================
 // Architecture Detection
@@ -213,8 +231,8 @@ error_code_t hal_late_init(void) {
 }
 
 void* hal_get_boot_info(void) {
-    // TODO: Get boot info from device tree
-    return NULL;
+    // Return device tree root node as boot info
+    return (void*)dtb_get_root_node();
 }
 
 // ============================================================================
@@ -222,13 +240,41 @@ void* hal_get_boot_info(void) {
 // ============================================================================
 
 error_code_t hal_ap_start(uint32_t cpu_id, vaddr_t entry_point) {
-    // TODO: Start secondary CPUs via PSCI or mailbox
-    return ERR_NOT_SUPPORTED;
+    // Start secondary CPU via PSCI CPU_ON
+    // PSCI function ID: 0x84000003 (CPU_ON)
+    // Arguments: x0 = function_id, x1 = target_cpu, x2 = entry_point, x3 = context_id
+    uint64_t function_id = 0x84000003;  // PSCI CPU_ON
+    uint64_t target_cpu = cpu_id;
+    uint64_t entry = (uint64_t)entry_point;
+    uint64_t context_id = 0;  // Context ID (not used)
+    
+    uint64_t result;
+    __asm__ volatile(
+        "mov x0, %1\n"
+        "mov x1, %2\n"
+        "mov x2, %3\n"
+        "mov x3, %4\n"
+        "smc #0\n"
+        "mov %0, x0"
+        : "=r"(result)
+        : "r"(function_id), "r"(target_cpu), "r"(entry), "r"(context_id)
+        : "x0", "x1", "x2", "x3", "memory"
+    );
+    
+    // PSCI_SUCCESS = 0
+    if (result == 0) {
+        return ERR_OK;
+    } else {
+        // PSCI error codes: -1 = NOT_SUPPORTED, -2 = INVALID_PARAMETERS, etc.
+        return ERR_NOT_SUPPORTED;
+    }
 }
 
 void* hal_get_per_cpu_data(uint32_t cpu_id) {
-    // TODO: Get per-CPU data
-    return NULL;
+    // Get per-CPU data from CPU subsystem
+    extern per_cpu_data_t* cpu_get_per_cpu_data(uint32_t cpu_id);
+    per_cpu_data_t* per_cpu = cpu_get_per_cpu_data(cpu_id);
+    return (void*)per_cpu;
 }
 
 // ============================================================================
@@ -240,12 +286,33 @@ void hal_power_idle(void) {
 }
 
 void hal_power_shutdown(void) {
-    // TODO: Use PSCI to shutdown
+    // Use PSCI SYSTEM_OFF to shutdown
+    // PSCI function ID: 0x84000008 (SYSTEM_OFF)
+    // This uses SMC (Secure Monitor Call) or HVC (Hypervisor Call) depending on EL
+    uint64_t function_id = 0x84000008;  // PSCI SYSTEM_OFF
+    __asm__ volatile(
+        "mov x0, %0\n"
+        "smc #0"
+        :
+        : "r"(function_id)
+        : "x0", "memory"
+    );
+    // If SMC returns, fall back to halt
     hal_cpu_halt();
 }
 
 void hal_power_reboot(void) {
-    // TODO: Use PSCI to reboot
+    // Use PSCI SYSTEM_RESET to reboot
+    // PSCI function ID: 0x84000009 (SYSTEM_RESET)
+    uint64_t function_id = 0x84000009;  // PSCI SYSTEM_RESET
+    __asm__ volatile(
+        "mov x0, %0\n"
+        "smc #0"
+        :
+        : "r"(function_id)
+        : "x0", "memory"
+    );
+    // If SMC returns, fall back to halt
     hal_cpu_halt();
 }
 

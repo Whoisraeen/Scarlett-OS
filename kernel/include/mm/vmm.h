@@ -9,6 +9,9 @@
 #include "../types.h"
 #include "../../../bootloader/common/boot_info.h"
 
+// Forward declaration
+struct memory_mapping;
+
 // Page table entry flags
 #define VMM_PRESENT    (1ULL << 0)
 #define VMM_WRITE      (1ULL << 1)
@@ -26,6 +29,7 @@
 typedef struct address_space {
     uint64_t* pml4;              // Page table root
     uint64_t asid;               // Address space ID
+    struct memory_mapping* mappings; // Memory mappings list
     struct address_space* next;  // Linked list
 } address_space_t;
 

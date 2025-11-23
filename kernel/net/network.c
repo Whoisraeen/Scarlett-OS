@@ -4,8 +4,12 @@
  */
 
 #include "../include/net/network.h"
+#include "../include/net/ethernet.h"
+#include "../include/net/arp.h"
+#include "../include/net/ip.h"
 #include "../include/kprintf.h"
 #include "../include/debug.h"
+#include "../include/string.h"
 #include "../include/sync/spinlock.h"
 
 // Network stack state
@@ -28,6 +32,14 @@ error_code_t network_init(void) {
     network_state.devices = NULL;
     spinlock_init(&network_state.lock);
     network_state.initialized = true;
+    
+    // Initialize protocols
+    ethernet_init();
+    arp_init();
+    
+    // Register protocol handlers
+    ethernet_register_protocol(ETH_TYPE_ARP, arp_handle_packet);
+    ethernet_register_protocol(ETH_TYPE_IPV4, ip_receive);
     
     kinfo("Network stack initialized\n");
     return ERR_OK;

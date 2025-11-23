@@ -58,16 +58,21 @@ int sched_o1_init(uint32_t num_cpus) {
         task_t* idle = (task_t*)kmalloc(sizeof(task_t));
         if (idle) {
             memset(idle, 0, sizeof(task_t));
-            idle->pid = 0;  // Idle task has PID 0
+            idle->tid = 0;  // Idle task TID 0
+            idle->pid = 0;  // Idle task PID 0
             idle->priority = MAX_PRIORITY - 1;  // Lowest priority
             idle->cpu = cpu;
-            idle->state = TASK_READY;
-            idle->time_slice = 1;
+            idle->state = TASK_RUNNING; // Idle is always running if nothing else
+            idle->time_slice = 0; // Infinite
             idle->vruntime = 0;
             idle->load_weight = 1;
             idle->next = NULL;
             idle->prev = NULL;
+            idle->process = NULL; // Idle task belongs to kernel, no process struct usually
+            idle->context = NULL; // Context set when switching
+            idle->recovery_stack_top = -1; // Initialize recovery stack
             rq->idle_task = idle;
+            rq->current = idle; // Set current to idle initially
         } else {
             rq->idle_task = NULL;
         }
@@ -300,7 +305,54 @@ void sched_balance_cpus(void) {
         
         if (rq->nr_running > avg_load + threshold) {
             // This CPU is overloaded, migrate tasks
-            // TODO: Implement task migration
+            
+            // Find a target CPU (underloaded)
+            uint32_t target_cpu = (cpu + 1) % global_sched.num_cpus;
+            uint32_t min_load = global_sched.per_cpu_rq[target_cpu].nr_running;
+            
+            for (uint32_t i = 0; i < global_sched.num_cpus; i++) {
+                if (i == cpu) continue;
+                if (global_sched.per_cpu_rq[i].nr_running < min_load) {
+                    min_load = global_sched.per_cpu_rq[i].nr_running;
+                    target_cpu = i;
+                }
+            }
+            
+            if (min_load < avg_load) {
+                // Migrate a task from expired queue first (cache cold) or lowest priority
+                spinlock_lock((spinlock_t*)rq->lock);
+                
+                task_t* migrate_candidate = NULL;
+                
+                // Try expired queue from lowest priority
+                for (int p = MAX_PRIORITY - 1; p >= 0; p--) {
+                    if (rq->expired[p].head) {
+                        migrate_candidate = rq->expired[p].head;
+                        break;
+                    }
+                }
+                
+                // If no expired, try active (but not current)
+                if (!migrate_candidate) {
+                    for (int p = MAX_PRIORITY - 1; p >= 0; p--) {
+                        if (rq->active[p].head) {
+                            task_t* t = rq->active[p].head;
+                            // Don't migrate current running task
+                            if (t == rq->current && t->next) t = t->next;
+                            if (t != rq->current) {
+                                migrate_candidate = t;
+                                break;
+                            }
+                        }
+                    }
+                }
+                
+                spinlock_unlock((spinlock_t*)rq->lock);
+                
+                if (migrate_candidate) {
+                    sched_migrate_task(migrate_candidate, target_cpu);
+                }
+            }
         }
     }
 }

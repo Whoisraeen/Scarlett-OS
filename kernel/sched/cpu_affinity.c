@@ -40,8 +40,8 @@ error_code_t thread_set_affinity(uint64_t tid, int32_t cpu_id) {
     }
     
     // Set affinity
-    // CPU affinity not yet implemented in thread_t structure
-    // TODO: Add cpu_affinity field to thread_t
+    // TODO: Add cpu_affinity field to thread_t - DONE: cpu_affinity field added
+    thread->cpu_affinity = cpu_id;
     spinlock_unlock(&thread_table_lock);
     
     kinfo("Thread %lu: CPU affinity set to %d\n", tid, cpu_id);
@@ -63,11 +63,11 @@ int32_t thread_get_affinity(uint64_t tid) {
         return -1;
     }
     
-    // CPU affinity not yet implemented in thread_t structure
-    // TODO: Add cpu_affinity field to thread_t
+    // TODO: Add cpu_affinity field to thread_t - DONE: cpu_affinity field added
+    int32_t affinity = thread->cpu_affinity;
     spinlock_unlock(&thread_table_lock);
     
-    return -1;  // No affinity
+    return affinity;
 }
 
 /**
@@ -91,8 +91,7 @@ int32_t thread_get_affinity_current(void) {
         return -1;
     }
     
-    // CPU affinity not yet implemented in thread_t structure
-    // TODO: Add cpu_affinity field to thread_t
-    return -1;  // No affinity
+    // TODO: Add cpu_affinity field to thread_t - DONE: cpu_affinity field added
+    return thread->cpu_affinity;
 }
 

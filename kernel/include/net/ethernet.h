@@ -28,7 +28,12 @@ typedef struct {
     uint8_t data[];
 } __attribute__((packed)) ethernet_frame_t;
 
+// Ethernet protocol handler type
+typedef error_code_t (*ethernet_protocol_handler_t)(net_device_t* device, void* packet, size_t len);
+
 // Ethernet functions
+error_code_t ethernet_init(void);
+error_code_t ethernet_register_protocol(uint16_t type, ethernet_protocol_handler_t handler);
 error_code_t ethernet_send(void* data, size_t len, uint8_t* dest_mac, uint16_t type, net_device_t* device);
 error_code_t ethernet_receive(net_device_t* device, void* buffer, size_t* len);
 

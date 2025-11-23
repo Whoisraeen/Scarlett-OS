@@ -10,11 +10,17 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "../hal/context.h"
+#include "../include/error_recovery.h" // For error_recovery_ctx_t
 
 #define MAX_PRIORITY 140
 #define MAX_RT_PRIORITY 100
 #define DEFAULT_PRIORITY 120
 #define MAX_CPUS 256
+#define MAX_RECOVERY_STACK 16
+
+// Forward declaration for process
+struct process;
 
 // Task states
 typedef enum {
@@ -25,17 +31,33 @@ typedef enum {
     TASK_ZOMBIE,
 } task_state_t;
 
-// Task structure (simplified)
+// Task structure (enhanced)
 typedef struct task {
-    uint32_t pid;
+    uint32_t tid;               // Task ID (Thread ID)
+    uint32_t pid;               // Process ID
     uint32_t priority;
     uint32_t time_slice;
-    uint32_t cpu;
+    uint32_t cpu;               // Current/Last CPU
     task_state_t state;
     
+    // Execution Context
+    vaddr_t kernel_stack;       // Kernel stack pointer
+    vaddr_t kernel_stack_top;   // Top of kernel stack
+    void* context;              // Architecture-specific context (registers)
+    
+    // Process Link
+    struct process* process;    // Owning process
+    
+    // Error Recovery
+    error_recovery_ctx_t recovery_stack[MAX_RECOVERY_STACK];
+    int recovery_stack_top;
+    
     // Scheduling info
-    uint64_t vruntime;  // Virtual runtime
+    uint64_t vruntime;          // Virtual runtime
     uint32_t load_weight;
+    
+    // Flags
+    uint32_t flags;
     
     // Links for run queue
     struct task* next;

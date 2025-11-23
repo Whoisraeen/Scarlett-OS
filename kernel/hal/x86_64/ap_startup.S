@@ -51,9 +51,13 @@ ap_startup_32:
     or $(1 << 5), %eax
     mov %eax, %cr4
     
-    // Load page tables (from per-CPU data)
-    // For now, use identity mapping
-    // TODO: Load proper page tables
+    // Load page tables (shared with BSP)
+    // All CPUs share the same kernel page tables initially
+    // This will be patched by ap_startup() with the actual page table address
+.global ap_page_table_addr
+ap_page_table_addr:
+    mov $0xDEADBEEF, %eax  // Placeholder - will be patched by ap_startup()
+    mov %eax, %cr3
     
     // Enable long mode
     mov $0xC0000080, %ecx
@@ -72,8 +76,11 @@ ap_startup_32:
 .code64
 ap_startup_64:
     // Set up 64-bit stack
-    // TODO: Get stack from per-CPU data
-    mov $0x200000, %rsp  // Temporary stack
+    // Use temporary stack for now - will be switched to per-CPU stack in ap_init()
+    // The per-CPU data is set up before AP startup, but we use temp stack initially
+.global ap_stack_addr
+ap_stack_addr:
+    mov $0x200000, %rsp  // Temporary stack - ap_init() will switch to per-CPU stack
     
     // Call C initialization
     extern ap_init

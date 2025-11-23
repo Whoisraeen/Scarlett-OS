@@ -18,90 +18,39 @@ typedef struct capability {
     uint32_t type;
     uint64_t resource_id;
     uint32_t rights;  // Bitmask of allowed operations
-    struct capability* next;
+    // No 'next' pointer needed in array-based table, but useful if we switch to lists later
 } capability_t;
 
 // Capability table per process
 typedef struct capability_table {
-    capability_t* capabilities;
+    capability_t* capabilities; // Dynamic array
     size_t count;
-    size_t max_count;
+    size_t capacity;
     spinlock_t lock;
+    bool initialized;
 } capability_table_t;
 
 #define MAX_CAPABILITIES_PER_PROCESS 256
+#define INITIAL_CAPACITY 16
 
 // Global capability tables (one per process)
 // Use a simple array indexed by PID (for now - could use hash table for scalability)
+// Note: PIDs can be large, so a direct array might be sparse. 
+// In a real system, this should be part of process_t.
+// Since I cannot easily modify process_t header without triggering potential recompilation issues across the board,
+// I will use a static array indexed by PID modulo MAX_PROCESSES or just MAX_PROCESSES.
+// Assuming PIDs are allocated sequentially and recycled.
+
 #define MAX_PROCESSES 32768
 static capability_table_t capability_tables[MAX_PROCESSES];
-static bool capability_tables_initialized = false;
-static spinlock_t global_lock = SPINLOCK_INIT;
-
-// Capability storage (simplified - one table for all processes)
-#define MAX_CAPABILITIES 1024
-static capability_t capabilities[MAX_CAPABILITIES];
-static uint32_t capability_count = 0;
+static bool capability_system_initialized = false;
+static spinlock_t system_lock = SPINLOCK_INIT;
 static uint64_t next_cap_id = 1;
 
-/**
- * Get capability table for current process
- */
-static capability_table_t* get_capability_table(void) {
-    // Get table for current process
-    extern process_t* process_get_current(void);
-    process_t* proc = process_get_current();
-    if (!proc || !capability_tables_initialized) {
-        return NULL;
-    }
-    
-    // Allocate per-process capability table if not already allocated
-    pid_t pid = proc->pid;
-    if (pid < 0 || pid >= MAX_PROCESSES) {
-        return NULL;
-    }
-    
-    capability_table_t* table = &capability_tables[pid];
-    
-    // Initialize table if needed (first access)
-    if (table->capabilities == NULL && table->count == 0) {
-        // Allocate capability list for this process
-        table->capabilities = (capability_t*)kmalloc(sizeof(capability_t) * MAX_CAPABILITIES_PER_PROCESS);
-        if (!table->capabilities) {
-            return NULL;
-        }
-        
-        // Initialize all capabilities to zero
-        for (size_t i = 0; i < MAX_CAPABILITIES_PER_PROCESS; i++) {
-            table->capabilities[i].cap_id = 0;
-            table->capabilities[i].type = 0;
-            table->capabilities[i].resource_id = 0;
-            table->capabilities[i].rights = 0;
-            table->capabilities[i].next = NULL;
-        }
-        
-        table->count = 0;
-        table->max_count = MAX_CAPABILITIES_PER_PROCESS;
-    }
-    
-    return table;
-}
-
-/**
- * Find capability by ID
- */
-static capability_t* find_capability(uint64_t cap_id) {
-    spinlock_lock(&global_lock);
-    
-    for (uint32_t i = 0; i < capability_count; i++) {
-        if (capabilities[i].cap_id == cap_id) {
-            spinlock_unlock(&global_lock);
-            return &capabilities[i];
-        }
-    }
-    
-    spinlock_unlock(&global_lock);
-    return NULL;
+// Helper to get table for a specific PID
+static capability_table_t* get_process_table(pid_t pid) {
+    if (pid < 0 || pid >= MAX_PROCESSES) return NULL;
+    return &capability_tables[pid];
 }
 
 /**
@@ -110,98 +59,148 @@ static capability_t* find_capability(uint64_t cap_id) {
 void capability_init(void) {
     kinfo("Initializing capability system...\n");
     
-    spinlock_init(&global_lock);
-    capability_count = 0;
+    spinlock_init(&system_lock);
     next_cap_id = 1;
-    
-    // Clear capability array
-    for (uint32_t i = 0; i < MAX_CAPABILITIES; i++) {
-        capabilities[i].cap_id = 0;
-        capabilities[i].type = 0;
-        capabilities[i].resource_id = 0;
-        capabilities[i].rights = 0;
-        capabilities[i].next = NULL;
-    }
     
     // Initialize per-process capability tables
     for (size_t i = 0; i < MAX_PROCESSES; i++) {
         capability_tables[i].capabilities = NULL;
         capability_tables[i].count = 0;
-        capability_tables[i].max_count = MAX_CAPABILITIES_PER_PROCESS;
+        capability_tables[i].capacity = 0;
+        capability_tables[i].initialized = false;
         spinlock_init(&capability_tables[i].lock);
     }
     
-    capability_tables_initialized = true;
-    kinfo("Capability system initialized\n");
+    capability_system_initialized = true;
+    kinfo("Capability system initialized (Per-process tables active)\n");
 }
 
 /**
- * Create a new capability
+ * Ensure capability table exists for process
+ */
+static int ensure_table_initialized(capability_table_t* table) {
+    if (table->initialized && table->capabilities) return 0;
+    
+    spinlock_lock(&table->lock);
+    if (!table->initialized) {
+        table->capacity = INITIAL_CAPACITY;
+        table->capabilities = (capability_t*)kmalloc(sizeof(capability_t) * table->capacity);
+        if (!table->capabilities) {
+            spinlock_unlock(&table->lock);
+            return -1;
+        }
+        table->count = 0;
+        table->initialized = true;
+    }
+    spinlock_unlock(&table->lock);
+    return 0;
+}
+
+/**
+ * Create a new capability for current process
  */
 uint64_t capability_create(uint32_t type, uint64_t resource_id, uint32_t rights) {
-    if (capability_count >= MAX_CAPABILITIES) {
-        return 0;  // Out of capabilities
+    extern process_t* process_get_current(void);
+    process_t* proc = process_get_current();
+    if (!proc) return 0;
+    
+    capability_table_t* table = get_process_table(proc->pid);
+    if (!table) return 0;
+    
+    if (ensure_table_initialized(table) != 0) return 0;
+    
+    spinlock_lock(&table->lock);
+    
+    // Resize if needed
+    if (table->count >= table->capacity) {
+        size_t new_cap = table->capacity * 2;
+        if (new_cap > MAX_CAPABILITIES_PER_PROCESS) new_cap = MAX_CAPABILITIES_PER_PROCESS;
+        if (table->count >= new_cap) {
+            spinlock_unlock(&table->lock);
+            return 0; // Limit reached
+        }
+        
+        capability_t* new_arr = (capability_t*)kmalloc(sizeof(capability_t) * new_cap);
+        if (!new_arr) {
+            spinlock_unlock(&table->lock);
+            return 0;
+        }
+        
+        // Copy old
+        for (size_t i=0; i < table->count; i++) new_arr[i] = table->capabilities[i];
+        kfree(table->capabilities);
+        table->capabilities = new_arr;
+        table->capacity = new_cap;
     }
     
-    spinlock_lock(&global_lock);
+    // Add capability
+    uint64_t id = 0;
     
-    // Find free slot
-    uint32_t idx = capability_count;
-    capability_t* cap = &capabilities[idx];
+    spinlock_lock(&system_lock);
+    id = next_cap_id++;
+    spinlock_unlock(&system_lock);
     
-    cap->cap_id = next_cap_id++;
-    cap->type = type;
-    cap->resource_id = resource_id;
-    cap->rights = rights;
-    cap->next = NULL;
+    capability_t* slot = &table->capabilities[table->count++];
+    slot->cap_id = id;
+    slot->type = type;
+    slot->resource_id = resource_id;
+    slot->rights = rights;
     
-    capability_count++;
+    spinlock_unlock(&table->lock);
     
-    spinlock_unlock(&global_lock);
-    
-    return cap->cap_id;
+    return id;
 }
 
 /**
- * Check if capability grants right
+ * Check if current process has capability right
  */
 bool capability_check(uint64_t cap_id, uint32_t right) {
-    capability_t* cap = find_capability(cap_id);
-    if (!cap) {
-        return false;  // Capability not found
-    }
+    extern process_t* process_get_current(void);
+    process_t* proc = process_get_current();
+    if (!proc) return false;
     
-    // Check if right is granted
-    return (cap->rights & right) != 0;
+    capability_table_t* table = get_process_table(proc->pid);
+    if (!table || !table->initialized) return false;
+    
+    bool allowed = false;
+    
+    spinlock_lock(&table->lock);
+    for (size_t i = 0; i < table->count; i++) {
+        if (table->capabilities[i].cap_id == cap_id) {
+            if ((table->capabilities[i].rights & right) == right) {
+                allowed = true;
+            }
+            break;
+        }
+    }
+    spinlock_unlock(&table->lock);
+    
+    return allowed;
 }
 
 /**
  * Transfer capability in IPC message
  */
 int capability_transfer(ipc_message_t* msg, uint64_t cap_id) {
-    if (!msg) {
-        return -1;
-    }
+    if (!msg) return -1;
     
-    // Verify capability exists and can be transferred
-    capability_t* cap = find_capability(cap_id);
-    if (!cap) {
-        return -1;  // Capability not found
-    }
+    // Verify ownership
+    if (!capability_check(cap_id, CAP_RIGHT_TRANSFER)) return -1;
     
-    // Check if capability has transfer right
-    if (!capability_check(cap_id, CAP_RIGHT_TRANSFER)) {
-        return -1;  // No transfer right
-    }
+    // TODO: In a real implementation, we need to:
+    // 1. Look up the source capability details.
+    // 2. Create a "pending transfer" or actually copy it to the target process immediately if known.
+    // Since IPC usually buffers messages, we should attach the capability metadata to the message kernel-side.
+    // The recipient will "claim" it upon receive, generating a NEW cap_id for their table.
     
-    // Add capability ID to message inline data
-    // For now, we'll store it in the first 8 bytes if there's space
+    // For this implementation, we'll just validate checking passed.
+    // We add the ID to the message. The receiver logic (not shown here fully) needs to import it.
+    
     if (msg->inline_size + 8 <= IPC_INLINE_SIZE) {
         uint64_t* cap_ptr = (uint64_t*)(msg->inline_data + msg->inline_size);
         *cap_ptr = cap_id;
         msg->inline_size += 8;
     } else {
-        // Would need to use buffer for larger messages
         return -1;
     }
     
@@ -212,46 +211,50 @@ int capability_transfer(ipc_message_t* msg, uint64_t cap_id) {
  * Revoke capability
  */
 int capability_revoke(uint64_t cap_id) {
-    capability_t* cap = find_capability(cap_id);
-    if (!cap) {
-        return -1;  // Capability not found
+    extern process_t* process_get_current(void);
+    process_t* proc = process_get_current();
+    if (!proc) return -1;
+    
+    capability_table_t* table = get_process_table(proc->pid);
+    if (!table || !table->initialized) return -1;
+    
+    spinlock_lock(&table->lock);
+    for (size_t i = 0; i < table->count; i++) {
+        if (table->capabilities[i].cap_id == cap_id) {
+            // Found it. Remove by swapping with last element.
+            table->capabilities[i] = table->capabilities[table->count - 1];
+            table->count--;
+            spinlock_unlock(&table->lock);
+            return 0;
+        }
     }
+    spinlock_unlock(&table->lock);
     
-    spinlock_lock(&global_lock);
-    
-    // Mark capability as revoked (set ID to 0)
-    cap->cap_id = 0;
-    cap->type = 0;
-    cap->resource_id = 0;
-    cap->rights = 0;
-    
-    // TODO: Notify processes using this capability
-    // TODO: Remove from process capability tables
-    
-    spinlock_unlock(&global_lock);
-    
-    return 0;
+    return -1;
 }
 
 /**
  * Find capability for a port (helper function for IPC)
  */
 uint64_t capability_find_for_port(uint64_t port_id) {
-    // TODO: Look up capability in current process's capability table
-    // For now, search global capability list
-    spinlock_lock(&global_lock);
+    extern process_t* process_get_current(void);
+    process_t* proc = process_get_current();
+    if (!proc) return 0;
     
-    for (uint32_t i = 0; i < capability_count; i++) {
-        if (capabilities[i].cap_id != 0 &&
-            capabilities[i].type == CAP_TYPE_IPC_PORT &&
-            capabilities[i].resource_id == port_id) {
-            uint64_t cap_id = capabilities[i].cap_id;
-            spinlock_unlock(&global_lock);
-            return cap_id;
+    capability_table_t* table = get_process_table(proc->pid);
+    if (!table || !table->initialized) return 0;
+    
+    uint64_t found_id = 0;
+    
+    spinlock_lock(&table->lock);
+    for (size_t i = 0; i < table->count; i++) {
+        if (table->capabilities[i].type == CAP_TYPE_IPC_PORT && 
+            table->capabilities[i].resource_id == port_id) {
+            found_id = table->capabilities[i].cap_id;
+            break;
         }
     }
+    spinlock_unlock(&table->lock);
     
-    spinlock_unlock(&global_lock);
-    return 0;  // No capability found
+    return found_id;
 }
-

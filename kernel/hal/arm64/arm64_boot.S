@@ -41,6 +41,16 @@ halt:
     wfe
     b halt
 
+// EL1 entry point (for EL2/EL3->EL1 transition)
+.global el1_entry_point_label
+el1_entry_point_label:
+    // Re-initialize CPU at EL1
+    // This is called after eret from EL2/EL3
+    // Stack should already be set up
+    bl arm64_cpu_init
+    // Continue with normal initialization
+    ret
+
 .global arm64_context_switch
 arm64_context_switch:
     // Save old context (x0 points to old_ctx)

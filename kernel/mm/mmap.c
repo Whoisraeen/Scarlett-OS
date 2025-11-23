@@ -25,26 +25,23 @@ static inline void* phys_to_virt_pt(paddr_t paddr) {
 }
 
 // Memory mapping list per address space
-// For now, we'll use a global list (should be per-address-space)
-static memory_mapping_t* mapping_list = NULL;
+// static memory_mapping_t* mapping_list = NULL; // REMOVED
 
 // User space memory region (lower half)
 #define USER_SPACE_START 0x0000000000400000ULL  // 4MB (above code)
 #define USER_SPACE_END   0x00007FFFFFFFFFFFULL
 #define USER_SPACE_SIZE  (USER_SPACE_END - USER_SPACE_START)
 
-// Current allocation pointer (simple bump allocator)
-static vaddr_t current_brk = USER_SPACE_START;
+// Current allocation pointer (simple bump allocator) - NOTE: This should also be per-AS!
+// static vaddr_t current_brk = USER_SPACE_START; // REMOVED - Using logic to find holes instead or AS-specific brk
 
 /**
  * Initialize memory mapping system
  */
 error_code_t mmap_init(void) {
     kinfo("Initializing memory mapping system...\n");
-    
-    mapping_list = NULL;
-    current_brk = USER_SPACE_START;
-    
+    // mapping_list = NULL;
+    // current_brk = USER_SPACE_START;
     kinfo("Memory mapping system initialized\n");
     return ERR_OK;
 }
@@ -53,9 +50,9 @@ error_code_t mmap_init(void) {
  * Find a memory mapping
  */
 memory_mapping_t* mmap_find(address_space_t* as, vaddr_t addr) {
-    (void)as;  // For now, ignore address space (simplified)
+    if (!as) return NULL;
     
-    for (memory_mapping_t* m = mapping_list; m != NULL; m = m->next) {
+    for (memory_mapping_t* m = as->mappings; m != NULL; m = m->next) {
         if (addr >= m->start && addr < m->end) {
             return m;
         }
@@ -77,29 +74,38 @@ vaddr_t mmap_alloc(address_space_t* as, size_t size, uint64_t prot, uint64_t fla
     // For anonymous mappings, allocate pages
     if (flags & MAP_ANONYMOUS || fd < 0) {
         // Find a free region
-        vaddr_t start = current_brk;
+        // Simple algorithm: Start from USER_SPACE_START and look for a gap large enough
+        
+        vaddr_t start = USER_SPACE_START;
         vaddr_t end = start + size;
         
-        // Check if we have space
-        if (end > USER_SPACE_END) {
-            kerror("MMAP: Out of user address space\n");
-            return (vaddr_t)ERR_OUT_OF_MEMORY;
-        }
+        // Check if we have space (basic check)
+        if (end > USER_SPACE_END) return (vaddr_t)ERR_OUT_OF_MEMORY;
         
-        // Check for overlap with existing mappings
-        for (memory_mapping_t* m = mapping_list; m != NULL; m = m->next) {
-            if ((start >= m->start && start < m->end) ||
-                (end > m->start && end <= m->end) ||
-                (start <= m->start && end >= m->end)) {
-                // Overlap found, move start
-                start = m->end;
-                end = start + size;
-                if (end > USER_SPACE_END) {
-                    kerror("MMAP: No free space for mapping\n");
-                    return (vaddr_t)ERR_OUT_OF_MEMORY;
+        // Iterate through existing mappings to find a hole
+        // This assumes mappings are not sorted (O(N^2) worst case for finding hole if we just bump? No, 
+        // standard way: sort by address. But for now, we just check for overlap and bump 'start' past 'end' of overlap.)
+        // Better approach: Keep list sorted or use tree.
+        // For now, iterate and if overlap, restart scan from new start.
+        
+        bool collision;
+        do {
+            collision = false;
+            if (start + size > USER_SPACE_END) return (vaddr_t)ERR_OUT_OF_MEMORY;
+            end = start + size;
+            
+            for (memory_mapping_t* m = as->mappings; m != NULL; m = m->next) {
+                if ((start >= m->start && start < m->end) ||
+                    (end > m->start && end <= m->end) ||
+                    (start <= m->start && end >= m->end)) {
+                    // Overlap found, move start to end of conflicting mapping
+                    start = m->end;
+                    // Align start to page? m->end should be page aligned.
+                    collision = true;
+                    break; // Restart scan with new start
                 }
             }
-        }
+        } while (collision);
         
         // Allocate and map pages
         size_t num_pages = size / PAGE_SIZE;
@@ -149,7 +155,8 @@ vaddr_t mmap_alloc(address_space_t* as, size_t size, uint64_t prot, uint64_t fla
         memory_mapping_t* mapping = (memory_mapping_t*)kmalloc(sizeof(memory_mapping_t));
         if (!mapping) {
             // Free pages
-            for (size_t i = 0; i < num_pages; i++) {
+            // ... (cleanup logic similar to above)
+             for (size_t i = 0; i < num_pages; i++) {
                 vaddr_t page_vaddr = start + (i * PAGE_SIZE);
                 paddr_t page_paddr = vmm_get_physical(as, page_vaddr);
                 if (page_paddr != 0) {
@@ -166,13 +173,10 @@ vaddr_t mmap_alloc(address_space_t* as, size_t size, uint64_t prot, uint64_t fla
         mapping->flags = prot | flags;
         mapping->fd = fd;
         mapping->offset = offset;
-        mapping->next = mapping_list;
-        mapping_list = mapping;
         
-        // Update current_brk
-        if (end > current_brk) {
-            current_brk = end;
-        }
+        // Add to address space list
+        mapping->next = as->mappings;
+        as->mappings = mapping;
         
         kinfo("MMAP: Allocated %lu bytes at 0x%016lx\n", size, start);
         return start;
@@ -198,17 +202,21 @@ error_code_t mmap_free(address_space_t* as, vaddr_t addr, size_t size) {
     
     // Find mapping
     memory_mapping_t* prev = NULL;
-    memory_mapping_t* m = mapping_list;
+    memory_mapping_t* m = as->mappings;
     
     while (m) {
         if (m->start == start && m->end == end) {
             // Found exact match
             break;
         }
+        // Logic for partial unmapping is complex (splitting nodes), simplified here to exact match only for now
+        // or "start >= m->start && end <= m->end"
+        
         if (start >= m->start && end <= m->end) {
-            // Partial match - unmap the specified region
-            break;
+             // Found containing mapping
+             break;
         }
+        
         prev = m;
         m = m->next;
     }
@@ -237,9 +245,13 @@ error_code_t mmap_free(address_space_t* as, vaddr_t addr, size_t size) {
         if (prev) {
             prev->next = m->next;
         } else {
-            mapping_list = m->next;
+            as->mappings = m->next;
         }
         kfree(m);
+    } else {
+        // Partial unmap logic (TODO: Split mapping)
+        // For now, we just keep the metadata but pages are unmapped.
+        // This is "simplified" but safer than crashing.
     }
     
     kinfo("MMAP: Freed %lu bytes at 0x%016lx\n", size, start);

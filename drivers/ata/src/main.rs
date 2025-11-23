@@ -229,17 +229,72 @@ fn handle_read(msg: &IpcMessage) -> IpcMessage {
     }
 }
 
-fn handle_write(_msg: &IpcMessage) -> IpcMessage {
-    // TODO: Implement write
-    create_success_response()
+fn handle_write(msg: &IpcMessage) -> IpcMessage {
+    let lba = u32::from_le_bytes([msg.data[0], msg.data[1], msg.data[2], msg.data[3]]);
+    let count = msg.data[4];
+    // Data starts at offset 5
+    let data = &msg.data[5..];
+
+    unsafe {
+        if !PRIMARY_MASTER.exists {
+            return create_error_response(2);
+        }
+        write_sectors(&PRIMARY_MASTER, lba, count, data)
+    }
 }
 
 fn handle_identify(_msg: &IpcMessage) -> IpcMessage {
-    // TODO: Return device info
-    create_success_response()
+    let mut response = create_success_response();
+    unsafe {
+        if PRIMARY_MASTER.exists {
+            let sectors = PRIMARY_MASTER.sectors;
+            response.data[0..8].copy_from_slice(&sectors.to_le_bytes());
+        } else {
+            // Return 0 sectors if no device
+            response.data[0..8].fill(0);
+        }
+    }
+    response
 }
 
-fn read_sectors(device: &AtaDevice, lba: u32, count: u8, buffer: &mut [u8]) -> IpcMessage {
+fn write_sectors(device: &AtaDevice, lba: u32, count: u8, data: &[u8]) -> IpcMessage {
+    unsafe {
+        // Select drive (LBA mode)
+        let drive_select = if device.is_master { 0xE0 } else { 0xF0 };
+        sys_io_write(device.base_io + ATA_REG_DRIVE, (drive_select | ((lba >> 24) & 0x0F)) as u32, 1);
+
+        // Set sector count
+        sys_io_write(device.base_io + ATA_REG_SECCOUNT, count as u32, 1);
+
+        // Set LBA
+        sys_io_write(device.base_io + ATA_REG_LBA_LO, (lba & 0xFF) as u32, 1);
+        sys_io_write(device.base_io + ATA_REG_LBA_MID, ((lba >> 8) & 0xFF) as u32, 1);
+        sys_io_write(device.base_io + ATA_REG_LBA_HI, ((lba >> 16) & 0xFF) as u32, 1);
+
+        // Send write command
+        sys_io_write(device.base_io + ATA_REG_COMMAND, ATA_CMD_WRITE_SECTORS as u32, 1);
+
+        // Wait for ready
+        ata_wait_drq(device.base_io);
+
+        // Write data (PIO)
+        // Assuming data contains 512 bytes per sector
+        for i in 0..256 {
+            if i * 2 < data.len() {
+                let word = (data[i * 2] as u16) | ((data[i * 2 + 1] as u16) << 8);
+                sys_io_write(device.base_io + ATA_REG_DATA, word as u32, 2);
+            } else {
+                sys_io_write(device.base_io + ATA_REG_DATA, 0, 2);
+            }
+        }
+        
+        // Flush cache command (optional but good practice)
+        sys_io_write(device.base_io + ATA_REG_COMMAND, 0xE7, 1); // ATA_CMD_FLUSH_CACHE
+        ata_wait_ready(device.base_io);
+
+        create_success_response()
+    }
+}
     unsafe {
         // Select drive
         let drive_select = if device.is_master { 0xE0 } else { 0xF0 };

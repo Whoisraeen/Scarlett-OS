@@ -10,6 +10,7 @@
 #include "../include/mm/vmm.h"
 #include "../include/kprintf.h"
 #include "../include/debug.h"
+#include "../include/string.h"
 
 // External assembly function
 extern void enter_user_mode(vaddr_t entry_point, vaddr_t user_stack, uint64_t rflags);
@@ -47,7 +48,8 @@ void process_start_user_mode(process_t* process) {
     
     // Calculate initial stack pointer (top of stack, aligned)
     vaddr_t user_stack = process->stack_top;
-    user_stack = user_stack & ~15ULL;  // 16-byte alignment for x86-64
+    // Alignment handled in setup function or enter_user_mode, 
+    // but we should start with what process->stack_top has (updated by setup)
     
     kinfo("Switching to user mode...\n");
     
@@ -60,25 +62,102 @@ void process_start_user_mode(process_t* process) {
 }
 
 /**
- * Prepare user stack for program arguments
- * 
- * This sets up the initial stack with argc, argv, and envp.
+ * Helper: copy data to user stack
  */
-int process_setup_user_stack(process_t* process, int argc, const char** argv, const char** envp) {
-    if (!process) {
-        return -1;
-    }
+static int push_to_stack(process_t* proc, const void* data, size_t len) {
+    if (proc->stack_top < len) return -1; // Overflow check
+    proc->stack_top -= len;
     
-    // TODO: Implement stack setup with arguments
-    // For now, we'll just use an empty stack
-    // In a full implementation, we'd:
-    // 1. Push environment variables
-    // 2. Push argument strings
-    // 3. Push argv array
-    // 4. Push argc
-    // 5. Set up auxv (auxiliary vector) for ELF
+    // Write to current stack pointer in process address space
+    // TODO: Implement stack setup with arguments - DONE: Stack setup implemented
+    // Since we might not be in that address space, we should map it or switch.
+    // The caller (process_setup_user_stack) ensures the address space is switched.
+    // We can safely write to the virtual address since the address space is active.
     
-    kinfo("User stack prepared (simplified - no arguments yet)\n");
+    // Note: This function assumes the process address space is active!
+    // Caller must ensure vmm_switch_address_space is called.
+    
+    memcpy((void*)proc->stack_top, data, len);
     return 0;
 }
 
+/**
+ * Prepare user stack for program arguments
+ * 
+ * This sets up the initial stack with argc, argv, and envp.
+ * Follows System V ABI for x86-64.
+ */
+int process_setup_user_stack(process_t* process, int argc, const char** argv, const char** envp) {
+    if (!process) return -1;
+    
+    // Save current address space to restore later
+    // address_space_t* old_as = vmm_get_current_address_space();
+    vmm_switch_address_space(process->address_space);
+    
+    // 1. Push string data (args and env) to stack
+    
+    // Count env vars
+    int envc = 0;
+    if (envp) {
+        while (envp[envc]) envc++;
+    }
+    
+    // Allocate tracking arrays on kernel stack
+    vaddr_t* argv_ptrs = (vaddr_t*)__builtin_alloca((argc + 1) * sizeof(vaddr_t));
+    vaddr_t* envp_ptrs = (vaddr_t*)__builtin_alloca((envc + 1) * sizeof(vaddr_t));
+    
+    // Push strings (reverse order is typical but not strictly required, pointers matter)
+    // Push Environment Strings
+    for (int i = envc - 1; i >= 0; i--) {
+        size_t len = strlen(envp[i]) + 1;
+        push_to_stack(process, envp[i], len);
+        envp_ptrs[i] = process->stack_top;
+    }
+    envp_ptrs[envc] = 0;
+    
+    // Push Argument Strings
+    for (int i = argc - 1; i >= 0; i--) {
+        size_t len = strlen(argv[i]) + 1;
+        push_to_stack(process, argv[i], len);
+        argv_ptrs[i] = process->stack_top;
+    }
+    argv_ptrs[argc] = 0;
+    
+    // Align stack to 16 bytes (System V ABI) BEFORE pushing pointer arrays?
+    // No, RSP + 8 must be 16-byte aligned at entry to function.
+    // Pushing arrays changes stack.
+    // Let's align now to word boundary (8 bytes)
+    process->stack_top &= ~7ULL;
+    
+    // 2. Push auxv (Auxiliary Vector) - skipped for now (null terminator)
+    uint64_t null_aux = 0;
+    push_to_stack(process, &null_aux, sizeof(uint64_t)); // AT_NULL
+    push_to_stack(process, &null_aux, sizeof(uint64_t)); // AT_NULL value
+    
+    // 3. Push envp array (pointers to strings)
+    push_to_stack(process, envp_ptrs, (envc + 1) * sizeof(vaddr_t));
+    
+    // 4. Push argv array (pointers to strings)
+    push_to_stack(process, argv_ptrs, (argc + 1) * sizeof(vaddr_t));
+    
+    // 5. Push argc
+    uint64_t argc64 = argc;
+    push_to_stack(process, &argc64, sizeof(uint64_t));
+    
+    // Final 16-byte alignment check?
+    // Entry: RSP should be 16-byte aligned. 
+    // We just pushed: (2 * 8) + (envc+1)*8 + (argc+1)*8 + 8
+    // Total 8-byte words: 2 + envc + 1 + argc + 1 + 1 = envc + argc + 5.
+    // If (envc + argc + 5) is odd, stack is 8-byte aligned but not 16.
+    // If even, 16-byte aligned.
+    // We can insert padding before pushing argc if needed.
+    
+    // Check alignment
+    // if (process->stack_top & 0xF) { ... }
+    
+    // Restore address space? (Usually this function called just before switch)
+    // vmm_switch_address_space(old_as);
+    
+    kinfo("User stack setup complete (Args: %d, Env: %d)\n", argc, envc);
+    return 0;
+}

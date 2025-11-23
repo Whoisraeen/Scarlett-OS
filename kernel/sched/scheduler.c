@@ -102,6 +102,7 @@ static void init_idle_thread_for_cpu(uint32_t cpu_id) {
     idle->next = NULL;
     idle->cpu_time = 0;
     idle->wakeup_time = 0;
+    idle->cpu_affinity = (int32_t)cpu_id;  // Idle threads are bound to their CPU
     
     rq->idle_thread = idle;
     rq->ready_queues[THREAD_PRIORITY_IDLE] = idle;
@@ -357,9 +358,9 @@ uint64_t thread_create(void (*entry)(void*), void* arg, uint8_t priority, const 
       thread->kernel_stack = stack;
       thread->kernel_stack_size = KERNEL_STACK_SIZE;
       thread->next = NULL;
-      thread->cpu_time = 0;
-      thread->wakeup_time = 0;
-      // No CPU affinity set (can run on any CPU)
+    thread->cpu_time = 0;
+    thread->wakeup_time = 0;
+    thread->cpu_affinity = -1;  // No CPU affinity set (can run on any CPU)
     
     // Set up initial stack frame
     uint64_t* stack_top = (uint64_t*)((uint8_t*)stack + KERNEL_STACK_SIZE);
@@ -561,12 +562,122 @@ void scheduler_tick(void) {
         }
         spinlock_unlock(&sleeping_queue_lock);
         
-        // Perform load balancing
-        extern void scheduler_load_balance(void);
-        scheduler_load_balance();
+/**
+ * Try to steal work from other CPUs
+ * Called when a CPU is about to go idle
+ */
+bool scheduler_try_work_stealing(uint32_t this_cpu) {
+    // Iterate through other CPUs to find one with surplus work
+    uint32_t max_load = 0;
+    uint32_t target_cpu = this_cpu;
+    
+    for (uint32_t i = 0; i < MAX_CPUS; i++) {
+        if (i == this_cpu) continue;
+        
+        // Check if CPU is active (has idle thread initialized)
+        if (!per_cpu_runqueues[i].idle_thread) continue;
+        
+        // Estimate load (count active threads)
+        uint32_t load = 0;
+        spinlock_lock(&per_cpu_runqueues[i].lock);
+        for (int p = 0; p < 128; p++) {
+            thread_t* t = per_cpu_runqueues[i].ready_queues[p];
+            while (t) {
+                load++;
+                t = t->next;
+            }
+        }
+        spinlock_unlock(&per_cpu_runqueues[i].lock);
+        
+        if (load > max_load) {
+            max_load = load;
+            target_cpu = i;
+        }
     }
     
-    // Check if we should preempt (every 10 ticks = 10ms for 100Hz timer)
+    // If we found a busy CPU (load > 1, meaning it has at least 1 running + others waiting)
+    if (max_load > 1 && target_cpu != this_cpu) {
+        per_cpu_runqueue_t* victim_rq = &per_cpu_runqueues[target_cpu];
+        per_cpu_runqueue_t* this_rq = &per_cpu_runqueues[this_cpu];
+        
+        spinlock_lock(&victim_rq->lock);
+        
+        // Steal a thread from the tail of the lowest priority queue (cache cold)
+        thread_t* stolen_thread = NULL;
+        for (int p = 127; p >= 0; p--) {
+            if (victim_rq->ready_queues[p]) {
+                // We found a non-empty queue. 
+                // If it has more than one task (or we are desperate), take from tail.
+                // Since queue is singly linked, we take from head for O(1) speed in this prototype,
+                // but ideally we'd take from tail.
+                
+                stolen_thread = victim_rq->ready_queues[p];
+                victim_rq->ready_queues[p] = stolen_thread->next;
+                stolen_thread->next = NULL;
+                break;
+            }
+        }
+        
+        spinlock_unlock(&victim_rq->lock);
+        
+        if (stolen_thread) {
+            // Add to our ready queue
+            spinlock_lock(&this_rq->lock);
+            
+            if (this_rq->ready_queues[stolen_thread->priority] == NULL) {
+                this_rq->ready_queues[stolen_thread->priority] = stolen_thread;
+            } else {
+                thread_t* cur = this_rq->ready_queues[stolen_thread->priority];
+                while (cur->next) cur = cur->next;
+                cur->next = stolen_thread;
+            }
+            
+            spinlock_unlock(&this_rq->lock);
+            return true;
+        }
+    }
+    
+    return false;
+}
+
+/**
+ * Periodic load balancing
+ */
+void scheduler_load_balance(void) {
+    // For each CPU, if it's idle or underloaded, try to pull work
+    // This is called from CPU 0's tick, so we orchestrate balancing here.
+    
+    // Determine average load
+    uint32_t total_load = 0;
+    uint32_t active_cpus = 0;
+    uint32_t loads[MAX_CPUS] = {0};
+    
+    for (uint32_t i = 0; i < MAX_CPUS; i++) {
+        if (!per_cpu_runqueues[i].idle_thread) continue; // CPU not active
+        
+        active_cpus++;
+        // Approximate load without locking (racy but acceptable for stats)
+        // We only care about runnable threads
+        // This is expensive to iterate, simplified:
+        // In O(1) scheduler, we track nr_running. Here we iterate.
+        // Optimization: Add nr_running to per_cpu_runqueue_t
+        
+        // Fallback iteration:
+        /*
+        for (int p = 0; p < 128; p++) {
+            thread_t* t = per_cpu_runqueues[i].ready_queues[p];
+            while(t) { loads[i]++; t = t->next; }
+        }
+        */
+        // Since iterating 128 queues * 256 CPUs in interrupt context is BAD,
+        // we skip detailed balancing logic here and rely on work stealing 
+        // when CPUs go idle.
+        // Work stealing is more efficient for distributed systems.
+    }
+    
+    // We can implement a simple "push" migration if we detect severe imbalance
+    // but usually work-stealing handles the "idle CPU" case well.
+}
     static uint64_t tick_counter[MAX_CPUS] = {0};
     tick_counter[cpu_id]++;
     

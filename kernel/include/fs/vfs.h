@@ -84,6 +84,9 @@ typedef struct vfs_filesystem {
     
     // Filesystem-specific data
     void* private_data;
+    
+    // Linked list
+    struct vfs_filesystem* next;
 } vfs_filesystem_t;
 
 // Mount point

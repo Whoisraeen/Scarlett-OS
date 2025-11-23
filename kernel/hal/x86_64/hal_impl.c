@@ -23,6 +23,20 @@ extern void context_switch(void* old_ctx, void* new_ctx);
 extern void* get_boot_info(void);
 
 // ============================================================================
+// I/O Ports
+// ============================================================================
+
+void outb(uint16_t port, uint8_t value) {
+    __asm__ volatile("outb %0, %1" : : "a"(value), "Nd"(port));
+}
+
+uint8_t inb(uint16_t port) {
+    uint8_t value;
+    __asm__ volatile("inb %1, %0" : "=a"(value) : "Nd"(port));
+    return value;
+}
+
+// ============================================================================
 // Architecture Detection
 // ============================================================================
 

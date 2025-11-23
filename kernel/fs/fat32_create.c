@@ -133,12 +133,23 @@ error_code_t fat32_create_file(fat32_fs_t* fs, const char* path, fat32_dir_entry
     dir_entry->cluster_low = first_cluster & 0xFFFF;
     dir_entry->file_size = 0;
     
-    // Set timestamps (simplified - would use real time)
-    dir_entry->creation_time = 0;
-    dir_entry->creation_date = 0;
-    dir_entry->modification_time = 0;
-    dir_entry->modification_date = 0;
-    dir_entry->access_date = 0;
+#include "../include/drivers/rtc.h"
+
+    // Set timestamps (using RTC)
+    rtc_time_t time;
+    rtc_get_time(&time);
+    
+    // FAT32 Time: Bits 15-11: Hours, 10-5: Minutes, 4-0: Seconds/2
+    uint16_t fat_time = (time.hour << 11) | (time.minute << 5) | (time.second / 2);
+    
+    // FAT32 Date: Bits 15-9: Year-1980, 8-5: Month, 4-0: Day
+    uint16_t fat_date = ((time.year - 1980) << 9) | (time.month << 5) | time.day;
+    
+    dir_entry->creation_time = fat_time;
+    dir_entry->creation_date = fat_date;
+    dir_entry->modification_time = fat_time;
+    dir_entry->modification_date = fat_date;
+    dir_entry->access_date = fat_date;
     
     // Write back directory sector
     err = block_device_write(fs->device, sector, sector_data);

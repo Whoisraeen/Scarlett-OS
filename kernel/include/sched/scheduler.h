@@ -48,6 +48,7 @@ typedef struct thread {
     struct thread* next;             // Next in queue
     uint64_t cpu_time;               // Total CPU time
     uint64_t wakeup_time;            // For sleeping threads
+    int32_t cpu_affinity;            // CPU affinity (-1 = no affinity, >= 0 = specific CPU)
 } thread_t;
 
 /**

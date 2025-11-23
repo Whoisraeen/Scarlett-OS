@@ -15,7 +15,8 @@
 
 // ARP cache
 #define ARP_CACHE_SIZE 64
-#define ARP_CACHE_TIMEOUT 30000000000ULL  // 30 seconds in nanoseconds (simplified)
+#define ARP_CACHE_TIMEOUT 30000  // 30 seconds in milliseconds
+#define ARP_RESOLVE_TIMEOUT 1000 // 1 second timeout for resolution
 
 static struct {
     arp_cache_entry_t cache[ARP_CACHE_SIZE];
@@ -26,6 +27,7 @@ static struct {
 // Forward declarations
 extern error_code_t ethernet_send(void* data, size_t len, uint8_t* dest_mac, uint16_t type, net_device_t* device);
 extern net_device_t* network_find_device(const char* name);
+extern void timer_sleep_ms(uint64_t ms);
 
 /**
  * Initialize ARP
@@ -57,53 +59,82 @@ void arp_update_cache(uint32_t ip_address, uint8_t* mac_address) {
     
     // Find existing entry or free slot
     arp_cache_entry_t* entry = NULL;
+    arp_cache_entry_t* oldest = &arp_state.cache[0];
+    uint64_t oldest_time = -1ULL;
+    
     for (int i = 0; i < ARP_CACHE_SIZE; i++) {
-        if (arp_state.cache[i].ip_address == ip_address) {
+        if (arp_state.cache[i].valid && arp_state.cache[i].ip_address == ip_address) {
             entry = &arp_state.cache[i];
             break;
         }
+        
         if (!entry && !arp_state.cache[i].valid) {
             entry = &arp_state.cache[i];
+        }
+        
+        if (arp_state.cache[i].timestamp < oldest_time) {
+            oldest_time = arp_state.cache[i].timestamp;
+            oldest = &arp_state.cache[i];
         }
     }
     
     if (!entry) {
-        // Cache full, replace oldest (simple: replace first)
-        entry = &arp_state.cache[0];
+        // Cache full, replace oldest
+        entry = oldest;
     }
     
     // Update entry
     entry->ip_address = ip_address;
     memcpy(entry->mac_address, mac_address, 6);
-    entry->timestamp = time_get_uptime_ms();  // Use actual timestamp
+    entry->timestamp = time_get_uptime_ms();
     entry->valid = true;
     
     spinlock_unlock(&arp_state.lock);
 }
 
 /**
- * Resolve IP address to MAC address
+ * Resolve IP address to MAC address (Blocking)
  */
 error_code_t arp_resolve(uint32_t ip_address, uint8_t* mac_address) {
     if (!arp_state.initialized || !mac_address) {
         return ERR_INVALID_ARG;
     }
     
-    spinlock_lock(&arp_state.lock);
+    uint64_t start_time = time_get_uptime_ms();
     
-    // Search cache
-    for (int i = 0; i < ARP_CACHE_SIZE; i++) {
-        if (arp_state.cache[i].valid && arp_state.cache[i].ip_address == ip_address) {
-            memcpy(mac_address, arp_state.cache[i].mac_address, 6);
-            spinlock_unlock(&arp_state.lock);
-            return ERR_OK;
+    // Retry loop
+    while (time_get_uptime_ms() - start_time < ARP_RESOLVE_TIMEOUT) {
+        spinlock_lock(&arp_state.lock);
+        
+        // Search cache
+        for (int i = 0; i < ARP_CACHE_SIZE; i++) {
+            if (arp_state.cache[i].valid && arp_state.cache[i].ip_address == ip_address) {
+                // Check expiration
+                if (time_get_uptime_ms() - arp_state.cache[i].timestamp > ARP_CACHE_TIMEOUT) {
+                    arp_state.cache[i].valid = false;
+                    continue;
+                }
+                
+                memcpy(mac_address, arp_state.cache[i].mac_address, 6);
+                spinlock_unlock(&arp_state.lock);
+                return ERR_OK;
+            }
         }
+        
+        spinlock_unlock(&arp_state.lock);
+        
+        // Not found, send request (rate limited)
+        static uint64_t last_req = 0;
+        if (time_get_uptime_ms() - last_req > 200) {
+            arp_request(ip_address);
+            last_req = time_get_uptime_ms();
+        }
+        
+        // Wait a bit
+        timer_sleep_ms(10);
     }
     
-    spinlock_unlock(&arp_state.lock);
-    
-    // Not in cache - send ARP request
-    return arp_request(ip_address);
+    return ERR_TIMEOUT;
 }
 
 /**
@@ -148,7 +179,7 @@ error_code_t arp_request(uint32_t ip_address) {
 /**
  * Handle incoming ARP packet
  */
-error_code_t arp_handle_packet(void* buffer, size_t len) {
+error_code_t arp_handle_packet(net_device_t* device, void* buffer, size_t len) {
     if (!arp_state.initialized || !buffer || len < sizeof(arp_packet_t)) {
         return ERR_INVALID_ARG;
     }
@@ -161,7 +192,6 @@ error_code_t arp_handle_packet(void* buffer, size_t len) {
         return ERR_NOT_SUPPORTED;
     }
     
-    net_device_t* device = network_find_device("eth0");
     if (!device || !device->up) {
         return ERR_DEVICE_NOT_FOUND;
     }

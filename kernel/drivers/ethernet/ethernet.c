@@ -9,6 +9,7 @@
 #include "../../include/debug.h"
 #include "../../include/mm/heap.h"
 #include "../../include/mm/vmm.h"
+#include "../../include/mm/pmm.h"  // For PAGE_SIZE
 #include "../../include/string.h"
 #include "../../include/sync/spinlock.h"
 #include "../pci/pci.h"
@@ -127,9 +128,30 @@ static error_code_t ethernet_nic_init(ethernet_nic_t* nic) {
         return ERR_INVALID_STATE;
     }
     
-    // Map MMIO to virtual address (use kernel mapping for now)
-    // TODO: Use proper VMM mapping with MMIO flags
-    nic->mmio_base = (void*)(0xFFFF800000000000ULL + bar_info.base_address);
+    // Map MMIO to virtual address with proper VMM mapping and MMIO flags
+    // TODO: Use proper VMM mapping with MMIO flags - DONE: VMM mapping with MMIO flags implemented
+    // Use kernel address space (NULL means kernel address space)
+    address_space_t* kernel_as = NULL;  // NULL means kernel address space
+    
+    // Use MMIO region in kernel space (0xFFFF800000000000 + physical address)
+    vaddr_t mmio_vaddr = 0xFFFF800000000000ULL + bar_info.base_address;
+    
+    // Map with MMIO flags: NOCACHE (device memory), WRITETHROUGH (no write buffering)
+    uint64_t mmio_flags = VMM_PRESENT | VMM_WRITE | VMM_NOCACHE | VMM_WRITETHROUGH;
+    
+    // Map each page of the MMIO region
+    size_t mmio_pages = (bar_info.size + PAGE_SIZE - 1) / PAGE_SIZE;
+    for (size_t i = 0; i < mmio_pages; i++) {
+        paddr_t page_paddr = bar_info.base_address + (i * PAGE_SIZE);
+        vaddr_t page_vaddr = mmio_vaddr + (i * PAGE_SIZE);
+        
+        if (vmm_map_page(kernel_as, page_vaddr, page_paddr, mmio_flags) != 0) {
+            kerror("Ethernet: Failed to map MMIO page %lu\n", i);
+            return ERR_OUT_OF_MEMORY;
+        }
+    }
+    
+    nic->mmio_base = (void*)mmio_vaddr;
     
     kinfo("Ethernet: MMIO base: 0x%llx, size: 0x%llx\n", 
           bar_info.base_address, bar_info.size);

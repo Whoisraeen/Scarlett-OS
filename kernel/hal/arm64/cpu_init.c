@@ -47,6 +47,35 @@ static inline uint64_t read_sctlr_el1(void) {
     return val;
 }
 
+// EL2/EL3 to EL1 transition helpers
+static inline uint64_t read_hcr_el2(void) {
+    uint64_t val;
+    __asm__ volatile("mrs %0, hcr_el2" : "=r"(val));
+    return val;
+}
+
+static inline void write_hcr_el2(uint64_t val) {
+    __asm__ volatile("msr hcr_el2, %0" :: "r"(val) : "memory");
+}
+
+static inline uint64_t read_scr_el3(void) {
+    uint64_t val;
+    __asm__ volatile("mrs %0, scr_el3" : "=r"(val));
+    return val;
+}
+
+static inline void write_scr_el3(uint64_t val) {
+    __asm__ volatile("msr scr_el3, %0" :: "r"(val) : "memory");
+}
+
+static inline void write_spsr_el1(uint64_t val) {
+    __asm__ volatile("msr spsr_el1, %0" :: "r"(val) : "memory");
+}
+
+static inline void write_elr_el1(uint64_t val) {
+    __asm__ volatile("msr elr_el1, %0" :: "r"(val) : "memory");
+}
+
 // Exception vector table (defined in vectors.S)
 extern void arm64_exception_vectors(void);
 
@@ -72,7 +101,71 @@ error_code_t arm64_cpu_init(void) {
 
     if (current_el != EL1) {
         kwarn("Not running at EL1! Attempting to drop to EL1...\n");
-        // TODO: Implement EL2->EL1 or EL3->EL1 transition
+        
+        if (current_el == EL2) {
+            // EL2->EL1 transition
+            // Configure HCR_EL2 (Hypervisor Configuration Register)
+            uint64_t hcr = read_hcr_el2();
+            // Set RW bit (bit 31) to route lower EL to AArch64
+            hcr |= (1UL << 31);
+            // Set HCD bit (bit 29) to disable HVC calls
+            hcr |= (1UL << 29);
+            write_hcr_el2(hcr);
+            
+            // Set SPSR_EL1 for EL1 with interrupts enabled
+            // M[3:0] = 0100 (EL1h - EL1 with SP_EL1)
+            // I, F, A bits = 0 (interrupts enabled)
+            uint64_t spsr = 0x4;  // EL1h
+            write_spsr_el1(spsr);
+            
+            // Set ELR_EL1 to return address
+            extern void el1_entry_point_label(void);
+            write_elr_el1((uint64_t)el1_entry_point_label);
+            
+            // Use eret to drop to EL1
+            // Note: This will jump to el1_entry_point_label in assembly
+            extern void el1_entry_point_label(void);
+            write_elr_el1((uint64_t)el1_entry_point_label);
+            __asm__ volatile("eret" ::: "memory");
+            
+            // Should not reach here
+            __builtin_unreachable();
+        } else if (current_el == EL3) {
+            // EL3->EL1 transition
+            // Configure SCR_EL3 (Secure Configuration Register)
+            uint64_t scr = read_scr_el3();
+            // Set NS bit (bit 0) - Non-secure world
+            scr |= (1UL << 0);
+            // Set RW bit (bit 10) - Route lower EL to AArch64
+            scr |= (1UL << 10);
+            // Set HCE bit (bit 8) - Enable HVC calls
+            scr |= (1UL << 8);
+            write_scr_el3(scr);
+            
+            // Set SPSR_EL3 for EL1 with interrupts enabled
+            // M[3:0] = 0100 (EL1h - EL1 with SP_EL1)
+            uint64_t spsr = 0x4;  // EL1h
+            __asm__ volatile("msr spsr_el3, %0" :: "r"(spsr) : "memory");
+            
+            // Set ELR_EL3 to return address
+            extern void el1_entry_point_label(void);
+            __asm__ volatile("msr elr_el3, %0" :: "r"((uint64_t)el1_entry_point_label) : "memory");
+            
+            // Use eret to drop to EL1
+            __asm__ volatile("eret" ::: "memory");
+            
+            // Should not reach here
+            __builtin_unreachable();
+        } else {
+            kerror("Unknown exception level: EL%lu\n", current_el);
+            return ERR_NOT_SUPPORTED;
+        }
+    }
+    
+    // Verify we're at EL1 (if we reach here, transition succeeded or we were already at EL1)
+    current_el = read_currentel();
+    if (current_el != EL1) {
+        kerror("Not at EL1, current level: EL%lu\n", current_el);
         return ERR_NOT_SUPPORTED;
     }
 

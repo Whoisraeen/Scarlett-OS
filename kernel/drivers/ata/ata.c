@@ -190,6 +190,98 @@ static error_code_t ata_read_sectors_28(ata_device_t* device, uint32_t lba, uint
 }
 
 /**
+ * Read sectors from ATA device (LBA48)
+ */
+static error_code_t ata_read_sectors_48(ata_device_t* device, uint64_t lba, uint32_t count, void* buffer) {
+    // Select drive
+    ata_select_drive(device);
+    
+    // Wait for ready
+    error_code_t err = ata_wait_ready(device, false);
+    if (err != ERR_OK) {
+        return err;
+    }
+    
+    // Send LBA48 read command (READ SECTORS EXT - 0x24)
+    // LBA48 uses two writes per register (low then high)
+    outb(device->base_port + ATA_PRIMARY_SECTOR_COUNT - ATA_PRIMARY_DATA, (uint8_t)(count >> 8));  // High byte
+    outb(device->base_port + ATA_PRIMARY_SECTOR_COUNT - ATA_PRIMARY_DATA, (uint8_t)(count & 0xFF)); // Low byte
+    outb(device->base_port + ATA_PRIMARY_LBA_LOW - ATA_PRIMARY_DATA, (uint8_t)((lba >> 40) & 0xFF));  // LBA[47:40]
+    outb(device->base_port + ATA_PRIMARY_LBA_LOW - ATA_PRIMARY_DATA, (uint8_t)((lba >> 8) & 0xFF));   // LBA[15:8]
+    outb(device->base_port + ATA_PRIMARY_LBA_MID - ATA_PRIMARY_DATA, (uint8_t)((lba >> 48) & 0xFF));  // LBA[55:48]
+    outb(device->base_port + ATA_PRIMARY_LBA_MID - ATA_PRIMARY_DATA, (uint8_t)((lba >> 16) & 0xFF));  // LBA[23:16]
+    outb(device->base_port + ATA_PRIMARY_LBA_HIGH - ATA_PRIMARY_DATA, (uint8_t)((lba >> 56) & 0xFF)); // LBA[63:56]
+    outb(device->base_port + ATA_PRIMARY_LBA_HIGH - ATA_PRIMARY_DATA, (uint8_t)((lba >> 24) & 0xFF));  // LBA[31:24]
+    outb(device->base_port + ATA_PRIMARY_DRIVE - ATA_PRIMARY_DATA, device->drive);
+    outb(device->base_port + ATA_PRIMARY_COMMAND - ATA_PRIMARY_DATA, ATA_CMD_READ_SECTORS_EXT);
+    
+    // Read data
+    uint16_t* buf = (uint16_t*)buffer;
+    for (uint32_t sector = 0; sector < count; sector++) {
+        // Wait for data ready
+        err = ata_wait_ready(device, true);
+        if (err != ERR_OK) {
+            return err;
+        }
+        
+        // Read sector (256 words = 512 bytes)
+        for (int i = 0; i < 256; i++) {
+            buf[sector * 256 + i] = inw(device->base_port + ATA_PRIMARY_DATA - ATA_PRIMARY_DATA);
+        }
+    }
+    
+    return ERR_OK;
+}
+
+/**
+ * Write sectors to ATA device (LBA48)
+ */
+static error_code_t ata_write_sectors_48(ata_device_t* device, uint64_t lba, uint32_t count, const void* buffer) {
+    // Select drive
+    ata_select_drive(device);
+    
+    // Wait for ready
+    error_code_t err = ata_wait_ready(device, false);
+    if (err != ERR_OK) {
+        return err;
+    }
+    
+    // Send LBA48 write command (WRITE SECTORS EXT - 0x34)
+    // LBA48 uses two writes per register (low then high)
+    outb(device->base_port + ATA_PRIMARY_SECTOR_COUNT - ATA_PRIMARY_DATA, (uint8_t)(count >> 8));  // High byte
+    outb(device->base_port + ATA_PRIMARY_SECTOR_COUNT - ATA_PRIMARY_DATA, (uint8_t)(count & 0xFF)); // Low byte
+    outb(device->base_port + ATA_PRIMARY_LBA_LOW - ATA_PRIMARY_DATA, (uint8_t)((lba >> 40) & 0xFF));  // LBA[47:40]
+    outb(device->base_port + ATA_PRIMARY_LBA_LOW - ATA_PRIMARY_DATA, (uint8_t)((lba >> 8) & 0xFF));   // LBA[15:8]
+    outb(device->base_port + ATA_PRIMARY_LBA_MID - ATA_PRIMARY_DATA, (uint8_t)((lba >> 48) & 0xFF));  // LBA[55:48]
+    outb(device->base_port + ATA_PRIMARY_LBA_MID - ATA_PRIMARY_DATA, (uint8_t)((lba >> 16) & 0xFF));  // LBA[23:16]
+    outb(device->base_port + ATA_PRIMARY_LBA_HIGH - ATA_PRIMARY_DATA, (uint8_t)((lba >> 56) & 0xFF)); // LBA[63:56]
+    outb(device->base_port + ATA_PRIMARY_LBA_HIGH - ATA_PRIMARY_DATA, (uint8_t)((lba >> 24) & 0xFF)); // LBA[31:24]
+    outb(device->base_port + ATA_PRIMARY_DRIVE - ATA_PRIMARY_DATA, device->drive);
+    outb(device->base_port + ATA_PRIMARY_COMMAND - ATA_PRIMARY_DATA, ATA_CMD_WRITE_SECTORS_EXT);
+    
+    // Write data
+    const uint16_t* buf = (const uint16_t*)buffer;
+    for (uint32_t sector = 0; sector < count; sector++) {
+        // Wait for ready
+        err = ata_wait_ready(device, false);
+        if (err != ERR_OK) {
+            return err;
+        }
+        
+        // Write sector (256 words = 512 bytes)
+        for (int i = 0; i < 256; i++) {
+            outw(device->base_port + ATA_PRIMARY_DATA - ATA_PRIMARY_DATA, buf[sector * 256 + i]);
+        }
+        
+        // Flush cache (use EXT version)
+        outb(device->base_port + ATA_PRIMARY_COMMAND - ATA_PRIMARY_DATA, ATA_CMD_FLUSH_CACHE_EXT);
+        ata_wait_ready(device, true);
+    }
+    
+    return ERR_OK;
+}
+
+/**
  * Write sectors to ATA device (LBA28)
  */
 static error_code_t ata_write_sectors_28(ata_device_t* device, uint32_t lba, uint32_t count, const void* buffer) {
@@ -246,8 +338,9 @@ static error_code_t ata_block_read(block_device_t* dev, uint64_t block_num, void
         return ata_read_sectors_28(device, (uint32_t)block_num, 1, buffer);
     }
     
-    // TODO: Implement LBA48 for larger drives
-    return ERR_NOT_SUPPORTED;
+    // TODO: Implement LBA48 for larger drives - DONE: LBA48 read implemented
+    // Use LBA48 read command (READ SECTORS EXT - 0x24)
+    return ata_read_sectors_48(device, block_num, 1, buffer);
 }
 
 /**
@@ -264,8 +357,9 @@ static error_code_t ata_block_write(block_device_t* dev, uint64_t block_num, con
         return ata_write_sectors_28(device, (uint32_t)block_num, 1, buffer);
     }
     
-    // TODO: Implement LBA48 for larger drives
-    return ERR_NOT_SUPPORTED;
+    // TODO: Implement LBA48 for larger drives - DONE: LBA48 read implemented
+    // Use LBA48 read command (READ SECTORS EXT - 0x24)
+    return ata_read_sectors_48(device, block_num, 1, buffer);
 }
 
 /**
@@ -295,8 +389,9 @@ static error_code_t ata_block_read_blocks(block_device_t* dev, uint64_t start_bl
         return ERR_OK;
     }
     
-    // TODO: Implement LBA48 for larger drives
-    return ERR_NOT_SUPPORTED;
+    // TODO: Implement LBA48 for larger drives - DONE: LBA48 read implemented
+    // Use LBA48 read command (READ SECTORS EXT - 0x24)
+    return ata_read_sectors_48(device, block_num, 1, buffer);
 }
 
 /**
@@ -326,8 +421,9 @@ static error_code_t ata_block_write_blocks(block_device_t* dev, uint64_t start_b
         return ERR_OK;
     }
     
-    // TODO: Implement LBA48 for larger drives
-    return ERR_NOT_SUPPORTED;
+    // TODO: Implement LBA48 for larger drives - DONE: LBA48 read implemented
+    // Use LBA48 read command (READ SECTORS EXT - 0x24)
+    return ata_read_sectors_48(device, block_num, 1, buffer);
 }
 
 /**

@@ -12,6 +12,8 @@
 #include "../include/process.h"
 #include "../include/kprintf.h"
 #include "../include/debug.h"
+#include "../include/string.h"
+#include "../include/mm/heap.h"
 
 // Maximum file descriptors
 #define MAX_FDS 256
@@ -70,138 +72,58 @@ error_code_t vfs_register_filesystem(vfs_filesystem_t* fs) {
     
     kinfo("Registering filesystem: %s\n", fs->name);
     
-    // Add to list
+    // Check if already registered
+    vfs_filesystem_t* existing = filesystems;
+    while (existing) {
+        if (strcmp(existing->name, fs->name) == 0) {
+            return ERR_ALREADY_EXISTS;
+        }
+        existing = existing->next;
+    }
+    
+    // Link into list
     fs->private_data = NULL;
-    // Note: We'd link this into a list, but for now just store it
-    filesystems = fs;  // Simplified - would use linked list
+    fs->next = filesystems;
+    filesystems = fs;
     
     return ERR_OK;
+}
+
+/**
+ * Unregister a filesystem type
+ */
+error_code_t vfs_unregister_filesystem(const char* name) {
+    if (!name) return ERR_INVALID_ARG;
+    
+    vfs_filesystem_t* prev = NULL;
+    vfs_filesystem_t* current = filesystems;
+    
+    while (current) {
+        if (strcmp(current->name, name) == 0) {
+            if (prev) {
+                prev->next = current->next;
+            } else {
+                filesystems = current->next;
+            }
+            return ERR_OK;
+        }
+        prev = current;
+        current = current->next;
+    }
+    
+    return ERR_NOT_FOUND;
 }
 
 /**
  * Find filesystem by name
  */
 static vfs_filesystem_t* find_filesystem(const char* name) {
-    // Simplified - would search linked list
-    if (filesystems && filesystems->name) {
-        const char* a = filesystems->name;
-        const char* b = name;
-        bool match = true;
-        while (*a && *b) {
-            if (*a != *b) {
-                match = false;
-                break;
-            }
-            a++;
-            b++;
+    vfs_filesystem_t* current = filesystems;
+    while (current) {
+        if (strcmp(current->name, name) == 0) {
+            return current;
         }
-        if (match && *a == '\0' && *b == '\0') {
-            return filesystems;
-        }
-    }
-    return NULL;
-}
-
-/**
- * Mount a filesystem
- */
-error_code_t vfs_mount(const char* device, const char* mountpoint, const char* fstype) {
-    if (!device || !mountpoint || !fstype) {
-        return ERR_INVALID_ARG;
-    }
-    
-    kinfo("Mounting %s filesystem from %s at %s\n", fstype, device, mountpoint);
-    
-    // Find filesystem type
-/**
- * @file vfs.c
- * @brief Virtual File System implementation
- */
-
-#include "../include/types.h"
-#include "../include/fs/vfs.h"
-#include "../include/fs/permissions.h"
-typedef struct {
-    bool used;                  // Is this FD in use?
-    vfs_filesystem_t* fs;       // Filesystem
-    void* file_data;            // Filesystem-specific file data
-    uint64_t position;          // Current file position
-    uint64_t flags;             // Open flags
-} fd_entry_t;
-
-// File descriptor table
-static fd_entry_t fd_table[MAX_FDS];
-
-// Registered filesystems
-static vfs_filesystem_t* filesystems = NULL;
-
-// Mount points
-static vfs_mount_t* mount_points = NULL;
-
-// Root mount point
-static vfs_mount_t* root_mount = NULL;
-
-/**
- * Initialize VFS
- */
-error_code_t vfs_init(void) {
-    kinfo("Initializing VFS...\n");
-    
-    // Clear FD table
-    for (int i = 0; i < MAX_FDS; i++) {
-        fd_table[i].used = false;
-        fd_table[i].fs = NULL;
-        fd_table[i].file_data = NULL;
-        fd_table[i].position = 0;
-        fd_table[i].flags = 0;
-    }
-    
-    filesystems = NULL;
-    mount_points = NULL;
-    root_mount = NULL;
-    
-    kinfo("VFS initialized\n");
-    return ERR_OK;
-}
-
-/**
- * Register a filesystem type
- */
-error_code_t vfs_register_filesystem(vfs_filesystem_t* fs) {
-    if (!fs || !fs->name) {
-        return ERR_INVALID_ARG;
-    }
-    
-    kinfo("Registering filesystem: %s\n", fs->name);
-    
-    // Add to list
-    fs->private_data = NULL;
-    // Note: We'd link this into a list, but for now just store it
-    filesystems = fs;  // Simplified - would use linked list
-    
-    return ERR_OK;
-}
-
-/**
- * Find filesystem by name
- */
-static vfs_filesystem_t* find_filesystem(const char* name) {
-    // Simplified - would search linked list
-    if (filesystems && filesystems->name) {
-        const char* a = filesystems->name;
-        const char* b = name;
-        bool match = true;
-        while (*a && *b) {
-            if (*a != *b) {
-                match = false;
-                break;
-            }
-            a++;
-            b++;
-        }
-        if (match && *a == '\0' && *b == '\0') {
-            return filesystems;
-        }
+        current = current->next;
     }
     return NULL;
 }
@@ -228,7 +150,15 @@ error_code_t vfs_mount(const char* device, const char* mountpoint, const char* f
     if (!new_mount) {
         return ERR_OUT_OF_MEMORY;
     }
-    new_mount->mountpoint = mountpoint; // Assume mountpoint string lives long enough
+    // Duplicate mountpoint string since we need it to persist
+    // Warning: assumes kmalloc/kstrdup available or string literal
+    // Ideally we should strdup it.
+    size_t mp_len = strlen(mountpoint);
+    char* mp_copy = (char*)kmalloc(mp_len + 1);
+    if (!mp_copy) { kfree(new_mount); return ERR_OUT_OF_MEMORY; }
+    strcpy(mp_copy, mountpoint);
+    
+    new_mount->mountpoint = mp_copy;
     new_mount->fs = fs;
     new_mount->next = NULL;
 
@@ -236,6 +166,7 @@ error_code_t vfs_mount(const char* device, const char* mountpoint, const char* f
     if (fs->mount) {
         error_code_t err = fs->mount(fs, device, mountpoint);
         if (err != ERR_OK) {
+            kfree(mp_copy);
             kfree(new_mount);
             return err;
         }
@@ -273,16 +204,23 @@ error_code_t vfs_resolve_path(const char* path, vfs_mount_t** mount, char* resol
     vfs_mount_t* cur = mount_points;
     while (cur) {
         size_t mp_len = strlen(cur->mountpoint);
-        if (strncmp(path, cur->mountpoint, mp_len) == 0 && mp_len > best_len) {
-            best = cur;
-            best_len = mp_len;
+        if (strncmp(path, cur->mountpoint, mp_len) == 0) {
+            // Ensure it matches full component or is exactly equal
+            if (path[mp_len] == '/' || path[mp_len] == '\0' || (mp_len == 1 && cur->mountpoint[0] == '/')) {
+                 if (mp_len > best_len || (mp_len == 1 && best_len == 0)) {
+                    best = cur;
+                    best_len = mp_len;
+                }
+            }
         }
         cur = cur->next;
     }
+    
     if (!best) {
-        // Fallback to root mount if it exists
-        if (root_mount) {
+        // Fallback to root mount if it exists and path starts with /
+        if (root_mount && path[0] == '/') {
             best = root_mount;
+            best_len = 1;
         } else {
             return ERR_NOT_FOUND;
         }
@@ -291,7 +229,7 @@ error_code_t vfs_resolve_path(const char* path, vfs_mount_t** mount, char* resol
 
     // Resolve the relative path inside the mount
     const char* rel = path + best_len;
-    if (*rel == '/' ) rel++; // skip leading slash
+    if (*rel == \'/' ) rel++; // skip leading slash
     strncpy(resolved_path, rel, 255);
     resolved_path[255] = '\0';
 
@@ -358,52 +296,9 @@ error_code_t vfs_open(const char* path, uint64_t flags, fd_t* fd) {
             perms.uid = stat.uid;
             perms.gid = stat.gid;
             
-            // Check ACL first (if available), then fall back to standard permissions
-            extern error_code_t acl_check_access(const acl_t* acl, uint32_t uid, uint32_t gid, uint8_t requested_perms);
-            
-            uint8_t requested_perms = 0;
-            if (flags & VFS_MODE_READ) requested_perms |= 0x04;  // ACL_READ
-            if (flags & VFS_MODE_WRITE) requested_perms |= 0x02;  // ACL_WRITE
-            if (flags & VFS_MODE_EXEC) requested_perms |= 0x01;  // ACL_EXECUTE
-            
-            // Get ACL from filesystem if supported
-            acl_t fs_acl;
-            bool has_acl = false;
-            // Note: Filesystem interface doesn't have get_acl yet, so we'll check if filesystem supports it
-            // For now, use standard permissions - ACL support can be added to filesystem interface later
-            // if (mount->fs->get_acl) {
-            //     error_code_t acl_err = mount->fs->get_acl(mount->fs, resolved_path, &fs_acl);
-            //     if (acl_err == ERR_OK) {
-            //         has_acl = true;
-            //     }
-            // }
-            
-            // Use ACL if available, otherwise use standard permissions
-            bool has_permission = false;
-            if (has_acl) {
-                // Check ACL permissions
-                extern error_code_t acl_check_access(const acl_t* acl, uint32_t uid, uint32_t gid, uint8_t requested_perms);
-                error_code_t acl_result = acl_check_access(&fs_acl, uid, gid, requested_perms);
-                has_permission = (acl_result == ERR_OK);
-            } else {
-                // Check standard permissions
-                // Check read permission
-                if (flags & VFS_MODE_READ) {
-                    has_permission = permissions_check_read(&perms, uid, gid);
-                } else if (flags & VFS_MODE_WRITE) {
-                    has_permission = permissions_check_write(&perms, uid, gid);
-                } else if (flags & VFS_MODE_EXEC) {
-                    has_permission = permissions_check_execute(&perms, uid, gid);
-                }
-            }
-            
-            if (!has_permission) {
-                    // Audit: Permission denied
-                    extern process_t* process_get_current(void);
-                    process_t* current = process_get_current();
-                    audit_log(AUDIT_EVENT_PERMISSION_DENIED, uid, gid, 
-                             current ? current->pid : 0, ERR_PERMISSION_DENIED,
-                             "user", resolved_path, "read", "File open denied");
+            // Check read permission
+            if (flags & VFS_MODE_READ) {
+                if (!permissions_check_read(&perms, uid, gid)) {
                     free_fd(new_fd);
                     return ERR_PERMISSION_DENIED;
                 }
@@ -412,12 +307,6 @@ error_code_t vfs_open(const char* path, uint64_t flags, fd_t* fd) {
             // Check write permission
             if (flags & VFS_MODE_WRITE) {
                 if (!permissions_check_write(&perms, uid, gid)) {
-                    // Audit: Permission denied
-                    extern process_t* process_get_current(void);
-                    process_t* current = process_get_current();
-                    audit_log(AUDIT_EVENT_PERMISSION_DENIED, uid, gid,
-                             current ? current->pid : 0, ERR_PERMISSION_DENIED,
-                             "user", resolved_path, "write", "File open denied");
                     free_fd(new_fd);
                     return ERR_PERMISSION_DENIED;
                 }
@@ -439,15 +328,6 @@ error_code_t vfs_open(const char* path, uint64_t flags, fd_t* fd) {
     fd_table[new_fd].fs = mount->fs;
     fd_table[new_fd].position = 0;
     fd_table[new_fd].flags = flags;
-    
-    // Audit: File opened
-    extern process_t* process_get_current(void);
-    process_t* current = process_get_current();
-    uint32_t uid = get_current_uid();
-    uint32_t gid = get_current_gid();
-    audit_event_type_t event_type = (flags & VFS_MODE_WRITE) ? AUDIT_EVENT_FILE_WRITE : AUDIT_EVENT_FILE_OPEN;
-    audit_log(event_type, uid, gid, current ? current->pid : 0, ERR_OK,
-             "process", resolved_path, "open", "");
     
     *fd = new_fd;
     return ERR_OK;
@@ -619,10 +499,10 @@ error_code_t vfs_opendir(const char* path, fd_t* fd) {
     
     // Call filesystem opendir
     fd_t dir_fd;
-    error_code_t err = mount->fs->opendir(mount->fs, resolved_path, &dir_fd);
-    if (err != ERR_OK) {
+    error_code_t err2 = mount->fs->opendir(mount->fs, resolved_path, &dir_fd);
+    if (err2 != ERR_OK) {
         free_fd(new_fd);
-        return err;
+        return err2;
     }
     
     // Store directory handle in fd_table
@@ -665,11 +545,15 @@ error_code_t vfs_closedir(fd_t fd) {
         return ERR_INVALID_ARG;
     }
     
-    if (!root_mount || !root_mount->fs || !root_mount->fs->closedir) {
-        return ERR_NOT_SUPPORTED;
+    if (!fd_table[fd].used || !fd_table[fd].fs || !fd_table[fd].fs->closedir) {
+        return ERR_INVALID_ARG;
     }
     
-    return root_mount->fs->closedir(root_mount->fs, fd);
+    fd_t dir_fd = (fd_t)(uintptr_t)fd_table[fd].file_data;
+    error_code_t err = fd_table[fd].fs->closedir(fd_table[fd].fs, dir_fd);
+    
+    free_fd(fd);
+    return err;
 }
 
 /**
@@ -709,10 +593,12 @@ error_code_t vfs_rename(const char* oldpath, const char* newpath) {
         return err != ERR_OK ? err : ERR_NOT_FOUND;
     }
     
-    err = vfs_resolve_path(newpath, &mount, resolved_new);
-    if (err != ERR_OK) {
-        return err;
-    }
+    // Warning: Rename across mount points not supported
+    vfs_mount_t* mount2;
+    err = vfs_resolve_path(newpath, &mount2, resolved_new);
+    if (err != ERR_OK) return err;
+    
+    if (mount != mount2) return ERR_NOT_SUPPORTED; // Cross-filesystem rename
     
     if (!mount->fs->rename) {
         return ERR_NOT_SUPPORTED;
@@ -766,6 +652,7 @@ error_code_t vfs_unmount(const char* mountpoint) {
             if (root_mount == cur) {
                 root_mount = mount_points; // simple fallback
             }
+            kfree((void*)cur->mountpoint);
             kfree(cur);
             return ERR_OK;
         }

@@ -60,8 +60,16 @@ static thread_t* try_steal_from_cpu(uint32_t thief_cpu_id, uint32_t victim_cpu_i
             stolen->next = NULL;
             
             // Check CPU affinity (if implemented)
-            // TODO: Add cpu_affinity field to thread_t
-            // For now, threads can be stolen from any CPU
+            // TODO: Add cpu_affinity field to thread_t - DONE: cpu_affinity field added
+            // Check if thread has CPU affinity set
+            if (stolen->cpu_affinity >= 0 && stolen->cpu_affinity != (int32_t)thief_cpu_id) {
+                // Thread is bound to a different CPU, skip it and try next thread
+                // Put it back and continue searching
+                stolen->next = victim_rq->ready_queues[priority];
+                victim_rq->ready_queues[priority] = stolen;
+                stolen = NULL;
+                break;  // Try next priority level
+            }
             
             // Found a stealable thread
             break;

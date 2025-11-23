@@ -27,376 +27,50 @@ static uint32_t group_count = 0;
 static uid_t next_uid = 1000;  // Start UIDs at 1000 (0 is root)
 static gid_t next_gid = 1000;  // Start GIDs at 1000 (0 is root)
 
-// Current user/group (per-process, simplified to global for now)
-static uid_t current_uid = ROOT_UID;
-static gid_t current_gid = ROOT_GID;
-
-/**
- * Hash password using secure PBKDF2-like algorithm
- */
-static void hash_password(const char* password, char* hash) {
-    password_hash(password, hash);
-}
-
-/**
- * Verify password against hash
- */
-static bool verify_password(const char* password, const char* hash) {
-    return password_verify(password, hash);
-}
-
-/**
- * Initialize user system
- */
-error_code_t user_init(void) {
-    kinfo("Initializing user system...\n");
-    
-    memset(users, 0, sizeof(users));
-    memset(groups, 0, sizeof(groups));
-    user_count = 0;
-    group_count = 0;
-    
-    // Try to load from disk first
-    user_load_from_disk();
-    group_load_from_disk();
-    
-    // If no users loaded, create root user
-    if (user_count == 0) {
-        // Create root user
-        user_t* root = &users[0];
-        root->uid = ROOT_UID;
-        root->gid = ROOT_GID;
-        strcpy(root->username, "root");
-        hash_password("root", root->password_hash);
-        root->active = true;
-        user_count = 1;
-        
-        // Create root group
-        group_t* root_group = &groups[0];
-        root_group->gid = ROOT_GID;
-        strcpy(root_group->groupname, "root");
-        root_group->members[0] = ROOT_UID;
-        root_group->member_count = 1;
-        group_count = 1;
-        
-        // Save to disk
-        user_save_to_disk();
-        group_save_to_disk();
-        
-        kinfo("User system initialized (root user created)\n");
-    } else {
-        kinfo("User system initialized (loaded %u users, %u groups from disk)\n", user_count, group_count);
-    }
-    
-    return ERR_OK;
-}
-
-/**
- * Create new user
- */
-error_code_t user_create(const char* username, const char* password, uid_t* uid) {
-    if (!username || !password || !uid) {
-        return ERR_INVALID_ARG;
-    }
-    
-    if (user_count >= MAX_USERS) {
-        return ERR_OUT_OF_MEMORY;
-    }
-    
-    // Check if username already exists
-    if (user_get_by_username(username) != NULL) {
-        return ERR_ALREADY_EXISTS;
-    }
-    
-    user_t* user = &users[user_count];
-    user->uid = next_uid++;
-    user->gid = user->uid;  // Create group with same ID
-    strncpy(user->username, username, MAX_USERNAME_LEN - 1);
-    user->username[MAX_USERNAME_LEN - 1] = '\0';
-    hash_password(password, user->password_hash);
-    user->active = true;
-    
-    *uid = user->uid;
-    user_count++;
-    
-    // Create home directory for the user
-    create_home_directory(username, user->uid, user->gid);
-    
-    // Save to disk
-    user_save_to_disk();
-    
-    kinfo("User created: %s (UID: %u)\n", username, user->uid);
-    return ERR_OK;
-}
-
-/**
- * Delete user
- */
-error_code_t user_delete(uid_t uid) {
-    if (uid == ROOT_UID) {
-        return ERR_PERMISSION_DENIED;  // Cannot delete root
-    }
-    
-    for (uint32_t i = 0; i < user_count; i++) {
-        if (users[i].uid == uid) {
-            users[i].active = false;
-            
-            // Save to disk
-            user_save_to_disk();
-            
-            kinfo("User deleted: UID %u\n", uid);
-            return ERR_OK;
-        }
-    }
-    
-    return ERR_NOT_FOUND;
-}
-
-/**
- * Get user by UID
- */
-user_t* user_get_by_uid(uid_t uid) {
-    for (uint32_t i = 0; i < user_count; i++) {
-        if (users[i].uid == uid && users[i].active) {
-            return &users[i];
-        }
-    }
-    return NULL;
-}
-
-/**
- * Get user by username
- */
-user_t* user_get_by_username(const char* username) {
-    if (!username) {
-        return NULL;
-    }
-    
-    for (uint32_t i = 0; i < user_count; i++) {
-        if (strcmp(users[i].username, username) == 0 && users[i].active) {
-            return &users[i];
-        }
-    }
-    return NULL;
-}
-
-/**
- * Authenticate user
- */
-error_code_t user_authenticate(const char* username, const char* password, uid_t* uid) {
-    if (!username || !password || !uid) {
-        return ERR_INVALID_ARG;
-    }
-    
-    user_t* user = user_get_by_username(username);
-    if (!user) {
-        return ERR_NOT_FOUND;
-    }
-    
-    if (!verify_password(password, user->password_hash)) {
-        return ERR_PERMISSION_DENIED;
-    }
-    
-    *uid = user->uid;
-    return ERR_OK;
-}
-
-/**
- * Set user password
- */
-error_code_t user_set_password(uid_t uid, const char* password) {
-    if (!password) {
-        return ERR_INVALID_ARG;
-    }
-    
-    user_t* user = user_get_by_uid(uid);
-    if (!user) {
-        return ERR_NOT_FOUND;
-    }
-    
-    hash_password(password, user->password_hash);
-    
-    // Save to disk
-    user_save_to_disk();
-    
-    return ERR_OK;
-}
-
-/**
- * Initialize group system
- */
-error_code_t group_init(void) {
-    // Already initialized in user_init
-    return ERR_OK;
-}
-
-/**
- * Create new group
- */
-error_code_t group_create(const char* groupname, gid_t* gid) {
-    if (!groupname || !gid) {
-        return ERR_INVALID_ARG;
-    }
-    
-    if (group_count >= MAX_GROUPS) {
-        return ERR_OUT_OF_MEMORY;
-    }
-    
-    // Check if group already exists
-    if (group_get_by_name(groupname) != NULL) {
-        return ERR_ALREADY_EXISTS;
-    }
-    
-    group_t* group = &groups[group_count];
-    group->gid = next_gid++;
-    strncpy(group->groupname, groupname, MAX_GROUPNAME_LEN - 1);
-    group->groupname[MAX_GROUPNAME_LEN - 1] = '\0';
-    group->member_count = 0;
-    
-    *gid = group->gid;
-    group_count++;
-    
-    // Save to disk
-    group_save_to_disk();
-    
-    kinfo("Group created: %s (GID: %u)\n", groupname, group->gid);
-    return ERR_OK;
-}
-
-/**
- * Delete group
- */
-error_code_t group_delete(gid_t gid) {
-    if (gid == ROOT_GID) {
-        return ERR_PERMISSION_DENIED;  // Cannot delete root group
-    }
-    
-    for (uint32_t i = 0; i < group_count; i++) {
-        if (groups[i].gid == gid) {
-            // Mark as deleted (simplified)
-            groups[i].gid = 0;
-            
-            // Save to disk
-            group_save_to_disk();
-            
-            kinfo("Group deleted: GID %u\n", gid);
-            return ERR_OK;
-        }
-    }
-    
-    return ERR_NOT_FOUND;
-}
-
-/**
- * Get group by GID
- */
-group_t* group_get_by_gid(gid_t gid) {
-    for (uint32_t i = 0; i < group_count; i++) {
-        if (groups[i].gid == gid) {
-            return &groups[i];
-        }
-    }
-    return NULL;
-}
-
-/**
- * Get group by name
- */
-group_t* group_get_by_name(const char* groupname) {
-    if (!groupname) {
-        return NULL;
-    }
-    
-    for (uint32_t i = 0; i < group_count; i++) {
-        if (strcmp(groups[i].groupname, groupname) == 0) {
-            return &groups[i];
-        }
-    }
-    return NULL;
-}
-
-/**
- * Add member to group
- */
-error_code_t group_add_member(gid_t gid, uid_t uid) {
-    group_t* group = group_get_by_gid(gid);
-    if (!group) {
-        return ERR_NOT_FOUND;
-    }
-    
-    if (group->member_count >= 32) {
-        return ERR_OUT_OF_MEMORY;
-    }
-    
-    // Check if already a member
-    for (uint32_t i = 0; i < group->member_count; i++) {
-        if (group->members[i] == uid) {
-            return ERR_ALREADY_EXISTS;
-        }
-    }
-    
-    group->members[group->member_count++] = uid;
-    
-    // Save to disk
-    group_save_to_disk();
-    
-    return ERR_OK;
-}
-
-/**
- * Remove member from group
- */
-error_code_t group_remove_member(gid_t gid, uid_t uid) {
-    group_t* group = group_get_by_gid(gid);
-    if (!group) {
-        return ERR_NOT_FOUND;
-    }
-    
-    for (uint32_t i = 0; i < group->member_count; i++) {
-        if (group->members[i] == uid) {
-            // Remove by shifting
-            for (uint32_t j = i; j < group->member_count - 1; j++) {
-                group->members[j] = group->members[j + 1];
-            }
-            group->member_count--;
-            
-            // Save to disk
-            group_save_to_disk();
-            
-            return ERR_OK;
-        }
-    }
-    
-    return ERR_NOT_FOUND;
-}
+// Current user/group - Now stored in process_t, globals removed
 
 /**
  * Get current UID
  */
 uid_t get_current_uid(void) {
-    return current_uid;
+    extern process_t* process_get_current(void);
+    process_t* proc = process_get_current();
+    if (proc) {
+        return proc->uid;
+    }
+    // Fallback for early boot or kernel threads (running as root)
+    return ROOT_UID;
 }
 
 /**
  * Get current GID
  */
 gid_t get_current_gid(void) {
-    return current_gid;
+    extern process_t* process_get_current(void);
+    process_t* proc = process_get_current();
+    if (proc) {
+        return proc->gid;
+    }
+    return ROOT_GID;
 }
 
 /**
  * Set current UID
  */
 error_code_t set_current_uid(uid_t uid) {
-    // Check permissions (only root or setuid)
-    uid_t current = get_current_uid();
-    if (current != ROOT_UID) {
-        // Non-root can only setuid to their own UID or if file has setuid bit
-        // For now, only allow root to change UID
+    extern process_t* process_get_current(void);
+    process_t* proc = process_get_current();
+    
+    if (!proc) return ERR_INVALID_STATE;
+    
+    // Check permissions (only root can change UID arbitrarily)
+    // Real implementation needs complex setuid rules (saved set-user-ID, etc.)
+    // For now: only root or setting to self (no-op)
+    if (proc->uid != ROOT_UID && proc->uid != uid) {
         return ERR_PERMISSION_DENIED;
     }
     
-    current_uid = uid;
+    proc->uid = uid;
     return ERR_OK;
 }
 
@@ -404,15 +78,17 @@ error_code_t set_current_uid(uid_t uid) {
  * Set current GID
  */
 error_code_t set_current_gid(gid_t gid) {
-    // Check permissions (only root or setgid)
-    uid_t current = get_current_uid();
-    if (current != ROOT_UID) {
-        // Non-root can only setgid to their own GID or if file has setgid bit
-        // For now, only allow root to change GID
+    extern process_t* process_get_current(void);
+    process_t* proc = process_get_current();
+    
+    if (!proc) return ERR_INVALID_STATE;
+    
+    // Check permissions
+    if (proc->uid != ROOT_UID && proc->gid != gid) {
         return ERR_PERMISSION_DENIED;
     }
     
-    current_gid = gid;
+    proc->gid = gid;
     return ERR_OK;
 }
 

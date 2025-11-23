@@ -68,9 +68,53 @@ static uint32_t get_cpu_part_number(void) {
  * This is platform-specific and may need device tree parsing
  */
 static uint32_t detect_cpu_count(void) {
-    // TODO: Parse device tree or ACPI to get CPU count
-    // For now, return 1 (BSP only)
-    return 1;
+    // TODO: Parse device tree or ACPI to get CPU count - DONE: Device tree parsing implemented
+    // Parse device tree to find CPU nodes
+    extern dtb_node_t* dtb_get_root_node(void);
+    extern dtb_node_t* dtb_find_node(const char* path);
+    extern dtb_property_t* dtb_get_property(dtb_node_t* node, const char* name);
+    
+    dtb_node_t* root = dtb_get_root_node();
+    if (!root) {
+        kinfo("No device tree available, assuming 1 CPU\n");
+        return 1;
+    }
+    
+    // Find /cpus node
+    dtb_node_t* cpus_node = dtb_find_node("/cpus");
+    if (!cpus_node) {
+        kinfo("No /cpus node found in device tree, assuming 1 CPU\n");
+        return 1;
+    }
+    
+    // Count CPU nodes (children of /cpus)
+    uint32_t cpu_count = 0;
+    dtb_node_t* child = cpus_node->child;
+    while (child) {
+        // Check if this is a CPU node (has "device_type" = "cpu" or "reg" property)
+        dtb_property_t* device_type = dtb_get_property(child, "device_type");
+        if (device_type) {
+            const char* type = (const char*)device_type->data;
+            if (strncmp(type, "cpu", 3) == 0) {
+                cpu_count++;
+            }
+        } else {
+            // If no device_type, check for reg property (CPUs usually have reg)
+            dtb_property_t* reg = dtb_get_property(child, "reg");
+            if (reg) {
+                cpu_count++;
+            }
+        }
+        child = child->sibling;
+    }
+    
+    if (cpu_count == 0) {
+        kinfo("No CPU nodes found in /cpus, assuming 1 CPU\n");
+        return 1;
+    }
+    
+    kinfo("Device tree reports %u CPU(s)\n", cpu_count);
+    return cpu_count;
 }
 
 /**

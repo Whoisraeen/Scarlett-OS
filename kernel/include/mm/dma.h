@@ -29,6 +29,7 @@ typedef struct dma_buffer {
     uint32_t flags;               // Buffer flags
     uint64_t owner_tid;           // Thread ID of owner
     uint64_t device_id;           // Device ID using this buffer (0 = none)
+    uint64_t iova;                // I/O Virtual Address (if mapped via IOMMU)
     struct dma_buffer* next;
 } dma_buffer_t;
 

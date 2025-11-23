@@ -28,6 +28,7 @@
 #define PTE_SHARED (3UL << 8)
 #define PTE_AF (1UL << 10)
 #define PTE_NG (1UL << 11)
+#define PTE_ISH (3UL << 8) // Inner Shareable
 #define PTE_PXN (1UL << 53)
 #define PTE_UXN (1UL << 54)
 
@@ -76,6 +77,11 @@ void arm64_irq_register(uint32_t irq, void (*handler)(void));
 // Timer functions
 void arm64_timer_init(void);
 uint64_t arm64_timer_get_ticks(void);
+
+// Exception handling
+void arm64_handle_sync_exception(uint64_t esr, uint64_t far, uint64_t elr, uint64_t spsr);
+void arm64_handle_fiq(void);
+void arm64_handle_serror(void);
 void arm64_timer_set_interval(uint64_t interval_us);
 
 // Context switching

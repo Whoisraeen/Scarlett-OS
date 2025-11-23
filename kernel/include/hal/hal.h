@@ -309,5 +309,19 @@ void hal_power_shutdown(void);
  */
 void hal_power_reboot(void);
 
+// ============================================================================
+// I/O Ports (x86 Specific, but useful abstraction)
+// ============================================================================
+
+/**
+ * Write 8-bit value to I/O port
+ */
+void outb(uint16_t port, uint8_t value);
+
+/**
+ * Read 8-bit value from I/O port
+ */
+uint8_t inb(uint16_t port);
+
 #endif // KERNEL_HAL_HAL_H
 

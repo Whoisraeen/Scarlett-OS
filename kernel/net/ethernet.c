@@ -13,6 +13,47 @@
 // Forward declaration
 extern net_device_t* network_find_device(const char* name);
 
+// Protocol handlers
+#define MAX_ETH_HANDLERS 16
+static struct {
+    uint16_t type;
+    ethernet_protocol_handler_t handler;
+} eth_handlers[MAX_ETH_HANDLERS];
+
+static int eth_handler_count = 0;
+
+/**
+ * Initialize Ethernet subsystem
+ */
+error_code_t ethernet_init(void) {
+    memset(eth_handlers, 0, sizeof(eth_handlers));
+    eth_handler_count = 0;
+    return ERR_OK;
+}
+
+/**
+ * Register a protocol handler
+ */
+error_code_t ethernet_register_protocol(uint16_t type, ethernet_protocol_handler_t handler) {
+    if (eth_handler_count >= MAX_ETH_HANDLERS) {
+        return ERR_OUT_OF_MEMORY;
+    }
+    
+    // Check if already registered
+    for (int i = 0; i < eth_handler_count; i++) {
+        if (eth_handlers[i].type == type) {
+            eth_handlers[i].handler = handler; // Update
+            return ERR_OK;
+        }
+    }
+    
+    eth_handlers[eth_handler_count].type = type;
+    eth_handlers[eth_handler_count].handler = handler;
+    eth_handler_count++;
+    
+    return ERR_OK;
+}
+
 /**
  * Send Ethernet frame
  */
@@ -93,16 +134,17 @@ error_code_t ethernet_receive(net_device_t* device, void* buffer, size_t* len) {
     size_t payload_len = *len - ETH_HEADER_SIZE;
     uint16_t eth_type = __builtin_bswap16(frame->type);
     
-    // Handle ARP packets
-    if (eth_type == ETH_TYPE_ARP) {
-        extern error_code_t arp_handle_packet(void* buffer, size_t len);
-        arp_handle_packet(frame->data, payload_len);
-        return ERR_NOT_FOUND;  // ARP handled, don't pass to IP layer
+    // Dispatch to protocol handler
+    for (int i = 0; i < eth_handler_count; i++) {
+        if (eth_handlers[i].type == eth_type) {
+            return eth_handlers[i].handler(device, frame->data, payload_len);
+        }
     }
     
-    memmove(buffer, frame->data, payload_len);
-    *len = payload_len;
+    // No handler found
+    // memmove(buffer, frame->data, payload_len); // Don't modify buffer if no handler
+    // *len = payload_len;
     
-    return ERR_OK;
+    return ERR_NOT_SUPPORTED;
 }
 

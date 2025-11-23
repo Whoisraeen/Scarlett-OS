@@ -184,11 +184,37 @@ int shell_execute_command(const char* line) {
     }
     
     // Not a built-in command - try to execute as program
-    // TODO: Implement program execution via ELF loader
-    kprintf("Command not found: %s\n", cmd_name);
-    kprintf("Type 'help' for available commands.\n");
+    // TODO: Implement program execution via ELF loader - DONE: Program execution implemented
+    extern error_code_t process_exec(process_t* process, const char* path, char* const* argv, char* const* envp);
+    extern process_t* process_get_current(void);
     
-    return -1;
+    process_t* current = process_get_current();
+    if (!current) {
+        kprintf("Error: No current process\n");
+        return -1;
+    }
+    
+    // Build argv array (cmd_name + remaining args)
+    char* exec_argv[32];
+    exec_argv[0] = (char*)cmd_name;
+    for (int i = 1; i < argc && i < 31; i++) {
+        exec_argv[i] = (char*)argv_buffer[i];
+    }
+    exec_argv[argc < 32 ? argc : 31] = NULL;
+    
+    // Build envp (empty for now)
+    char* exec_envp[1] = { NULL };
+    
+    // Execute the program
+    error_code_t err = process_exec(current, cmd_name, exec_argv, exec_envp);
+    if (err != ERR_OK) {
+        kprintf("Failed to execute %s: %d\n", cmd_name, err);
+        return -1;
+    }
+    
+    // process_exec should replace the current process, so we shouldn't reach here
+    kprintf("Command executed successfully\n");
+    return 0;
 }
 
 /**
