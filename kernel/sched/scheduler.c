@@ -17,6 +17,18 @@
 // Forward declaration for our custom snprintf
 int snprintf(char* buf, size_t size, const char* fmt, ...);
 
+static inline uint64_t interrupts_disable(void) {
+    uint64_t flags;
+    __asm__ volatile("pushfq; pop %0; cli" : "=r"(flags));
+    return flags;
+}
+
+static inline void interrupts_restore(uint64_t flags) {
+    if (flags & 0x200) {
+        __asm__ volatile("sti");
+    }
+}
+
 #define KERNEL_STACK_SIZE (64 * 1024)  // 64KB per thread
 #define MAX_THREADS 256
 #define MAX_CPUS 256
@@ -42,6 +54,10 @@ static thread_t* sleeping_queue = NULL;
 
 // Per-CPU runqueues
 static per_cpu_runqueue_t per_cpu_runqueues[MAX_CPUS];
+
+// Per-CPU scheduler state
+static uint32_t tick_counter[MAX_CPUS] = {0};
+static bool need_reschedule[MAX_CPUS] = {false};
 
 /**
  * Context switch (defined in assembly)
@@ -192,6 +208,7 @@ void add_to_ready_queue(thread_t* thread, uint32_t cpu_id) {
     per_cpu_runqueue_t* rq = &per_cpu_runqueues[cpu_id];
     uint8_t priority = thread->priority;
     
+    uint64_t flags = interrupts_disable();
     spinlock_lock(&rq->lock);
     
     if (rq->ready_queues[priority] == NULL) {
@@ -208,6 +225,7 @@ void add_to_ready_queue(thread_t* thread, uint32_t cpu_id) {
     }
     
     spinlock_unlock(&rq->lock);
+    interrupts_restore(flags);
 }
 
 /**
@@ -220,11 +238,13 @@ void remove_from_ready_queue(thread_t* thread) {
     for (uint32_t i = 0; i < MAX_CPUS; i++) {
         per_cpu_runqueue_t* rq = &per_cpu_runqueues[i];
         
+        uint64_t flags = interrupts_disable();
         spinlock_lock(&rq->lock);
         
         if (rq->ready_queues[priority] == thread) {
             rq->ready_queues[priority] = thread->next;
             spinlock_unlock(&rq->lock);
+            interrupts_restore(flags);
             return;
         }
         
@@ -236,10 +256,12 @@ void remove_from_ready_queue(thread_t* thread) {
         if (current) {
             current->next = thread->next;
             spinlock_unlock(&rq->lock);
+            interrupts_restore(flags);
             return;
         }
         
         spinlock_unlock(&rq->lock);
+        interrupts_restore(flags);
     }
 }
 
@@ -250,6 +272,7 @@ static thread_t* pick_next_thread(void) {
     per_cpu_runqueue_t* rq = get_current_runqueue();
     uint32_t cpu_id = cpu_get_current_id();
     
+    uint64_t flags = interrupts_disable();
     spinlock_lock(&rq->lock);
     
     // Find highest priority non-empty queue
@@ -275,36 +298,9 @@ static thread_t* pick_next_thread(void) {
             }
             
             spinlock_unlock(&rq->lock);
+            interrupts_restore(flags);
             return thread;
         }
-    }
-    
-    // No threads ready - try work stealing before going idle
-    spinlock_unlock(&rq->lock);
-    
-    extern bool scheduler_try_work_stealing(uint32_t cpu_id);
-    if (scheduler_try_work_stealing(cpu_id)) {
-        // Work was stolen, try again
-        spinlock_lock(&rq->lock);
-        for (int i = 127; i >= 0; i--) {
-            if (rq->ready_queues[i]) {
-                thread_t* thread = rq->ready_queues[i];
-                rq->ready_queues[i] = thread->next;
-                thread->next = NULL;
-                if (rq->ready_queues[i] == NULL) {
-                    rq->ready_queues[i] = thread;
-                } else {
-                    thread_t* current = rq->ready_queues[i];
-                    while (current->next) {
-                        current = current->next;
-                    }
-                    current->next = thread;
-                }
-                spinlock_unlock(&rq->lock);
-                return thread;
-            }
-        }
-        spinlock_unlock(&rq->lock);
     }
     
     // Still nothing - return idle thread
@@ -455,10 +451,12 @@ void thread_sleep(uint64_t ms) {
     thread->state = THREAD_STATE_SLEEPING;
 
     // Add to global sleeping queue
+    uint64_t flags = interrupts_disable();
     spinlock_lock(&sleeping_queue_lock);
     thread->next = sleeping_queue;
     sleeping_queue = thread;
     spinlock_unlock(&sleeping_queue_lock);
+    interrupts_restore(flags);
 
     // Yield CPU
     scheduler_schedule();
@@ -509,8 +507,7 @@ void scheduler_schedule(void) {
     context_switch(&old_thread->context, &new_thread->context);
 }
 
-// Per-CPU reschedule flags
-static volatile bool need_reschedule[MAX_CPUS] = {false};
+
 
 /**
  * Timer tick handler (called from timer interrupt)
@@ -562,122 +559,10 @@ void scheduler_tick(void) {
         }
         spinlock_unlock(&sleeping_queue_lock);
         
-/**
- * Try to steal work from other CPUs
- * Called when a CPU is about to go idle
- */
-bool scheduler_try_work_stealing(uint32_t this_cpu) {
-    // Iterate through other CPUs to find one with surplus work
-    uint32_t max_load = 0;
-    uint32_t target_cpu = this_cpu;
-    
-    for (uint32_t i = 0; i < MAX_CPUS; i++) {
-        if (i == this_cpu) continue;
-        
-        // Check if CPU is active (has idle thread initialized)
-        if (!per_cpu_runqueues[i].idle_thread) continue;
-        
-        // Estimate load (count active threads)
-        uint32_t load = 0;
-        spinlock_lock(&per_cpu_runqueues[i].lock);
-        for (int p = 0; p < 128; p++) {
-            thread_t* t = per_cpu_runqueues[i].ready_queues[p];
-            while (t) {
-                load++;
-                t = t->next;
-            }
-        }
-        spinlock_unlock(&per_cpu_runqueues[i].lock);
-        
-        if (load > max_load) {
-            max_load = load;
-            target_cpu = i;
-        }
+        // Perform load balancing
+        scheduler_load_balance();
     }
     
-    // If we found a busy CPU (load > 1, meaning it has at least 1 running + others waiting)
-    if (max_load > 1 && target_cpu != this_cpu) {
-        per_cpu_runqueue_t* victim_rq = &per_cpu_runqueues[target_cpu];
-        per_cpu_runqueue_t* this_rq = &per_cpu_runqueues[this_cpu];
-        
-        spinlock_lock(&victim_rq->lock);
-        
-        // Steal a thread from the tail of the lowest priority queue (cache cold)
-        thread_t* stolen_thread = NULL;
-        for (int p = 127; p >= 0; p--) {
-            if (victim_rq->ready_queues[p]) {
-                // We found a non-empty queue. 
-                // If it has more than one task (or we are desperate), take from tail.
-                // Since queue is singly linked, we take from head for O(1) speed in this prototype,
-                // but ideally we'd take from tail.
-                
-                stolen_thread = victim_rq->ready_queues[p];
-                victim_rq->ready_queues[p] = stolen_thread->next;
-                stolen_thread->next = NULL;
-                break;
-            }
-        }
-        
-        spinlock_unlock(&victim_rq->lock);
-        
-        if (stolen_thread) {
-            // Add to our ready queue
-            spinlock_lock(&this_rq->lock);
-            
-            if (this_rq->ready_queues[stolen_thread->priority] == NULL) {
-                this_rq->ready_queues[stolen_thread->priority] = stolen_thread;
-            } else {
-                thread_t* cur = this_rq->ready_queues[stolen_thread->priority];
-                while (cur->next) cur = cur->next;
-                cur->next = stolen_thread;
-            }
-            
-            spinlock_unlock(&this_rq->lock);
-            return true;
-        }
-    }
-    
-    return false;
-}
-
-/**
- * Periodic load balancing
- */
-void scheduler_load_balance(void) {
-    // For each CPU, if it's idle or underloaded, try to pull work
-    // This is called from CPU 0's tick, so we orchestrate balancing here.
-    
-    // Determine average load
-    uint32_t total_load = 0;
-    uint32_t active_cpus = 0;
-    uint32_t loads[MAX_CPUS] = {0};
-    
-    for (uint32_t i = 0; i < MAX_CPUS; i++) {
-        if (!per_cpu_runqueues[i].idle_thread) continue; // CPU not active
-        
-        active_cpus++;
-        // Approximate load without locking (racy but acceptable for stats)
-        // We only care about runnable threads
-        // This is expensive to iterate, simplified:
-        // In O(1) scheduler, we track nr_running. Here we iterate.
-        // Optimization: Add nr_running to per_cpu_runqueue_t
-        
-        // Fallback iteration:
-        /*
-        for (int p = 0; p < 128; p++) {
-            thread_t* t = per_cpu_runqueues[i].ready_queues[p];
-            while(t) { loads[i]++; t = t->next; }
-        }
-        */
-        // Since iterating 128 queues * 256 CPUs in interrupt context is BAD,
-        // we skip detailed balancing logic here and rely on work stealing 
-        // when CPUs go idle.
-        // Work stealing is more efficient for distributed systems.
-    }
-    
-    // We can implement a simple "push" migration if we detect severe imbalance
-    // but usually work-stealing handles the "idle CPU" case well.
-}
     static uint64_t tick_counter[MAX_CPUS] = {0};
     tick_counter[cpu_id]++;
     
@@ -710,10 +595,12 @@ void thread_block(void) {
     thread->state = THREAD_STATE_BLOCKED;
     
     // Add to blocked queue
+    uint64_t flags = interrupts_disable();
     spinlock_lock(&rq->lock);
     thread->next = rq->blocked_queue;
     rq->blocked_queue = thread;
     spinlock_unlock(&rq->lock);
+    interrupts_restore(flags);
     
     scheduler_schedule();
 }
@@ -730,12 +617,14 @@ void thread_unblock(thread_t* thread) {
     for (uint32_t i = 0; i < MAX_CPUS; i++) {
         per_cpu_runqueue_t* rq = &per_cpu_runqueues[i];
         
+        uint64_t flags = interrupts_disable();
         spinlock_lock(&rq->lock);
         
         // Remove from blocked queue
         if (rq->blocked_queue == thread) {
             rq->blocked_queue = thread->next;
             spinlock_unlock(&rq->lock);
+            interrupts_restore(flags);
             
             // Add to ready queue on current CPU
             thread->state = THREAD_STATE_READY;
@@ -751,6 +640,7 @@ void thread_unblock(thread_t* thread) {
         if (current) {
             current->next = thread->next;
             spinlock_unlock(&rq->lock);
+            interrupts_restore(flags);
             
             // Add to ready queue on current CPU
             thread->state = THREAD_STATE_READY;
@@ -760,6 +650,7 @@ void thread_unblock(thread_t* thread) {
         }
         
         spinlock_unlock(&rq->lock);
+        interrupts_restore(flags);
     }
 }
 

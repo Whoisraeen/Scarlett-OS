@@ -346,7 +346,109 @@ pub fn dns_resolve(domain: &str) -> Result<u32, ()> {
 
 /// Reverse DNS lookup (PTR)
 pub fn dns_reverse_lookup(ip: u32) -> Result<[u8; 256], ()> {
-    // TODO: Implement reverse DNS lookup
-    let _ = ip;
+    unsafe {
+        if DNS_SERVER == 0 {
+            return Err(()); // No DNS server configured
+        }
+
+        // Format IP for reverse lookup: e.g., 1.2.3.4 becomes 4.3.2.1.in-addr.arpa
+        let ip_bytes = ip.to_be_bytes(); // Convert to network byte order bytes
+        let reverse_domain = alloc::fmt::format(format_args!(
+            "{}.{}.{}.{}.in-addr.arpa",
+            ip_bytes[0], ip_bytes[1], ip_bytes[2], ip_bytes[3]
+        ));
+
+        // Build DNS query
+        let mut packet = [0u8; 512];
+        let mut offset = 0;
+
+        // DNS header
+        let id = NEXT_DNS_ID;
+        NEXT_DNS_ID = NEXT_DNS_ID.wrapping_add(1);
+
+        let header = DnsHeader {
+            id: id.to_be(),
+            flags: DNS_FLAG_RD.to_be(), // Recursion desired
+            questions: 1u16.to_be(),
+            answers: 0,
+            authority: 0,
+            additional: 0,
+        };
+
+        let header_bytes = core::slice::from_raw_parts(
+            &header as *const _ as *const u8,
+            mem::size_of::<DnsHeader>()
+        );
+        packet[offset..offset + mem::size_of::<DnsHeader>()].copy_from_slice(header_bytes);
+        offset += mem::size_of::<DnsHeader>();
+
+        // Encode reverse domain name
+        let name_len = encode_domain_name(&reverse_domain, &mut packet[offset..]);
+        if name_len == 0 {
+            return Err(());
+        }
+        offset += name_len;
+
+        // Question type (PTR) and class (IN)
+        packet[offset..offset + 2].copy_from_slice(&DNS_TYPE_PTR.to_be_bytes());
+        offset += 2;
+        packet[offset..offset + 2].copy_from_slice(&DNS_CLASS_IN.to_be_bytes());
+        offset += 2;
+
+        // Send DNS query via UDP
+        udp::udp_send(DNS_SERVER, 53, 12345, &packet[0..offset])?;
+
+        // Wait for response
+        let mut response = [0u8; 512];
+        for _ in 0..100 {
+            if let Ok((len, src_ip, src_port, _)) = udp::udp_receive(&mut response) {
+                if src_ip == DNS_SERVER && src_port == 53 && len >= mem::size_of::<DnsHeader>() {
+                    // Parse response
+                    let resp_header = &*(response.as_ptr() as *const DnsHeader);
+
+                    if u16::from_be(resp_header.id) == id {
+                        let answers = u16::from_be(resp_header.answers);
+
+                        if answers > 0 {
+                            let mut resp_offset = mem::size_of::<DnsHeader>();
+
+                            // Skip questions
+                            let mut name_buf = [0u8; 256];
+                            let (_, new_offset) = decode_domain_name(&response, resp_offset, &mut name_buf);
+                            resp_offset = new_offset;
+                            resp_offset += 4; // Skip type and class
+
+                            // Parse answer
+                            let (decoded_len, new_offset) = decode_domain_name(&response, resp_offset, &mut name_buf);
+                            resp_offset = new_offset;
+
+                            let rtype = u16::from_be_bytes([response[resp_offset], response[resp_offset + 1]]);
+                            resp_offset += 2;
+                            let _rclass = u16::from_be_bytes([response[resp_offset], response[resp_offset + 1]]);
+                            resp_offset += 2;
+                            let _ttl = u32::from_be_bytes([
+                                response[resp_offset], response[resp_offset + 1],
+                                response[resp_offset + 2], response[resp_offset + 3],
+                            ]);
+                            resp_offset += 4;
+                            let rdlength = u16::from_be_bytes([response[resp_offset], response[resp_offset + 1]]);
+                            resp_offset += 2;
+
+                            if rtype == DNS_TYPE_PTR {
+                                // Extract the PTR data (domain name)
+                                let (name_len, _) = decode_domain_name(&response, resp_offset, &mut name_buf);
+                                if name_len > 0 {
+                                    let mut result_name = [0u8; 256];
+                                    result_name[0..name_len].copy_from_slice(&name_buf[0..name_len]);
+                                    return Ok(result_name);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            crate::syscalls::sys_yield();
+        }
+    }
     Err(())
 }

@@ -22,12 +22,9 @@ pub fn send_packet(
     _mmio: &MmioRegion,
     _buffer: &DmaBuffer,
 ) -> Result<(), DriverError> {
-    // TODO: Implement packet transmission
-    // - Add packet to transmit ring
-    // - Notify hardware
-    // - Wait for completion
-    
-    Ok(())
+    // This function is a generic placeholder. The E1000 driver
+    // implements its own send_packet logic as a method.
+    Err(DriverError::NotImplemented)
 }
 
 /// Receive Ethernet packet
@@ -35,11 +32,8 @@ pub fn receive_packet(
     _mmio: &MmioRegion,
     _buffer: &mut DmaBuffer,
 ) -> Result<usize, DriverError> {
-    // TODO: Implement packet reception
-    // - Check receive ring
-    // - Copy packet to buffer
-    // - Return packet length
-    
-    Err(DriverError::DeviceNotFound) // No packet available
+    // This function is a generic placeholder. The E1000 driver
+    // implements its own receive_packet logic as a method.
+    Err(DriverError::WouldBlock)
 }
 

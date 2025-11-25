@@ -72,19 +72,67 @@ static error_code_t ext4_vfs_unmount(vfs_filesystem_t* fs) {
 /**
  * ext4 open operation
  */
-static error_code_t ext4_vfs_open(vfs_filesystem_t* fs, const char* path, uint64_t flags, fd_t* fd) {
-    if (!fs || !fs->private_data || !path || !fd) {
+static error_code_t ext4_vfs_open(vfs_filesystem_t* fs, const char* path, uint64_t flags, fd_t* fd, void** file_data) {
+    if (!fs || !fs->private_data || !path) {
         return ERR_INVALID_ARG;
     }
     
     ext4_fs_t* ext4_fs = (ext4_fs_t*)fs->private_data;
     
-    // TODO: Resolve path to inode number
-    // For now, return error
-    (void)ext4_fs;
-    (void)flags;
+    // Parse path components
+    char components[64][256];
+    uint32_t component_count = 0;
     
-    return ERR_NOT_SUPPORTED;
+    // Skip leading slash
+    const char* p = path;
+    if (*p == '/') {
+        p++;
+    }
+    
+    // Parse path into components
+    const char* start = p;
+    while (*p) {
+        if (*p == '/') {
+            if (p > start && component_count < 64) {
+                size_t len = p - start;
+                if (len < 256) {
+                    memcpy(components[component_count], start, len);
+                    components[component_count][len] = '\0';
+                    component_count++;
+                }
+            }
+            start = p + 1;
+        }
+        p++;
+    }
+    
+    // Add final component
+    if (p > start && component_count < 64) {
+        size_t len = p - start;
+        if (len < 256) {
+            memcpy(components[component_count], start, len);
+            components[component_count][len] = '\0';
+            component_count++;
+        }
+    }
+    
+    // Start from root inode (inode 2)
+    uint32_t current_inode = 2;
+    
+    // Traverse path
+    for (uint32_t i = 0; i < component_count; i++) {
+        uint32_t next_inode;
+        error_code_t err = ext4_find_file(ext4_fs, current_inode, components[i], &next_inode);
+        if (err != ERR_OK) {
+            return err;
+        }
+        current_inode = next_inode;
+    }
+    
+    // Store inode number as file data
+    *file_data = (void*)(uintptr_t)current_inode;
+    
+    return ERR_OK;
 }
 
 /**
@@ -102,13 +150,7 @@ static error_code_t ext4_vfs_read(vfs_filesystem_t* fs, fd_t fd, void* buf, size
     }
     
     // Get inode from fd and read data
-    extern fd_entry_t fd_table[];
-    
-    if (fd < 0 || fd >= 256 || !fd_table[fd].used) {
-        return ERR_INVALID_ARG;
-    }
-    
-    uint32_t inode_num = (uint32_t)(uintptr_t)fd_table[fd].file_data;
+    uint32_t inode_num = (uint32_t)(uintptr_t)vfs_get_file_data(fd);
     if (inode_num == 0) {
         return ERR_NOT_FOUND;
     }
@@ -116,13 +158,10 @@ static error_code_t ext4_vfs_read(vfs_filesystem_t* fs, fd_t fd, void* buf, size
     ext4_fs_t* ext4_fs = (ext4_fs_t*)fs->private_data;
     
     // Use current position from fd
-    size_t offset = fd_table[fd].position;
+    size_t offset = (size_t)vfs_get_position(fd);
     error_code_t err = ext4_read_file(ext4_fs, inode_num, buf, offset, count, bytes_read);
     
-    if (err == ERR_OK) {
-        // Update position
-        fd_table[fd].position += *bytes_read;
-    }
+    // Position update is handled by VFS
     
     return err;
 }

@@ -60,7 +60,7 @@ static thread_t* try_steal_from_cpu(uint32_t thief_cpu_id, uint32_t victim_cpu_i
             stolen->next = NULL;
             
             // Check CPU affinity (if implemented)
-            // TODO: Add cpu_affinity field to thread_t - DONE: cpu_affinity field added
+            // DONE: cpu_affinity field added
             // Check if thread has CPU affinity set
             if (stolen->cpu_affinity >= 0 && stolen->cpu_affinity != (int32_t)thief_cpu_id) {
                 // Thread is bound to a different CPU, skip it and try next thread

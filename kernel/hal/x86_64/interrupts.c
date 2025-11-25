@@ -79,9 +79,9 @@ void interrupt_handler_c(interrupt_frame_t* frame) {
         // Send EOI (End of Interrupt) to PIC
         pic_send_eoi(irq);
 
-        // Note: Preemptive scheduling will be handled by checking
-        // the need_reschedule flag after returning from interrupt
-        // For now, we just mark that rescheduling is needed
+        // Check if we need to reschedule (preemptive multitasking)
+        extern void scheduler_check_reschedule(void);
+        scheduler_check_reschedule();
 
         return;
     }

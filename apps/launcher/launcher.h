@@ -43,7 +43,9 @@ typedef struct {
     char description[128];
     char executable[256];
     char icon_path[256];
-    void* icon;
+    uint32_t* icon_pixels; // Pointer to pixel data
+    uint32_t icon_width;
+    uint32_t icon_height;
     app_category_t category;
     bool favorite;
     uint32_t launch_count;

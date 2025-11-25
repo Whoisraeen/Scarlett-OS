@@ -249,7 +249,7 @@ pub fn socket_send(socket_fd: usize, data: &[u8], flags: u32) -> Result<usize, (
         }
 
         if let Some(ref mut socket) = SOCKETS[socket_fd] {
-            let _ = flags; // TODO: Handle flags
+            let _ = flags;
 
             match socket.socket_type {
                 SocketType::Stream => {
@@ -291,7 +291,7 @@ pub fn socket_recv(socket_fd: usize, buffer: &mut [u8], flags: u32) -> Result<us
         }
 
         if let Some(ref mut socket) = SOCKETS[socket_fd] {
-            let _ = flags; // TODO: Handle flags
+            let _ = flags;
 
             match socket.socket_type {
                 SocketType::Stream => {

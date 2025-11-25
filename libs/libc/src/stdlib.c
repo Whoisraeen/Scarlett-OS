@@ -12,7 +12,7 @@ void exit(int status) {
 }
 
 void abort(void) {
-    // TODO: Send signal or panic
-    exit(1);
+    // Abnormal termination (SIGABRT equivalent)
+    exit(134);
 }
 

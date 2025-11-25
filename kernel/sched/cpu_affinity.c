@@ -40,7 +40,7 @@ error_code_t thread_set_affinity(uint64_t tid, int32_t cpu_id) {
     }
     
     // Set affinity
-    // TODO: Add cpu_affinity field to thread_t - DONE: cpu_affinity field added
+    // DONE: cpu_affinity field added
     thread->cpu_affinity = cpu_id;
     spinlock_unlock(&thread_table_lock);
     
@@ -63,7 +63,7 @@ int32_t thread_get_affinity(uint64_t tid) {
         return -1;
     }
     
-    // TODO: Add cpu_affinity field to thread_t - DONE: cpu_affinity field added
+    // DONE: cpu_affinity field added
     int32_t affinity = thread->cpu_affinity;
     spinlock_unlock(&thread_table_lock);
     
@@ -91,7 +91,7 @@ int32_t thread_get_affinity_current(void) {
         return -1;
     }
     
-    // TODO: Add cpu_affinity field to thread_t - DONE: cpu_affinity field added
+    // DONE: cpu_affinity field added
     return thread->cpu_affinity;
 }
 

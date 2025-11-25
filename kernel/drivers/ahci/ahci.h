@@ -91,6 +91,8 @@
 #define AHCI_PxCMD_ASP  (1 << 27)  // Aggressive Slumber/Partial
 #define AHCI_PxCMD_ICC_SHIFT 28    // Interface Communication Control
 #define AHCI_PxCMD_ICC_MASK  (0xF << 28)
+#define AHCI_PxCMD_CR   (1 << 15)  // Command List Running (read-only)
+#define AHCI_PxCMD_FR   (1 << 14)  // FIS Receive Running (read-only)
 
 // FIS types
 #define FIS_TYPE_REG_H2D  0x27     // Register FIS - Host to Device

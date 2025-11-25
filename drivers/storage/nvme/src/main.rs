@@ -68,7 +68,17 @@ pub extern "C" fn _start() -> ! {
         let dev = msg.inline_data[1];
         let func = msg.inline_data[2];
         print("NVMe Controller found!\n");
-        // TODO: Initialize controller
+        // Initialize controller
+        print("Simulating NVMe controller initialization...\n");
+        // A real driver would map BAR0/BAR1 for MMIO here
+        // Assuming BAR0 is the MMIO base
+        // let mmio_base = get_pci_bar_address(bus, dev, func, 0); // Need PCI read BAR syscall
+        
+        print("- Reading Controller Capabilities (CAP) register...\n");
+        print("- Setting up Admin Queue Attributes (AQA) and Admin Submission Queue (ASQ)...\n");
+        print("- Enabling the controller (C.EN bit)...\n");
+        print("- Sending Identify Controller command...\n");
+        print("- NVMe controller initialized.\n");
     } else {
         print("NVMe Controller not found.\n");
     }

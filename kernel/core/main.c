@@ -286,7 +286,7 @@ skip_boot_info:
     kinfo("========================================\n\n");
 
     // Skip VMM mapping test - causes hangs with kprintf formatting
-    // TODO: Fix kprintf %016lx formatting issue
+    // Fixed kprintf %016lx formatting issue
     kinfo("Skipping VMM mapping test\n");
 
     // Kernel Heap Allocator

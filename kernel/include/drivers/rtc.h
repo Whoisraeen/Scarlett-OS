@@ -6,7 +6,7 @@
 #ifndef KERNEL_DRIVERS_RTC_H
 #define KERNEL_DRIVERS_RTC_H
 
-#include "../../types.h"
+#include "../types.h"
 
 // Date and time structure
 typedef struct {

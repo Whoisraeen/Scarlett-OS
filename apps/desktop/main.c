@@ -10,19 +10,13 @@
 int main(int argc, char* argv[]) {
     printf("Scarlett OS Desktop Shell v1.0\n");
 
-    // TODO: Connect to compositor via IPC
-    // For now, create a local compositor instance
-    compositor_ctx_t* compositor = compositor_create(1920, 1080);
-    if (!compositor) {
-        fprintf(stderr, "Failed to create compositor\n");
-        return 1;
-    }
-
+    // Connect to compositor via IPC (implicitly handled by window_create)
+    // We pass NULL as the compositor context since we use IPC
+    
     // Create desktop shell
-    desktop_ctx_t* desktop = desktop_create(compositor);
+    desktop_ctx_t* desktop = desktop_create(NULL);
     if (!desktop) {
         fprintf(stderr, "Failed to create desktop shell\n");
-        compositor_destroy(compositor);
         return 1;
     }
 
@@ -36,7 +30,6 @@ int main(int argc, char* argv[]) {
 
     // Cleanup
     desktop_destroy(desktop);
-    compositor_destroy(compositor);
 
     return 0;
 }

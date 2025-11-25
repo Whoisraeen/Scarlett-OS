@@ -5,6 +5,18 @@
  * Supports USB Audio Class 1.0 and 2.0 devices
  */
 
+#![no_std]
+#![allow(unused_imports)] // Allow unused imports for now
+
+use core::ptr;
+extern crate alloc;
+use alloc::vec::Vec;
+use alloc::string::String;
+use driver_framework::{Driver, DriverError, DeviceInfo, DeviceType};
+use driver_framework::usb::{UsbControlRequest, UsbDeviceHandle, UsbEndpointType, UsbTransferType, UsbDirection};
+use driver_framework::syscalls::{sys_sleep, sys_get_uptime_ms};
+use driver_framework::ipc::ipc_create_port;
+
 // USB Audio Class Codes
 const USB_CLASS_AUDIO: u8 = 0x01;
 const USB_SUBCLASS_AUDIOCONTROL: u8 = 0x01;
@@ -46,6 +58,7 @@ const TERMINAL_HEADPHONES: u16 = 0x0302;
 const TERMINAL_MICROPHONE: u16 = 0x0201;
 
 // USB Audio Terminal
+#[derive(Clone)]
 pub struct UsbAudioTerminal {
     terminal_id: u8,
     terminal_type: u16,
@@ -55,6 +68,7 @@ pub struct UsbAudioTerminal {
 }
 
 // USB Audio Feature Unit
+#[derive(Clone)]
 pub struct UsbAudioFeatureUnit {
     unit_id: u8,
     source_id: u8,
@@ -62,6 +76,7 @@ pub struct UsbAudioFeatureUnit {
 }
 
 // USB Audio Format
+#[derive(Clone)]
 pub struct UsbAudioFormat {
     format_type: u8,
     nr_channels: u8,
@@ -71,6 +86,7 @@ pub struct UsbAudioFormat {
 }
 
 // USB Audio Stream
+#[derive(Clone)]
 pub struct UsbAudioStream {
     interface_num: u8,
     alt_setting: u8,
@@ -81,11 +97,12 @@ pub struct UsbAudioStream {
 }
 
 // USB Audio Device
+#[derive(Clone)]
 pub struct UsbAudioDevice {
-    usb_device: u32,  // USB device handle
+    usb_device_handle: UsbDeviceHandle,  // USB device handle
     
     // Audio Control Interface
-    control_interface: u8,
+    control_interface_num: u8,
     input_terminals: Vec<UsbAudioTerminal>,
     output_terminals: Vec<UsbAudioTerminal>,
     feature_units: Vec<UsbAudioFeatureUnit>,
@@ -101,10 +118,10 @@ pub struct UsbAudioDevice {
 
 impl UsbAudioDevice {
     /// Create new USB audio device
-    pub fn new(usb_device: u32) -> Self {
+    pub fn new(usb_device_handle: UsbDeviceHandle) -> Self {
         UsbAudioDevice {
-            usb_device,
-            control_interface: 0,
+            usb_device_handle,
+            control_interface_num: 0,
             input_terminals: Vec::new(),
             output_terminals: Vec::new(),
             feature_units: Vec::new(),
@@ -117,10 +134,11 @@ impl UsbAudioDevice {
     
     /// Initialize USB audio device
     pub fn init(&mut self) -> Result<(), &'static str> {
-        // Parse audio control interface
-        self.parse_control_interface()?;
+        // Find and parse USB descriptors
+        // This would involve reading configuration descriptors from the USB device handle
+        // For now, we simulate parsing for a generic device.
         
-        // Parse audio streaming interfaces
+        self.parse_control_interface()?;
         self.parse_streaming_interfaces()?;
         
         Ok(())
@@ -128,23 +146,37 @@ impl UsbAudioDevice {
     
     /// Parse audio control interface
     fn parse_control_interface(&mut self) -> Result<(), &'static str> {
-        // TODO: Parse USB descriptors
-        // - Find audio control interface
-        // - Parse input/output terminals
-        // - Parse feature units
-        // - Parse mixer/selector units
+        // In a real scenario, this would iterate through device descriptors
+        // For now, we simulate finding an AudioControl interface
+        self.control_interface_num = 0; // Assuming interface 0 is AC
+        
+        // Simulate adding a feature unit for volume control
+        self.feature_units.push(UsbAudioFeatureUnit {
+            unit_id: 1,
+            source_id: 0,
+            controls: vec![0x01, 0x02], // Master volume, Mute
+        });
         
         Ok(())
     }
     
     /// Parse audio streaming interfaces
     fn parse_streaming_interfaces(&mut self) -> Result<(), &'static str> {
-        // TODO: Parse USB descriptors
-        // - Find audio streaming interfaces
-        // - Parse format descriptors
-        // - Parse endpoint descriptors
-        // - Categorize as playback or capture
-        
+        // Simulate finding one playback stream (e.g., speakers)
+        self.playback_streams.push(UsbAudioStream {
+            interface_num: 1, // Assuming interface 1 is AS
+            alt_setting: 1,
+            endpoint_addr: 0x01, // EP1 OUT
+            max_packet_size: 192, // Example
+            format: UsbAudioFormat {
+                format_type: FORMAT_TYPE_I,
+                nr_channels: 2,
+                subframe_size: 2,
+                bit_resolution: 16,
+                sample_rates: vec![44100, 48000],
+            },
+            running: false,
+        });
         Ok(())
     }
     
@@ -187,10 +219,12 @@ impl UsbAudioDevice {
         if let Some(idx) = self.active_playback {
             let stream = &self.playback_streams[idx];
             
-            // TODO: Send data via USB isochronous transfer
-            // - Split data into packets
-            // - Submit USB transfer requests
-            // - Handle completion
+            // Implement sending data via USB isochronous transfer
+            // This is a placeholder as full USB stack management is complex.
+            // In a real implementation, data would be buffered and sent via URBs.
+            // For now, assume it's sent.
+            
+            self.usb_device_handle.send_isochronous_data(stream.endpoint_addr, data)?; // Mock call
             
             Ok(data.len())
         } else {
@@ -202,24 +236,40 @@ impl UsbAudioDevice {
     pub fn set_volume(&mut self, volume: u8) -> Result<(), &'static str> {
         // Find feature unit with volume control
         for unit in &self.feature_units {
-            // TODO: Send SET_CUR request to feature unit
-            // - Control selector: VOLUME_CONTROL
-            // - Value: volume (0-100 mapped to device range)
+            // Simulate sending SET_CUR request to feature unit
+            self.usb_device_handle.control_transfer(
+                UsbControlRequest::new(
+                    UsbDirection::Out, UsbTransferType::Class, UsbEndpointType::Interface,
+                    0x01, // SET_CUR
+                    0x00, // Volume Control
+                    unit.unit_id as u16,
+                    self.control_interface_num as u16,
+                    &[volume], 1
+                )
+            )?;
+            return Ok(());
         }
-        
-        Ok(())
+        Err("No feature unit with volume control found")
     }
     
     /// Set mute
     pub fn set_mute(&mut self, mute: bool) -> Result<(), &'static str> {
         // Find feature unit with mute control
         for unit in &self.feature_units {
-            // TODO: Send SET_CUR request to feature unit
-            // - Control selector: MUTE_CONTROL
-            // - Value: mute (0 or 1)
+            // Simulate sending SET_CUR request to feature unit
+            self.usb_device_handle.control_transfer(
+                UsbControlRequest::new(
+                    UsbDirection::Out, UsbTransferType::Class, UsbEndpointType::Interface,
+                    0x01, // SET_CUR
+                    0x00, // Mute Control
+                    unit.unit_id as u16,
+                    self.control_interface_num as u16,
+                    &[mute as u8], 1
+                )
+            )?;
+            return Ok(());
         }
-        
-        Ok(())
+        Err("No feature unit with mute control found")
     }
     
     /// Find compatible playback stream
@@ -237,23 +287,32 @@ impl UsbAudioDevice {
     
     /// Set USB interface alternate setting
     fn set_interface(&self, interface: u8, alt_setting: u8) -> Result<(), &'static str> {
-        // TODO: Send SET_INTERFACE USB control request
+        self.usb_device_handle.control_transfer(
+            UsbControlRequest::new(
+                UsbDirection::Out, UsbTransferType::Standard, UsbEndpointType::Interface,
+                0x0B, // SET_INTERFACE
+                alt_setting as u16,
+                interface as u16,
+                &[], 0
+            )
+        )?;
         Ok(())
     }
     
     /// Configure isochronous endpoint
     fn configure_endpoint(&self, stream: &UsbAudioStream) -> Result<(), &'static str> {
-        // TODO: Configure USB isochronous endpoint
-        // - Set packet size
-        // - Set interval
-        // - Allocate transfer buffers
-        
+        // This would involve sending specific USB control requests or
+        // URBs to configure the isochronous endpoint parameters.
+        // For now, this is a placeholder acknowledging the need for configuration.
+        // E.g., setting MaxPacketSize, interval, etc.
         Ok(())
     }
 }
 
 // USB Audio Driver
 pub struct UsbAudioDriver {
+    initialized: bool,
+    device_port: u64,
     devices: Vec<UsbAudioDevice>,
 }
 
@@ -261,35 +320,76 @@ impl UsbAudioDriver {
     /// Create new USB audio driver
     pub fn new() -> Self {
         UsbAudioDriver {
+            initialized: false,
+            device_port: 0,
             devices: Vec::new(),
         }
     }
     
     /// Probe USB device
-    pub fn probe(&mut self, usb_device: u32) -> Result<(), &'static str> {
-        // Check if device is audio class
-        // TODO: Read USB device descriptor
-        // - Check bDeviceClass or interface class
-        
-        let mut device = UsbAudioDevice::new(usb_device);
-        device.init()?;
-        
-        self.devices.push(device);
-        
-        Ok(())
+    pub fn probe(&mut self, usb_device_handle: UsbDeviceHandle) -> bool {
+        // Read USB device descriptor via handle and check class
+        // For now, assume if the framework called us, it's an audio device.
+        // A real check would involve reading descriptors from usb_device_handle.
+        let device_descriptor = usb_device_handle.get_device_descriptor();
+        if device_descriptor.b_device_class == USB_CLASS_AUDIO || 
+           (device_descriptor.b_device_class == 0x00 && device_descriptor.b_num_configurations > 0) // Class 0 sometimes for audio
+        {
+            // Further checks can be done by parsing configuration descriptors
+            return true;
+        }
+        false
     }
     
     /// Remove USB device
-    pub fn remove(&mut self, usb_device: u32) {
-        self.devices.retain(|dev| dev.usb_device != usb_device);
+    pub fn remove(&mut self, usb_device_handle: UsbDeviceHandle) {
+        self.devices.retain(|dev| dev.usb_device_handle != usb_device_handle);
     }
 }
 
-// Driver entry point
-pub fn usb_audio_driver_init() -> Result<(), &'static str> {
-    // TODO: Register with USB subsystem
-    // TODO: Register probe/remove callbacks
-    // TODO: Register with audio framework
-    
-    Ok(())
+impl Driver for UsbAudioDriver {
+    fn name(&self) -> &'static str { "usb_audio" }
+    fn probe(&self, device_info: &DeviceInfo) -> bool {
+        // This probe is for PCI devices initially, but USB devices are abstracted
+        // by the USB subsystem. The above `probe(UsbDeviceHandle)` is the real one.
+        // This one might not be used directly, or maps to USB subsystem events.
+        // For now, assume this is unused or defers to the USB subsystem's probe mechanism.
+        false
+    }
+    fn init(&mut self) -> Result<(), DriverError> {
+        if self.initialized { return Err(DriverError::AlreadyInitialized); }
+        self.device_port = ipc_create_port().map_err(|_| DriverError::IoError)?;
+
+        // Register with USB subsystem
+        // Call a mock USB subsystem register function
+        driver_framework::usb_subsystem::register_driver(self.device_port, self.probe as *const (), self.remove as *const ())
+            .map_err(|_| DriverError::InitFailed)?;
+        
+        // Register with audio framework
+        driver_framework::audio_framework::register_driver(self.device_port)
+            .map_err(|_| DriverError::InitFailed)?;
+        
+        self.initialized = true;
+        Ok(())
+    }
+    fn start(&mut self) -> Result<(), DriverError> {
+        // This is typically called when a device is matched/plugged in.
+        // We will instantiate UsbAudioDevice here.
+        // For now, assume the framework calls a specific 'device_connected' event.
+        Ok(())
+    }
+    fn stop(&mut self) -> Result<(), DriverError> {
+        self.devices.clear(); // Clear all managed devices
+        Ok(())
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn _start() -> ! {
+    // This is the main entry point for the USB Audio driver service.
+    // It should register itself with the driver framework.
+    // The actual driver framework entry point will handle the init/probe/start lifecycle.
+    loop {
+        sys_sleep(100); // Sleep to avoid busy-looping
+    }
 }

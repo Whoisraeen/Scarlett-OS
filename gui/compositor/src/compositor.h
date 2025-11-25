@@ -1,9 +1,6 @@
 /**
  * @file compositor.h
- * @brief Crashless Window Compositor
- *
- * Runs in separate process with state checkpointing
- * Restarts instantly if crashed without losing window state
+ * @brief Crashless Window Compositor Implementation
  */
 
 #ifndef GUI_COMPOSITOR_H
@@ -11,6 +8,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "../../../libs/libgui/include/compositor_ipc.h" // For message types
 
 // Maximum windows
 #define MAX_WINDOWS 256
@@ -42,12 +40,14 @@ typedef struct {
     window_state_t state;
     uint32_t flags;
     char title[128];
-    void* framebuffer;      // Window's pixel buffer
+    void* framebuffer;      // Window's pixel buffer (mapped SHM)
     void* texture;          // UGAL texture for window (created from framebuffer)
     uint32_t shm_id;       // Shared memory ID for framebuffer
+    uint32_t framebuffer_size; // Size of the framebuffer in bytes
     uint32_t z_order;
     bool dirty;             // Needs redraw
     bool visible;
+    uint64_t client_ipc_port; // Port of the client owning this window
 } window_t;
 
 // Compositor state (for checkpointing)
@@ -81,10 +81,10 @@ void compositor_destroy(compositor_ctx_t* ctx);
 void compositor_run(compositor_ctx_t* ctx);
 
 // Window management
-uint32_t compositor_create_window(compositor_ctx_t* ctx, uint32_t pid, int32_t x, int32_t y, uint32_t width, uint32_t height, const char* title);
+uint32_t compositor_create_window(compositor_ctx_t* ctx, uint32_t pid, int32_t x, int32_t y, uint32_t width, uint32_t height, uint32_t shm_id, const char* title, uint64_t client_ipc_port);
 void compositor_destroy_window(compositor_ctx_t* ctx, uint32_t window_id);
 void compositor_move_window(compositor_ctx_t* ctx, uint32_t window_id, int32_t x, int32_t y);
-void compositor_resize_window(compositor_ctx_t* ctx, uint32_t window_id, uint32_t width, uint32_t height);
+void compositor_resize_window(compositor_ctx_t* ctx, uint32_t window_id, uint32_t width, uint32_t height, uint32_t new_shm_id);
 void compositor_set_window_state(compositor_ctx_t* ctx, uint32_t window_id, window_state_t state);
 void compositor_set_window_title(compositor_ctx_t* ctx, uint32_t window_id, const char* title);
 void compositor_raise_window(compositor_ctx_t* ctx, uint32_t window_id);
@@ -102,5 +102,6 @@ bool compositor_restore(compositor_ctx_t* ctx);
 void compositor_handle_mouse_move(compositor_ctx_t* ctx, int32_t x, int32_t y);
 void compositor_handle_mouse_button(compositor_ctx_t* ctx, uint32_t button, bool pressed);
 void compositor_handle_key(compositor_ctx_t* ctx, uint32_t keycode, bool pressed);
+
 
 #endif // GUI_COMPOSITOR_H

@@ -231,6 +231,73 @@ void* virtio_gpu_get_framebuffer(virtio_gpu_t* gpu) {
 }
 
 /**
+ * Create 3D context
+ */
+error_code_t virtio_gpu_ctx_create(virtio_gpu_t* gpu, uint32_t ctx_id, const char* name) {
+    if (!gpu || !gpu->initialized) {
+        return ERR_INVALID_STATE;
+    }
+    
+    virtio_gpu_ctx_create_t cmd = {0};
+    cmd.hdr.type = VIRTIO_GPU_CMD_CTX_CREATE;
+    cmd.hdr.ctx_id = ctx_id;
+    cmd.nlen = 0;
+    if (name) {
+        size_t len = strlen(name);
+        if (len > 63) len = 63;
+        memcpy(cmd.debug_name, name, len);
+        cmd.debug_name[len] = '\0';
+        cmd.nlen = len;
+    }
+    
+    return virtio_gpu_send_command(gpu, &cmd, sizeof(cmd));
+}
+
+/**
+ * Destroy 3D context
+ */
+error_code_t virtio_gpu_ctx_destroy(virtio_gpu_t* gpu, uint32_t ctx_id) {
+    if (!gpu || !gpu->initialized) {
+        return ERR_INVALID_STATE;
+    }
+    
+    virtio_gpu_ctx_destroy_t cmd = {0};
+    cmd.hdr.type = VIRTIO_GPU_CMD_CTX_DESTROY;
+    cmd.hdr.ctx_id = ctx_id;
+    
+    return virtio_gpu_send_command(gpu, &cmd, sizeof(cmd));
+}
+
+/**
+ * Submit 3D commands
+ */
+error_code_t virtio_gpu_submit_3d(virtio_gpu_t* gpu, uint32_t ctx_id, void* cmd_buf, size_t size) {
+    if (!gpu || !gpu->initialized || !cmd_buf || size == 0) {
+        return ERR_INVALID_ARG;
+    }
+    
+    // Allocate buffer for header + command buffer
+    size_t total_size = sizeof(virtio_gpu_cmd_submit_t) + size;
+    uint8_t* buf = (uint8_t*)kmalloc(total_size);
+    if (!buf) {
+        return ERR_OUT_OF_MEMORY;
+    }
+    
+    virtio_gpu_cmd_submit_t* cmd = (virtio_gpu_cmd_submit_t*)buf;
+    cmd->hdr.type = VIRTIO_GPU_CMD_SUBMIT_3D;
+    cmd->hdr.ctx_id = ctx_id;
+    cmd->size = size;
+    
+    // Copy command buffer
+    memcpy(buf + sizeof(virtio_gpu_cmd_submit_t), cmd_buf, size);
+    
+    error_code_t err = virtio_gpu_send_command(gpu, buf, total_size);
+    
+    kfree(buf);
+    return err;
+}
+
+/**
  * Get VirtIO GPU instance
  */
 virtio_gpu_t* virtio_gpu_get(void) {

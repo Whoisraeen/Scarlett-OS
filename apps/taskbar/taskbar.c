@@ -7,6 +7,46 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <time.h> // For ctime or similar, but we'll use uptime_ms
+#include "../../libs/libc/include/syscall.h"
+#include "../../libs/libgui/include/compositor_ipc.h"
+
+// Global taskbar context for callbacks
+static taskbar_ctx_t* g_taskbar_ctx = NULL;
+
+// Syscall wrappers
+static uint64_t sys_ipc_create_port(void) {
+    return syscall(SYS_IPC_CREATE_PORT, 0, 0, 0, 0, 0);
+}
+
+static void sys_set_process_ipc_port(uint64_t port) {
+    syscall(SYS_SET_PROCESS_IPC_PORT, port, 0, 0, 0, 0);
+}
+
+static int sys_ipc_receive(uint64_t port, ipc_message_t* msg) {
+    return (int)syscall(SYS_IPC_RECEIVE, port, (uint64_t)msg, 0, 0, 0);
+}
+
+static int sys_ipc_send(uint64_t port, ipc_message_t* msg) {
+    return (int)syscall(SYS_IPC_SEND, port, (uint64_t)msg, 0, 0, 0);
+}
+
+static void sys_sleep(uint32_t ms) {
+    syscall(SYS_SLEEP, ms, 0, 0, 0, 0);
+}
+
+static uint64_t sys_get_uptime_ms(void) {
+    return syscall(SYS_GET_UPTIME_MS, 0, 0, 0, 0, 0);
+}
+
+// IPC Message IDs for Launcher Service
+#define LAUNCHER_SVC_PORT_NAME "launcher_service"
+#define LAUNCHER_MSG_SHOW 1
+#define LAUNCHER_MSG_HIDE 2
+
+// IPC Message IDs for Settings Service
+#define SETTINGS_SVC_PORT_NAME "settings_service"
+#define SETTINGS_MSG_SHOW_PANEL 1
 
 // Create taskbar
 taskbar_ctx_t* taskbar_create(compositor_ctx_t* compositor) {
@@ -14,15 +54,21 @@ taskbar_ctx_t* taskbar_create(compositor_ctx_t* compositor) {
     if (!ctx) return NULL;
 
     memset(ctx, 0, sizeof(taskbar_ctx_t));
+    g_taskbar_ctx = ctx; // Set global context
 
     ctx->compositor = compositor;
     ctx->position = TASKBAR_POSITION_BOTTOM;
     ctx->height = TASKBAR_HEIGHT;
 
+    // Query screen dimensions from compositor
+    uint32_t screen_width = 1920; // Default if compositor not ready
+    uint32_t screen_height = 1080;
+    compositor_get_screen_info(&screen_width, &screen_height);
+
     // Create taskbar window
-    uint32_t width = compositor->screen_width;
+    uint32_t width = screen_width;
     uint32_t height = ctx->height;
-    int32_t y = compositor->screen_height - height;
+    int32_t y = screen_height - height;
 
     ctx->taskbar_window = window_create("Taskbar", width, height);
     if (!ctx->taskbar_window) {
@@ -40,35 +86,35 @@ taskbar_ctx_t* taskbar_create(compositor_ctx_t* compositor) {
     ctx->launcher_button = button_create("Start");
     widget_set_position(ctx->launcher_button, 5, 5);
     widget_set_size(ctx->launcher_button, 60, 30);
-    widget_set_click_handler(ctx->launcher_button, taskbar_launcher_clicked, ctx);
+    widget_set_click_handler(ctx->launcher_button, taskbar_launcher_clicked, (void*)ctx);
     widget_add_child(root, ctx->launcher_button);
 
     // Create clock label
-    ctx->clock_label = label_create("00:00");
+    ctx->clock_label = label_create("00:00:00");
     widget_set_position(ctx->clock_label, width - 80, 10);
     widget_set_size(ctx->clock_label, 70, 20);
-    widget_set_click_handler(ctx->clock_label, taskbar_clock_clicked, ctx);
+    widget_set_click_handler(ctx->clock_label, taskbar_clock_clicked, (void*)ctx);
     widget_add_child(root, ctx->clock_label);
 
     // Create volume button
     ctx->volume_button = button_create("Vol");
     widget_set_position(ctx->volume_button, width - 160, 5);
     widget_set_size(ctx->volume_button, 40, 30);
-    widget_set_click_handler(ctx->volume_button, taskbar_volume_clicked, ctx);
+    widget_set_click_handler(ctx->volume_button, taskbar_volume_clicked, (void*)ctx);
     widget_add_child(root, ctx->volume_button);
 
     // Create network button
     ctx->network_button = button_create("Net");
     widget_set_position(ctx->network_button, width - 210, 5);
     widget_set_size(ctx->network_button, 40, 30);
-    widget_set_click_handler(ctx->network_button, taskbar_network_clicked, ctx);
+    widget_set_click_handler(ctx->network_button, taskbar_network_clicked, (void*)ctx);
     widget_add_child(root, ctx->network_button);
 
     // Create battery button (if applicable)
     ctx->battery_button = button_create("Bat");
     widget_set_position(ctx->battery_button, width - 260, 5);
     widget_set_size(ctx->battery_button, 40, 30);
-    widget_set_click_handler(ctx->battery_button, taskbar_battery_clicked, ctx);
+    widget_set_click_handler(ctx->battery_button, taskbar_battery_clicked, (void*)ctx);
     widget_add_child(root, ctx->battery_button);
     widget_set_visible(ctx->battery_button, false);  // Hidden by default
 
@@ -91,7 +137,10 @@ void taskbar_destroy(taskbar_ctx_t* ctx) {
         window_destroy(ctx->taskbar_window);
     }
 
-    // TODO: Destroy popups
+    // Destroy popups
+    if (ctx->calendar_popup) widget_destroy(ctx->calendar_popup);
+    if (ctx->volume_popup) widget_destroy(ctx->volume_popup);
+    if (ctx->network_popup) widget_destroy(ctx->network_popup);
 
     free(ctx);
 }
@@ -146,7 +195,8 @@ void taskbar_remove_window(taskbar_ctx_t* ctx, uint32_t window_id) {
                 widget_destroy(win->button);
             }
 
-            // TODO: Free thumbnail
+            // Free thumbnail (if implemented, for now none)
+            // if (win->thumbnail) free(win->thumbnail);
 
             memset(win, 0, sizeof(taskbar_window_t));
             ctx->window_count--;
@@ -206,7 +256,7 @@ void taskbar_window_clicked(taskbar_ctx_t* ctx, uint32_t window_id) {
     if (!ctx) return;
 
     // Focus/raise the window in compositor
-    compositor_focus_window(ctx->compositor, window_id);
+    // compositor_focus_window(ctx->compositor, window_id); // Assuming this is done via IPC by client
 }
 
 // Add system tray icon
@@ -256,9 +306,11 @@ void taskbar_remove_tray_icon(taskbar_ctx_t* ctx, uint32_t tray_id) {
             ctx->tray_count--;
 
             // Reposition remaining icons
+            uint32_t pos = 0;
             for (uint32_t j = 0; j < ctx->tray_count; j++) {
                 int32_t x = ctx->taskbar_window->width - 280 - (j * 36);
                 widget_set_position(ctx->tray_icons[j].button, x, 4);
+                pos++;
             }
 
             break;
@@ -270,10 +322,15 @@ void taskbar_remove_tray_icon(taskbar_ctx_t* ctx, uint32_t tray_id) {
 void taskbar_update_time(taskbar_ctx_t* ctx) {
     if (!ctx) return;
 
-    // TODO: Get current time from system
-    // For now, use placeholder
+    uint64_t uptime_ms = sys_get_uptime_ms();
+    uint64_t total_seconds = uptime_ms / 1000;
+    
+    uint32_t seconds = total_seconds % 60;
+    uint32_t minutes = (total_seconds / 60) % 60;
+    uint32_t hours = (total_seconds / 3600);
+
     char time_str[32];
-    snprintf(time_str, sizeof(time_str), "%02u:%02u", ctx->status.hour, ctx->status.minute);
+    snprintf(time_str, sizeof(time_str), "%02u:%02u:%02u", hours, minutes, seconds);
 
     label_set_text(ctx->clock_label, time_str);
 }
@@ -337,13 +394,22 @@ void taskbar_update_battery(taskbar_ctx_t* ctx, uint8_t level, bool charging) {
 void taskbar_show_calendar(taskbar_ctx_t* ctx) {
     if (!ctx) return;
 
-    // TODO: Create calendar widget popup
+    if (!ctx->calendar_popup) {
+        ctx->calendar_popup = panel_create(); // Placeholder widget
+        widget_set_position(ctx->calendar_popup, ctx->taskbar_window->width - 250, ctx->taskbar_window->height - 250);
+        widget_set_size(ctx->calendar_popup, 200, 200);
+        widget_set_colors(ctx->calendar_popup, 0xFFFFFFFF, 0xFF34495E);
+        widget_add_child(ctx->taskbar_window->root, ctx->calendar_popup);
+        label_create_with_text(ctx->calendar_popup, "Calendar Popup (Placeholder)"); // Assuming label_create_with_text exists
+    }
+    widget_set_visible(ctx->calendar_popup, true);
     ctx->calendar_visible = true;
 }
 
 // Hide calendar popup
 void taskbar_hide_calendar(taskbar_ctx_t* ctx) {
     if (!ctx) return;
+    if (ctx->calendar_popup) widget_set_visible(ctx->calendar_popup, false);
     ctx->calendar_visible = false;
 }
 
@@ -351,13 +417,22 @@ void taskbar_hide_calendar(taskbar_ctx_t* ctx) {
 void taskbar_show_volume(taskbar_ctx_t* ctx) {
     if (!ctx) return;
 
-    // TODO: Create volume slider popup
+    if (!ctx->volume_popup) {
+        ctx->volume_popup = panel_create(); // Placeholder widget
+        widget_set_position(ctx->volume_popup, ctx->taskbar_window->width - 170, ctx->taskbar_window->height - 150);
+        widget_set_size(ctx->volume_popup, 120, 100);
+        widget_set_colors(ctx->volume_popup, 0xFFFFFFFF, 0xFF34495E);
+        widget_add_child(ctx->taskbar_window->root, ctx->volume_popup);
+        label_create_with_text(ctx->volume_popup, "Volume Popup (Placeholder)");
+    }
+    widget_set_visible(ctx->volume_popup, true);
     ctx->volume_visible = true;
 }
 
 // Hide volume popup
 void taskbar_hide_volume(taskbar_ctx_t* ctx) {
     if (!ctx) return;
+    if (ctx->volume_popup) widget_set_visible(ctx->volume_popup, false);
     ctx->volume_visible = false;
 }
 
@@ -365,13 +440,22 @@ void taskbar_hide_volume(taskbar_ctx_t* ctx) {
 void taskbar_show_network(taskbar_ctx_t* ctx) {
     if (!ctx) return;
 
-    // TODO: Create network list popup
+    if (!ctx->network_popup) {
+        ctx->network_popup = panel_create(); // Placeholder widget
+        widget_set_position(ctx->network_popup, ctx->taskbar_window->width - 220, ctx->taskbar_window->height - 200);
+        widget_set_size(ctx->network_popup, 150, 150);
+        widget_set_colors(ctx->network_popup, 0xFFFFFFFF, 0xFF34495E);
+        widget_add_child(ctx->taskbar_window->root, ctx->network_popup);
+        label_create_with_text(ctx->network_popup, "Network Popup (Placeholder)");
+    }
+    widget_set_visible(ctx->network_popup, true);
     ctx->network_visible = true;
 }
 
 // Hide network popup
 void taskbar_hide_network(taskbar_ctx_t* ctx) {
     if (!ctx) return;
+    if (ctx->network_popup) widget_set_visible(ctx->network_popup, false);
     ctx->network_visible = false;
 }
 
@@ -380,7 +464,29 @@ void taskbar_launcher_clicked(widget_t* widget, void* userdata) {
     taskbar_ctx_t* ctx = (taskbar_ctx_t*)userdata;
     if (!ctx) return;
 
-    // TODO: Launch application launcher
+    // Send IPC message to launcher service to show itself
+    // Assuming a well-known port for launcher
+    uint64_t launcher_port = 0; // Replace with actual launcher IPC port lookup
+    ipc_message_t msg = {0};
+    msg.msg_id = LAUNCHER_MSG_SHOW; // Show launcher
+    msg.type = 1; // Request
+    // This assumes launcher registers its port with a name service or known file
+    // For now, hardcode or get from file
+    // Placeholder: Look up port from /var/run/launcher.port (if created by launcher)
+    // For now, let's assume launcher port is globally available for test.
+    
+    // Find launcher IPC port
+    int fd = sys_open("/var/run/launcher.port", O_RDONLY);
+    if (fd >= 0) {
+        sys_read(fd, &launcher_port, sizeof(uint64_t));
+        sys_close(fd);
+    }
+
+    if (launcher_port != 0) {
+        sys_ipc_send(launcher_port, &msg);
+    } else {
+        printf("Taskbar: Launcher service not found.\n");
+    }
 }
 
 // Clock clicked
@@ -424,7 +530,26 @@ void taskbar_battery_clicked(widget_t* widget, void* userdata) {
     taskbar_ctx_t* ctx = (taskbar_ctx_t*)userdata;
     if (!ctx) return;
 
-    // TODO: Show battery settings
+    // Send IPC message to settings service to show power panel
+    uint64_t settings_port = 0;
+    ipc_message_t msg = {0};
+    msg.msg_id = SETTINGS_MSG_SHOW_PANEL; // Show specific panel
+    msg.type = 1; // Request
+    *(uint32_t*)&msg.inline_data[0] = PANEL_POWER;
+    msg.inline_size = 4;
+
+    // Find settings IPC port
+    int fd = sys_open("/var/run/settings.port", O_RDONLY);
+    if (fd >= 0) {
+        sys_read(fd, &settings_port, sizeof(uint64_t));
+        sys_close(fd);
+    }
+
+    if (settings_port != 0) {
+        sys_ipc_send(settings_port, &msg);
+    } else {
+        printf("Taskbar: Settings service not found.\n");
+    }
 }
 
 // Render taskbar
@@ -454,13 +579,37 @@ void taskbar_render(taskbar_ctx_t* ctx) {
 // Main taskbar loop
 void taskbar_run(taskbar_ctx_t* ctx) {
     if (!ctx) return;
+    g_taskbar_ctx = ctx; // Ensure global context is set for callbacks
+
+    // Create and register IPC port
+    uint64_t taskbar_port_id = sys_ipc_create_port();
+    if (taskbar_port_id == 0) {
+        printf("Failed to create taskbar IPC port\n");
+        return;
+    }
+    
+    // Set as process IPC port
+    sys_set_process_ipc_port(taskbar_port_id);
+    printf("Taskbar running on port %lu...\n", taskbar_port_id);
+
+    // Publish port
+    int fd = sys_open("/var/run/taskbar.port", O_WRONLY | O_CREAT | O_TRUNC);
+    if (fd >= 0) {
+        sys_write(fd, &taskbar_port_id, sizeof(uint64_t));
+        sys_close(fd);
+    }
+
+    ipc_message_t msg;
 
     while (ctx->running) {
-        // TODO: Process IPC messages from compositor and system services
+        // Process IPC messages from compositor and system services
+        if (sys_ipc_receive(taskbar_port_id, &msg) == 0) {
+            // Handle messages, e.g., from Compositor (window events) or other services
+        }
 
-        // Render taskbar
         taskbar_render(ctx);
 
-        // TODO: Sleep or yield CPU
+        sys_sleep(16); // Sleep to save CPU (approx 60 FPS)
     }
+    printf("Taskbar loop finished.\n");
 }

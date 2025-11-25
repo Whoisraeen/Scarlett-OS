@@ -1,0 +1,472 @@
+Docs/Dev/BUILD_SYSTEM.md:- **Bootloader**: UEFI (Limine) - TODO   
+Docs/Dev/BUILD_SYSTEM.md:- **Bootloader**: TODO                   
+Docs/Dev/BUILD_SYSTEM.md:- GIC (Generic Interrupt Controller) supp
+ort (TODO)                                                        
+Docs/Dev/BUILD_SYSTEM.md:- UEFI bootloader (TODO)                 
+Docs/Dev/BUILD_SYSTEM.md:- PLIC (Platform-Level Interrupt Controll
+er) support (TODO)                                                
+Docs/Dev/BUILD_SYSTEM.md:- Bootloader (TODO)                      
+Docs/Dev/IMPLEMENTATION_STATUS.md:### Phase 7 (Network Stack) - TO
+DO                                                                
+Docs/Dev/IMPLEMENTATION_STATUS.md:### Phase 8 (Security Infrastruc
+ture) - TODO                                                      
+Docs/Dev/IMPLEMENTATION_STATUS.md:### Phase 9 (GUI Foundation) - T
+ODO                                                               
+Docs/Dev/IMPLEMENTATION_STATUS.md:### Phase 10-16 - TODO          
+Docs/Dev/IMPLEMENTATION_STATUS.md:## Known Issues / TODOs         
+Docs/Dev/PRODUCTION_READINESS_ANALYSIS.md:// TODO: Debug why this 
+causes hang - disabled for now                                    
+Docs/Dev/REMAINING_WORK_COMPLETE.md:- TODO: Add delay/yield betwee
+n retries (when scheduler is available)                           
+Docs/Dev/REMAINING_WORK_COMPLETE.md:            // TODO: yield/del
+ay                                                                
+apps/desktop/desktop.c:    // TODO: IPC port registration logic.  
+apps/desktop/desktop.c:        // TODO: Free wallpaper texture via
+ UGAL                                                             
+apps/desktop/desktop.c:    // TODO: Load wallpaper image via libra
+ry                                                                
+apps/desktop/desktop.c:        // TODO: Draw loaded wallpaper text
+ure                                                               
+apps/desktop/desktop.c:            // TODO: Draw label text using 
+font library                                                      
+apps/desktop/main.c:    // TODO: Connect to compositor via IPC    
+apps/editor/editor.c:                // TODO: Show save dialog    
+apps/editor/editor.c:    // TODO: Load file via VFS               
+apps/editor/editor.c:    // TODO: Save file via VFS               
+apps/editor/editor.c:    // TODO: Render editor buffer with syntax
+ highlighting                                                     
+apps/editor/editor.c:        // TODO: Process events              
+apps/editor/editor.c:        // TODO: Sleep or yield CPU          
+apps/editor/main.c:    // TODO: Connect to compositor via IPC     
+apps/filemanager/filemanager.c:    // TODO: Read directory via VFS
+apps/filemanager/filemanager.c:    // Simple bubble sort (TODO: us
+e qsort)                                                          
+apps/filemanager/filemanager.c:        // TODO: Implement file cop
+y/move via VFS                                                    
+apps/filemanager/filemanager.c:            // TODO: Delete file vi
+a VFS                                                             
+apps/filemanager/filemanager.c:    // TODO: Rename file via VFS   
+apps/filemanager/filemanager.c:    // TODO: Create directory via V
+FS                                                                
+apps/filemanager/filemanager.c:    // TODO: Move selected files to
+ trash                                                            
+apps/filemanager/filemanager.c:    // TODO: Add bookmark button to
+ sidebar                                                          
+apps/filemanager/filemanager.c:    // TODO: Implement file search 
+apps/filemanager/filemanager.c:        // TODO: Create right pane 
+widgets                                                           
+apps/filemanager/filemanager.c:        // TODO: Hide right pane wi
+dgets                                                             
+apps/filemanager/filemanager.c:    // TODO: Show/hide preview pane
+l                                                                 
+apps/filemanager/filemanager.c:    // TODO: Check if directory or 
+file                                                              
+apps/filemanager/filemanager.c:    // TODO: Show context menu with
+ options:                                                         
+apps/filemanager/filemanager.c:    // TODO: Render file preview ba
+sed on type                                                       
+apps/filemanager/filemanager.c:        // TODO: Process IPC messag
+es                                                                
+apps/filemanager/main.c:    // TODO: Connect to compositor via IPC
+apps/launcher/launcher.c:        // TODO: Free icon data          
+apps/launcher/launcher.c:    // TODO: Scan /usr/share/applications
+ for .desktop files                                               
+apps/launcher/launcher.c:        // TODO: Load icon image         
+apps/launcher/launcher.c:            // TODO: Free icon           
+apps/launcher/launcher.c:            // TODO: Launch application v
+ia exec syscall                                                   
+apps/launcher/launcher.c:            // TODO: Get current time    
+apps/launcher/launcher.c:    launcher_ctx_t* ctx = NULL;  // TODO:
+ Get context from widget                                          
+apps/launcher/launcher.c:            // TODO: Implement proper sea
+rch                                                               
+apps/launcher/launcher.c:        // TODO: Process IPC messages    
+apps/launcher/launcher.c:        // TODO: Sleep or yield CPU      
+apps/launcher/main.c:    // TODO: Connect to compositor via IPC   
+apps/login/login.c:    // TODO: Call authentication service via IP
+C                                                                 
+apps/login/login.c:    // TODO: Call user management service via I
+PC                                                                
+apps/login/login.c:    // TODO: Show window                       
+apps/login/login.c:    // TODO: Hide window                       
+apps/login/login.c:    // TODO: Handle keyboard input for username
+/password fields                                                  
+apps/login/login.c:    // TODO: Handle button clicks              
+apps/login/login.c:        // TODO: Process IPC messages from comp
+ositor                                                            
+apps/login/login.c:        // TODO: Handle input events           
+apps/login/login.c:        // TODO: Yield CPU or sleep            
+apps/login/main.c:    // TODO: Connect to compositor via IPC      
+apps/settings/settings.c:    // TODO: Load from actual config file
+apps/settings/settings.c:    // TODO: Save to config file         
+apps/settings/settings.c:    // TODO: Actual WiFi connection      
+apps/settings/settings.c:    // TODO: Actual password change      
+apps/settings/settings.c:    // TODO: Actual update check         
+apps/settings/settings.c:    // TODO: Actual update download      
+apps/settings/settings.c:    // TODO: Actual update installation  
+apps/taskbar/main.c:    // TODO: Connect to compositor via IPC    
+apps/taskbar/taskbar.c:    // TODO: Destroy popups                
+apps/taskbar/taskbar.c:            // TODO: Free thumbnail        
+apps/taskbar/taskbar.c:    // TODO: Get current time from system  
+apps/taskbar/taskbar.c:    // TODO: Create calendar widget popup  
+apps/taskbar/taskbar.c:    // TODO: Create volume slider popup    
+apps/taskbar/taskbar.c:    // TODO: Create network list popup     
+apps/taskbar/taskbar.c:    // TODO: Launch application launcher   
+apps/taskbar/taskbar.c:    // TODO: Show battery settings         
+apps/taskbar/taskbar.c:        // TODO: Process IPC messages from 
+compositor and system services                                    
+apps/terminal/main.c:    // TODO: Connect to compositor via IPC   
+apps/terminal/terminal.c:            // TODO: Kill shell processes
+apps/terminal/terminal.c:    // TODO: Split existing pane and crea
+te new one                                                        
+apps/terminal/terminal.c:    // TODO: Split existing pane and crea
+te new one                                                        
+apps/terminal/terminal.c:            // TODO: Parse extended color
+ codes                                                            
+apps/terminal/terminal.c:    // TODO: Map keycode to appropriate s
+equence                                                           
+apps/terminal/terminal.c:    // TODO: Fork and exec shell (e.g., /
+bin/sh)                                                           
+apps/terminal/terminal.c:    // TODO: Write data to shell's stdin 
+via pipe                                                          
+apps/terminal/terminal.c:    // TODO: Render terminal buffer to fr
+amebuffer                                                         
+apps/terminal/terminal.c:    // TODO: Draw cursor at current posit
+ion                                                               
+apps/terminal/terminal.c:        // TODO: Read from shell processe
+s                                                                 
+apps/terminal/terminal.c:        // TODO: Process IPC messages    
+apps/texteditor/main.c:        // TODO: Copy to system clipboard  
+apps/texteditor/main.c:    // TODO: Paste from system clipboard   
+apps/texteditor/texteditor.c:            // TODO: Implement replac
+e undo                                                            
+apps/texteditor/texteditor.c:            // TODO: Implement replac
+e redo                                                            
+bootloader/bios/stage2.c:    // TODO: Implement actual disk read u
+sing BIOS int 0x13                                                
+bootloader/bios/stage2.c:    // TODO: Implement E820 memory detect
+ion                                                               
+bootloader/bios/stage2.c:    // TODO: Load kernel.elf from disk   
+bootloader/bios/stage2.c:    // TODO: Set up GDT, enable A20 line,
+ enter protected mode                                             
+bootloader/bios/stage2.c:    // TODO: Parse ELF and jump to kernel
+ entry point                                                      
+drivers/audio/ac97/ac97_driver.rs:        // TODO: Read BAR0 (NAM)
+ and BAR1 (NABM) from PCI config                                  
+drivers/audio/ac97/ac97_driver.rs:            // TODO: Sleep for 1
+ms                                                                
+drivers/audio/ac97/ac97_driver.rs:            buffer_addr: buffer.
+as_ptr() as u32,  // TODO: Get physical address                   
+drivers/audio/ac97/ac97_driver.rs:        // TODO: Implement I/O p
+ort read                                                          
+drivers/audio/ac97/ac97_driver.rs:        // TODO: Implement I/O p
+ort write                                                         
+drivers/audio/ac97/ac97_driver.rs:    // TODO: Enumerate PCI devic
+es and find AC'97 controllers                                     
+drivers/audio/ac97/ac97_driver.rs:    // TODO: Create Ac97Controll
+er instances                                                      
+drivers/audio/ac97/ac97_driver.rs:    // TODO: Register with audio
+ framework                                                        
+drivers/audio/hda/hda.c:    uint16_t fmt = 0; // TODO: Calculate p
+roperly based on stream->format/rate                              
+drivers/audio/hda/hda.c:    uint16_t fmt = 0; // TODO: Calculate p
+roperly based on stream->format/rate                              
+drivers/audio/hda/hda_driver.rs:        // TODO: Map MMIO region f
+rom PCI BAR0                                                      
+drivers/audio/hda/hda_driver.rs:            // TODO: Sleep for 1ms
+drivers/audio/hda/hda_driver.rs:            // TODO: Sleep for 1ms
+drivers/audio/hda/hda_driver.rs:            address: buffer.as_ptr
+() as u64,  // TODO: Get physical address                         
+drivers/audio/hda/hda_driver.rs:    // TODO: Enumerate PCI devices
+ and find HDA controllers                                         
+drivers/audio/hda/hda_driver.rs:    // TODO: Create HdaController 
+instances                                                         
+drivers/audio/hda/hda_driver.rs:    // TODO: Register with audio f
+ramework                                                          
+drivers/audio/usb/usb_audio_driver.rs:        // TODO: Parse USB d
+escriptors                                                        
+drivers/audio/usb/usb_audio_driver.rs:        // TODO: Parse USB d
+escriptors                                                        
+drivers/audio/usb/usb_audio_driver.rs:            // TODO: Send da
+ta via USB isochronous transfer                                   
+drivers/audio/usb/usb_audio_driver.rs:            // TODO: Send SE
+T_CUR request to feature unit                                     
+drivers/audio/usb/usb_audio_driver.rs:            // TODO: Send SE
+T_CUR request to feature unit                                     
+drivers/audio/usb/usb_audio_driver.rs:        // TODO: Send SET_IN
+TERFACE USB control request                                       
+drivers/audio/usb/usb_audio_driver.rs:        // TODO: Configure U
+SB isochronous endpoint                                           
+drivers/audio/usb/usb_audio_driver.rs:        // TODO: Read USB de
+vice descriptor                                                   
+drivers/audio/usb/usb_audio_driver.rs:    // TODO: Register with U
+SB subsystem                                                      
+drivers/audio/usb/usb_audio_driver.rs:    // TODO: Register probe/
+remove callbacks                                                  
+drivers/audio/usb/usb_audio_driver.rs:    // TODO: Register with a
+udio framework                                                    
+drivers/mouse/src/main.rs:    // TODO: Implement resolution settin
+g                                                                 
+drivers/network/ethernet/src/main.rs:        // TODO: Initialize N
+IC hardware                                                       
+drivers/network/ethernet/src/main.rs:        // TODO: Send packet 
+via hardware                                                      
+drivers/network/ethernet/src/main.rs:        // TODO: Receive pack
+et from hardware                                                  
+drivers/network/ethernet/src/main.rs:                    // TODO: 
+Store IP configuration                                            
+drivers/network/ethernet/src/main.rs:        // TODO: Register wit
+h device manager                                                  
+drivers/network/ethernet/src/main.rs:        // TODO: Wait for dev
+ice assignment                                                    
+drivers/network/ethernet/src/main.rs:                // TODO: Hand
+le interrupt                                                      
+drivers/network/ethernet/src/main.rs:        // TODO: Start transm
+it/receive queues                                                 
+drivers/network/ethernet/src/main.rs:        // TODO: Stop queues 
+drivers/network/ethernet/src/main.rs:            // TODO: Handle i
+nterrupts                                                         
+drivers/network/ethernet/src/packet.rs:    // TODO: Implement pack
+et transmission                                                   
+drivers/network/ethernet/src/packet.rs:    // TODO: Implement pack
+et reception                                                      
+drivers/network/wifi/src/main.rs:        // TODO: Initialize contr
+oller (iwlwifi style)                                             
+drivers/pci/src/main.rs:    // TODO: Use syscall to request I/O po
+rt access                                                         
+drivers/storage/ahci/src/main.rs:                                 
+   // TODO: Copy from message buffer (may need larger buffer)     
+drivers/storage/ahci/src/main.rs:        // TODO: Register with de
+vice manager                                                      
+drivers/storage/ahci/src/main.rs:        // TODO: Wait for device 
+assignment                                                        
+drivers/storage/ahci/src/main.rs:        // TODO: Stop all ports  
+drivers/storage/ahci/src/main.rs:        // TODO: Disable interrup
+ts                                                                
+drivers/storage/ahci/src/main.rs:            // TODO: Handle inter
+rupts                                                             
+drivers/storage/ata/src/main.rs:    // TODO: Detect ATA controller
+drivers/storage/ata/src/main.rs:    // TODO: Initialize ATA ports 
+drivers/storage/ata/src/main.rs:    // TODO: Register with device 
+manager                                                           
+drivers/storage/ata/src/main.rs:        // TODO: Handle storage I/
+O requests via IPC                                                
+drivers/storage/ata/src/main.rs:        // TODO: Process command q
+ueue                                                              
+drivers/storage/fat32/src/ipc.rs:    // TODO: Send IPC message to 
+block device driver                                               
+drivers/storage/fat32/src/ipc.rs:    // TODO: Send IPC message to 
+block device driver                                               
+drivers/storage/fat32/src/main.rs:        // TODO: Handle filesyst
+em operations via IPC                                             
+drivers/storage/fat32/src/main.rs:        // TODO: Register with V
+FS service                                                        
+drivers/storage/nvme/src/main.rs:        // TODO: Initialize contr
+oller                                                             
+gui/toolkit/src/button.cpp:    // TODO: Render label text         
+gui/ugal/src/ugal.c:    // TODO: Query PCI for GPU devices        
+gui/ugal/src/ugal.c:    // TODO: Initialize vendor-specific driver
+gui/ugal/src/ugal.c:    // TODO: Cleanup vendor-specific driver   
+gui/ugal/src/ugal.c:    // TODO: Call vendor-specific buffer creat
+ion                                                               
+gui/ugal/src/ugal.c:    // TODO: Call vendor-specific buffer destr
+uction                                                            
+gui/ugal/src/ugal.c:    // TODO: Call vendor-specific map         
+gui/ugal/src/ugal.c:    // TODO: Call vendor-specific unmap       
+gui/ugal/src/ugal.c:    // TODO: Call vendor-specific update      
+gui/ugal/src/ugal.c:    // TODO: Call vendor-specific texture crea
+tion when driver available                                        
+gui/ugal/src/ugal.c:    // TODO: Call vendor-specific texture dest
+ruction when driver available                                     
+gui/ugal/src/ugal.c:    // TODO: Call vendor-specific texture upda
+te when driver available                                          
+gui/ugal/src/ugal.c:    // TODO: Call vendor-specific framebuffer 
+creation                                                          
+gui/ugal/src/ugal.c:    // TODO: Call vendor-specific framebuffer 
+destruction                                                       
+gui/ugal/src/ugal.c:    // TODO: Call vendor-specific clear when d
+river available                                                   
+gui/ugal/src/ugal.c:    // TODO: Call vendor-specific fill when dr
+iver available                                                    
+gui/ugal/src/ugal.c:    // TODO: Call vendor-specific line draw wh
+en driver available                                               
+gui/ugal/src/ugal.c:    // TODO: Call vendor-specific blit when dr
+iver available                                                    
+gui/ugal/src/ugal.c:    // TODO: Call vendor-specific vsync       
+gui/widgets/src/volume_control.c:    // TODO: Connect to audio ser
+ver                                                               
+gui/widgets/src/volume_control.c:    // TODO: Render volume icon  
+gui/widgets/src/volume_control.c:    // TODO: Render volume slider
+ popup                                                            
+kernel/core/main.c:    // TODO: Fix kprintf %016lx formatting issu
+e                                                                 
+kernel/crypto/bn.c:    // TODO: Implement Miller-Rabin            
+kernel/drivers/ahci/ahci.c:    // TODO: Implement full AHCI identi
+fy command                                                        
+kernel/drivers/ahci/ahci.c:        // TODO: Initialize ports and d
+etect devices                                                     
+kernel/drivers/ata/ata.c:    // TODO: Implement LBA48 for larger d
+rives - DONE: LBA48 read implemented                              
+kernel/drivers/ata/ata.c:    // TODO: Implement LBA48 for larger d
+rives - DONE: LBA48 read implemented                              
+kernel/drivers/ata/ata.c:    // TODO: Implement LBA48 for larger d
+rives - DONE: LBA48 read implemented                              
+kernel/drivers/ata/ata.c:    // TODO: Implement LBA48 for larger d
+rives - DONE: LBA48 read implemented                              
+kernel/drivers/ethernet/ethernet.c:    // TODO: Use proper VMM map
+ping with MMIO flags - DONE: VMM mapping with MMIO flags implement
+ed                                                                
+kernel/fs/ext4_vfs.c:    // TODO: Resolve path to inode number    
+kernel/hal/arch_select.h:    // RISC-V HAL implementation (TODO)  
+kernel/hal/arm64/cpu.c:    // TODO: Parse device tree or ACPI to g
+et CPU count - DONE: Device tree parsing implemented              
+kernel/hal/arm64/cpu.c:                // cpu_on(mpidr, (uint64_t)
+secondary_startup); // TODO: Enable when trampoline ready         
+kernel/hal/arm64/dtb_parser.c:    // TODO: Implement full path tra
+versal - DONE: Full path traversal implemented                    
+kernel/hal/arm64/dtb_parser.c:    // TODO: Walk device tree and en
+umerate devices - DONE: Tree walking implemented                  
+kernel/hal/arm64/dtb_parser.c:    // TODO: Recursively print tree 
+structure - DONE: Recursive printing implemented                  
+kernel/hal/arm64/idt.c:    // TODO: Set up exception handlers for:
+ - DONE: Exception handlers are set up in vectors.S               
+kernel/hal/riscv/cpu.c:    // TODO: Port DTB parser to generic loc
+ation or include arm64's parser if compatible (it is FDT standard)
+.                                                                 
+kernel/loader/elf.c:                // TODO: Use proper virtual ad
+dress access - DONE: Virtual address access implemented           
+kernel/process/fork_exec.c:    // TODO: Load ELF file from filesys
+tem - DONE: ELF loading from filesystem implemented               
+kernel/process/fork_exec.c:    // TODO: Optimize to read segments 
+on-demand                                                         
+kernel/process/user_mode.c:    // TODO: Implement stack setup with
+ arguments - DONE: Stack setup implemented                        
+kernel/profiler/perf_counter.c:    // TODO: Iterate over all CPUs 
+- DONE: CPU iteration implemented                                 
+kernel/sched/cpu_affinity.c:    // TODO: Add cpu_affinity field to
+ thread_t - DONE: cpu_affinity field added                        
+kernel/sched/cpu_affinity.c:    // TODO: Add cpu_affinity field to
+ thread_t - DONE: cpu_affinity field added                        
+kernel/sched/cpu_affinity.c:    // TODO: Add cpu_affinity field to
+ thread_t - DONE: cpu_affinity field added                        
+kernel/sched/work_stealing.c:            // TODO: Add cpu_affinity
+ field to thread_t - DONE: cpu_affinity field added               
+kernel/security/capability.c:    // TODO: In a real implementation
+, we need to:                                                     
+kernel/shell/shell.c:    // TODO: Implement program execution via 
+ELF loader - DONE: Program execution implemented                  
+libs/libc/src/malloc.c:            // TODO: Split if too large    
+libs/libc/src/stdlib.c:    // TODO: Send signal or panic          
+libs/libgui/src/font.cpp:    // TODO: Implement character renderin
+g                                                                 
+libs/libgui/src/graphics.cpp:    // TODO: Implement font rendering
+sdk/templates/driver_template.c:    // TODO: Detect and configure 
+your device                                                       
+sdk/templates/driver_template.c:    // TODO: Cleanup device resour
+ces                                                               
+sdk/templates/driver_template.c:    // TODO: Implement device read
+ operation                                                        
+sdk/templates/driver_template.c:    // TODO: Implement device writ
+e operation                                                       
+sdk/templates/driver_template.c:    // TODO: Implement device-spec
+ific control operations                                           
+sdk/templates/driver_template.c:    // TODO: Handle device interru
+pts                                                               
+sdk/templates/driver_template.c:    // TODO: Implement your driver
+'s main loop                                                      
+sdk/templates/service_template.c:    // TODO: Initialize your serv
+ice-specific resources                                            
+sdk/templates/service_template.c:    // TODO: Cleanup service-spec
+ific resources                                                    
+sdk/templates/service_template.c:    // TODO: Process the request 
+services/acpi/src/main.rs:        // TODO: Parse RSDT/XSDT        
+services/acpi/src/main.rs:                // TODO: Validate checks
+um                                                                
+services/driver_manager/src/main.rs:                // TODO: Send 
+restart request to process manager                                
+services/init/src/service_startup.rs:    // TODO: Use SYS_EXEC to 
+start service binary                                              
+services/init/src/service_startup.rs:    // TODO: Implement timeou
+t                                                                 
+services/network/src/dns.rs:    // TODO: Implement reverse DNS loo
+kup                                                               
+services/network/src/socket.rs:            let _ = flags; // TODO:
+ Handle flags                                                     
+services/network/src/socket.rs:            let _ = flags; // TODO:
+ Handle flags                                                     
+services/vfs/src/sfs/mod.rs:            // TODO: Implement directo
+ry lookup using B-tree                                            
+services/vfs/src/sfs/mod.rs:        // TODO: Implement directory l
+ookup using B-tree                                                
+services/vfs/src/sfs/mod.rs:        // TODO: Open device via devic
+e manager                                                         
+tests/benchmarks/boot_bench.c:    // TODO: Use actual timer       
+tests/boot/test_filesystem.c:    // TODO: Test file open          
+tests/boot/test_filesystem.c:    // TODO: Test file read          
+tests/boot/test_filesystem.c:    // TODO: Test file write         
+tests/boot/test_filesystem.c:    // TODO: Test file close         
+tests/boot/test_filesystem.c:    // TODO: Test directory creation 
+tests/boot/test_filesystem.c:    // TODO: Test directory listing  
+tests/boot/test_filesystem.c:    // TODO: Test directory removal  
+tests/boot/test_gui.c:    // TODO: Test basic drawing primitives  
+tests/boot/test_gui.c:    // TODO: Test text rendering            
+tests/boot/test_gui.c:    // TODO: Test window rendering          
+tests/boot/test_network.c:    // TODO: Test IP packet creation    
+tests/boot/test_network.c:    // TODO: Test IP checksum calculatio
+n                                                                 
+tests/boot/test_network.c:    // TODO: Test IP send/receive       
+tests/boot/test_network.c:    // TODO: Test TCP connection creatio
+n                                                                 
+tests/boot/test_network.c:    // TODO: Test TCP send/receive      
+tests/boot/test_network.c:    // TODO: Test TCP connection close  
+tests/boot/test_services.c:    // TODO: Test service registration 
+tests/boot/test_services.c:    // TODO: Test service lookup       
+tests/boot/test_services.c:    // TODO: Test service communication
+tests/integration/test_filesystem.c:    // TODO: Mount FAT32 files
+ystem                                                             
+tests/integration/test_filesystem.c:    // TODO: Verify mount succ
+eeded                                                             
+tests/integration/test_filesystem.c:    // TODO: Open file        
+tests/integration/test_filesystem.c:    // TODO: Write data       
+tests/integration/test_filesystem.c:    // TODO: Read data        
+tests/integration/test_filesystem.c:    // TODO: Verify data      
+tests/integration/test_filesystem.c:    // TODO: Close file       
+tests/integration/test_filesystem.c:    // TODO: Create directory 
+tests/integration/test_filesystem.c:    // TODO: List directory   
+tests/integration/test_filesystem.c:    // TODO: Remove directory 
+tests/integration/test_network.c:    // TODO: Send IP packet      
+tests/integration/test_network.c:    // TODO: Receive IP packet   
+tests/integration/test_network.c:    // TODO: Verify packet       
+tests/integration/test_network.c:    // TODO: Create TCP connectio
+n                                                                 
+tests/integration/test_network.c:    // TODO: Send data           
+tests/integration/test_network.c:    // TODO: Receive data        
+tests/integration/test_network.c:    // TODO: Close connection    
+tests/integration/test_network.c:    // TODO: Send UDP packet     
+tests/integration/test_network.c:    // TODO: Receive UDP packet  
+tests/integration/test_network.c:    // TODO: Verify packet       
+tests/integration/test_services.c:    // TODO: Send enumerate requ
+est to device manager                                             
+tests/integration/test_services.c:    // TODO: Verify response    
+tests/integration/test_services.c:    // TODO: Send open request t
+o VFS                                                             
+tests/integration/test_services.c:    // TODO: Verify response    
+tests/integration/test_services.c:    // TODO: Send socket creatio
+n request to network service                                      
+tests/integration/test_services.c:    // TODO: Verify response    
+tests/services/test_services.c:    // TODO: Connect to device mana
+ger service port                                                  
+tests/services/test_services.c:    // TODO: Send enumerate request
+tests/services/test_services.c:    // TODO: Verify response       
+tests/services/test_services.c:    // TODO: Connect to VFS service
+ port                                                             
+tests/services/test_services.c:    // TODO: Send open request     
+tests/services/test_services.c:    // TODO: Verify response       
+tests/services/test_services.c:    // TODO: Connect to network ser
+vice port                                                         
+tests/services/test_services.c:    // TODO: Send socket creation r
+equest                                                            
+tests/services/test_services.c:    // TODO: Verify response       
+tests/unit/test_scheduler.c:    // TODO: Create mock tasks with di
+fferent priorities                                                
+tools/qemu.sh:# TODO: Create proper UEFI bootloader

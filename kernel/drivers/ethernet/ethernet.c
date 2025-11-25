@@ -129,7 +129,7 @@ static error_code_t ethernet_nic_init(ethernet_nic_t* nic) {
     }
     
     // Map MMIO to virtual address with proper VMM mapping and MMIO flags
-    // TODO: Use proper VMM mapping with MMIO flags - DONE: VMM mapping with MMIO flags implemented
+    // DONE: VMM mapping with MMIO flags implemented
     // Use kernel address space (NULL means kernel address space)
     address_space_t* kernel_as = NULL;  // NULL means kernel address space
     

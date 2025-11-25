@@ -61,17 +61,5 @@ pid_t process_spawn(const char* name, const char* path, vaddr_t entry_point) {
     return process->pid;
 }
 
-/**
- * Get IPC port of a process
- * @param pid Process ID
- * @return IPC port ID on success, 0 on error
- */
-uint64_t process_get_ipc_port(pid_t pid) {
-    process_t* process = process_get_by_pid(pid);
-    if (!process) {
-        return 0;
-    }
-    
-    return process->ipc_port;
-}
+
 

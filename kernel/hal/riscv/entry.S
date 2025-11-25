@@ -8,8 +8,16 @@
 .global kernel_entry
 
 // RISC-V entry point
+// a0 = hartid
+// a1 = dtb pointer
 _start:
 kernel_entry:
+    // Save hartid to tp (Thread Pointer) register
+    mv tp, a0
+    
+    // Save dtb pointer to s1 (callee-saved) for later use
+    mv s1, a1
+
     // Set up stack pointer
     // Stack grows downward, so set to top of stack region
     la sp, stack_top
@@ -26,6 +34,9 @@ clear_bss:
     j clear_bss
     
 bss_cleared:
+    // Pass dtb pointer to kernel_main (optional, but good practice)
+    mv a0, s1
+    
     // Jump to C kernel entry
     call kernel_main
     
@@ -39,4 +50,3 @@ halt:
 stack_bottom:
     .space 0x10000  // 64KB stack
 stack_top:
-

@@ -27,7 +27,7 @@ error_code_t idt_init(void) {
         __asm__ volatile("isb");
     }
     
-    // TODO: Set up exception handlers for: - DONE: Exception handlers are set up in vectors.S
+    // DONE: Exception handlers are set up in vectors.S
     // - Synchronous exceptions (EL1) - handled by exception_handler_sync
     // - IRQ (Interrupt Request) - handled by exception_handler_irq
     // - FIQ (Fast Interrupt Request) - handled by exception_handler_fiq

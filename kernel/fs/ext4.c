@@ -169,12 +169,12 @@ error_code_t ext4_read_inode(ext4_fs_t* fs, uint32_t inode_num, ext4_inode_t* in
         return ERR_OUT_OF_MEMORY;
     }
     
-    error_code_t err = block_device_read(fs->device, inode_block, block_buffer);
+    err = block_device_read(fs->device, inode_block, block_buffer);
     if (err != ERR_OK) {
         kfree(block_buffer);
         return err;
     }
-    
+
     // Copy inode from block
     memcpy(inode, block_buffer + inode_offset, sizeof(ext4_inode_t));
     

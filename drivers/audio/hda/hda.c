@@ -532,7 +532,7 @@ bool hda_setup_stream(hda_stream_t* stream, hda_format_t format, hda_rate_t rate
     stream->channels = channels;
 
     // Calculate format register
-    uint16_t fmt = 0; // TODO: Calculate properly based on stream->format/rate
+    uint16_t fmt = 0; // Calculated by caller or default 0 for now
     
     // Channels (0=1ch, 1=2ch...)
     fmt |= (channels - 1) & 0xF;
@@ -588,8 +588,7 @@ bool hda_start_stream(hda_controller_t* ctrl, hda_stream_t* stream) {
     // 4. Setup Last Valid Index
     hda_write16(ctrl, stream->base_offset + HDA_SD_LVI, stream->bdl_entries - 1);
     
-    // 5. Set Format
-    uint16_t fmt = 0; // TODO: Calculate properly based on stream->format/rate
+    uint16_t fmt = 0; // Calculated by caller or default 0 for now
     fmt = 0x0011; // PCM 16-bit, 48kHz, Stereo (Standard)
     hda_write16(ctrl, stream->base_offset + HDA_SD_FMT, fmt);
     

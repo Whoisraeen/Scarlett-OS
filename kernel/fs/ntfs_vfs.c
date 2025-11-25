@@ -72,8 +72,8 @@ static error_code_t ntfs_vfs_unmount(vfs_filesystem_t* fs) {
 /**
  * NTFS open operation (read-only)
  */
-static error_code_t ntfs_vfs_open(vfs_filesystem_t* fs, const char* path, uint64_t flags, fd_t* fd) {
-    if (!fs || !fs->private_data || !path || !fd) {
+static error_code_t ntfs_vfs_open(vfs_filesystem_t* fs, const char* path, uint64_t flags, fd_t* fd, void** file_data) {
+    if (!fs || !fs->private_data || !path || !fd || !file_data) {
         return ERR_INVALID_ARG;
     }
     
@@ -91,29 +91,17 @@ static error_code_t ntfs_vfs_open(vfs_filesystem_t* fs, const char* path, uint64
         return err;
     }
     
-    // Store MFT record in fd
-    extern fd_entry_t fd_table[];
+    // Find free fd slot (VFS handles this now, but we need to return the fd index if we were allocating it)
+    // Wait, vfs_open allocates the FD and passes it to us.
+    // So we don't need to allocate it.
+    // We just need to set file_data.
     
-    // Find free fd slot
-    fd_t new_fd = -1;
-    for (int i = 0; i < 256; i++) {
-        if (!fd_table[i].used) {
-            new_fd = i;
-            break;
-        }
-    }
+    *file_data = (void*)(uintptr_t)mft_record;
     
-    if (new_fd < 0) {
-        return ERR_OUT_OF_MEMORY;
-    }
+    // Note: fd is already set by vfs_open before calling us?
+    // vfs_open: `fd_t new_fd = allocate_fd();` then `mount->fs->open(..., &new_fd, ...)`
+    // So *fd contains the new_fd. We don't need to change it.
     
-    fd_table[new_fd].used = true;
-    fd_table[new_fd].fs = fs;
-    fd_table[new_fd].file_data = (void*)(uintptr_t)mft_record;
-    fd_table[new_fd].position = 0;
-    fd_table[new_fd].flags = flags;
-    
-    *fd = new_fd;
     return ERR_OK;
 }
 
@@ -137,25 +125,16 @@ static error_code_t ntfs_vfs_read(vfs_filesystem_t* fs, fd_t fd, void* buf, size
     ntfs_fs_t* ntfs_fs = (ntfs_fs_t*)fs->private_data;
     
     // Get MFT record from fd and read data
-    extern fd_entry_t fd_table[];
-    
-    if (fd < 0 || fd >= 256 || !fd_table[fd].used) {
-        return ERR_INVALID_ARG;
-    }
-    
-    uint64_t mft_record = (uint64_t)(uintptr_t)fd_table[fd].file_data;
+    uint64_t mft_record = (uint64_t)(uintptr_t)vfs_get_file_data(fd);
     if (mft_record == 0) {
         return ERR_NOT_FOUND;
     }
     
     // Use current position from fd
-    size_t offset = fd_table[fd].position;
+    size_t offset = (size_t)vfs_get_position(fd);
     error_code_t err = ntfs_read_file(ntfs_fs, mft_record, buf, offset, count, bytes_read);
     
-    if (err == ERR_OK) {
-        // Update position
-        fd_table[fd].position += *bytes_read;
-    }
+    // Position update is handled by VFS
     
     return err;
 }

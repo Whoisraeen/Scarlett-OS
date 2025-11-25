@@ -1,0 +1,94 @@
+[AS] hal/x86_64/multiboot2.S (ARCH=x86_64)
+[AS] hal/x86_64/entry.S (ARCH=x86_64)
+[AS] hal/x86_64/gdt_load.S (ARCH=x86_64)
+[AS] hal/x86_64/idt_load.S (ARCH=x86_64)
+[AS] hal/x86_64/exceptions.S (ARCH=x86_64)
+[AS] hal/x86_64/user_mode.S (ARCH=x86_64)
+[AS] hal/x86_64/interrupt_stubs.S (ARCH=x86_64)
+[CC] hal/x86_64/ap_startup.c
+[AS] hal/x86_64/context_switch.S (ARCH=x86_64)
+[AS] hal/x86_64/syscall_entry.S (ARCH=x86_64)
+[CC] core/main.c
+core/main.c: In function ‘kernel_main’:
+core/main.c:151:1: warning: label ‘skip_boot_info’ defined but not used [-Wunused-label]
+  151 | skip_boot_info:
+      | ^~~~~~~~~~~~~~
+[CC] core/kprintf.c
+[CC] core/exceptions.c
+[CC] core/errors.c
+[CC] core/error_recovery.c
+In file included from core/error_recovery.c:12:
+core/../sched/sched_o1.h:133:19: warning: ‘find_first_bit’ declared ‘static’ but never defined [-Wunused-function]
+  133 | static inline int find_first_bit(uint64_t bitmap);
+      |                   ^~~~~~~~~~~~~~
+core/../sched/sched_o1.h:134:20: warning: ‘set_bit’ declared ‘static’ but never defined [-Wunused-function]
+  134 | static inline void set_bit(uint64_t* bitmap, int bit);
+      |                    ^~~~~~~
+core/../sched/sched_o1.h:135:20: warning: ‘clear_bit’ declared ‘static’ but never defined [-Wunused-function]
+  135 | static inline void clear_bit(uint64_t* bitmap, int bit);
+      |                    ^~~~~~~~~
+[CC] core/string.c
+[CC] core/math.c (with SSE for FP)
+[CC] core/stdio.c (with SSE for FP)
+[CC] core/multiboot2_parser.c
+[CC] hal/hal_common.c
+[CC] hal/hal_wrapper.c
+[CC] hal/arch_detect.c
+hal/arch_detect.c:22:3: warning: ‘hal_ops’ defined but not used [-Wunused-variable]
+   22 | } hal_ops;
+      |   ^~~~~~~
+[CC] mm/pmm.c
+mm/pmm.c: In function ‘pmm_alloc_page’:
+mm/pmm.c:186:18: warning: variable ‘last_allocated’ set but not used [-Wunused-but-set-variable]
+  186 |     static pfn_t last_allocated = 0;  // Hint for next allocation
+      |                  ^~~~~~~~~~~~~~
+[CC] mm/bootstrap.c
+[CC] mm/vmm.c
+mm/vmm.c: In function ‘get_page_table_entry’:
+mm/vmm.c:55:17: warning: unused variable ‘first_call’ [-Wunused-variable]
+   55 |     static bool first_call = true;
+      |                 ^~~~~~~~~~
+In file included from mm/vmm.c:15:
+mm/vmm.c: In function ‘vmm_init’:
+mm/../include/debug.h:39:33: warning: format ‘%lx’ expects argument of type ‘long unsigned int’, but argument 2 has type ‘long long unsigned int’ [-Wformat=]
+   39 | #define kinfo(fmt, ...) kprintf("[INFO] " fmt, ##__VA_ARGS__)
+      |                                 ^~~~~~~~~
+mm/vmm.c:179:5: note: in expansion of macro ‘kinfo’
+  179 |     kinfo("VMM: Setting up physical memory direct map at 0x%lx\n", PHYS_MAP_BASE);
+      |     ^~~~~
+At top level:
+mm/vmm.c:55:17: warning: ‘first_call’ defined but not used [-Wunused-variable]
+   55 |     static bool first_call = true;
+      |                 ^~~~~~~~~~
+mm/vmm.c: In function ‘get_page_table_entry.constprop’:
+mm/vmm.c:149:26: warning: array subscript 4 is above array bounds of ‘uint64_t[4]’ {aka ‘long unsigned int[4]’} [-Warray-bounds]
+  149 |     return &table[indices[level]];
+      |                   ~~~~~~~^~~~~~~
+mm/vmm.c:58:14: note: while referencing ‘indices’
+   58 |     uint64_t indices[4] = {
+      |              ^~~~~~~
+[CC] mm/heap.c
+[CC] mm/slab.c
+[CC] mm/dma.c
+mm/dma.c: In function ‘dma_init’:
+mm/dma.c:221:10: warning: variable ‘hardware_iommu_detected’ set but not used [-Wunused-but-set-variable]
+  221 |     bool hardware_iommu_detected = false;
+      |          ^~~~~~~~~~~~~~~~~~~~~~~
+[CC] sched/scheduler.c
+sched/scheduler.c: In function ‘scheduler_tick’:
+sched/scheduler.c:694:9: error: ‘need_reschedule’ undeclared (first use in this function)
+  694 |         need_reschedule[cpu_id] = true;
+      |         ^~~~~~~~~~~~~~~
+sched/scheduler.c:694:9: note: each undeclared identifier is reported only once for each function it appears in
+sched/scheduler.c: In function ‘scheduler_check_reschedule’:
+sched/scheduler.c:704:9: error: ‘need_reschedule’ undeclared (first use in this function)
+  704 |     if (need_reschedule[cpu_id]) {
+      |         ^~~~~~~~~~~~~~~
+sched/scheduler.c:703:14: warning: variable ‘cpu_id’ set but not used [-Wunused-but-set-variable]
+  703 |     uint32_t cpu_id = cpu_get_current_id();
+      |              ^~~~~~
+At top level:
+sched/scheduler.c:66:13: warning: ‘idle_thread_func’ defined but not used [-Wunused-function]
+   66 | static void idle_thread_func(void* arg) {
+      |             ^~~~~~~~~~~~~~~~
+make: *** [Makefile:27: sched/scheduler.o] Error 1

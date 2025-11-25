@@ -64,7 +64,7 @@ int perf_counter_init(void) {
     }
     
     // Initialize performance counters for all CPUs
-    // TODO: Iterate over all CPUs - DONE: CPU iteration implemented
+    // DONE: CPU iteration implemented
     extern uint32_t cpu_get_count(void);
     uint32_t num_cpus = cpu_get_count();
     

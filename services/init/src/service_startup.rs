@@ -3,6 +3,14 @@
 use crate::service_manager::{register_service, find_service, get_service_port, set_service_status, ServiceStatus};
 use core::mem;
 
+// Syscall numbers (assuming these are globally available or defined in a common header)
+const SYS_FORK: u64 = 15;
+const SYS_EXEC: u64 = 16;
+const SYS_EXIT: u64 = 0;
+const SYS_YIELD: u64 = 6;
+const SYS_SLEEP: u64 = 5; // Added for timeout
+const SYS_GET_UPTIME_MS: u64 = 47; // Added for timeout
+
 /// Service startup configuration
 pub struct ServiceConfig {
     pub name: &'static [u8],
@@ -39,16 +47,39 @@ pub fn start_service(config: &ServiceConfig) -> Result<u64, ()> {
         }
     }
     
-    // TODO: Use SYS_EXEC to start service binary
-    // For now, services will start themselves and register
+    // Fork process
+    let pid = unsafe { syscall_raw(SYS_FORK, 0, 0, 0, 0, 0) };
     
+    if pid == 0 {
+        // Child process - Execute service binary
+        let path = config.binary_path.as_ptr() as u64;
+        
+        // Prepare argv (program name, NULL)
+        let argv: [*const u8; 2] = [config.binary_path.as_ptr(), core::ptr::null()];
+        
+        // Prepare envp (NULL)
+        let envp: [*const u8; 1] = [core::ptr::null()];
+        
+        unsafe { 
+            syscall_raw(SYS_EXEC, path, argv.as_ptr() as u64, envp.as_ptr() as u64, 0, 0);
+            
+            // If exec returns, it failed. Exit with error.
+            syscall_raw(SYS_EXIT, 1, 0, 0, 0, 0); // SYS_EXIT
+        }
+        loop {}
+    } else if pid > 0xFFFFFFFFFFFFF000 {
+        // Fork failed (error code returned as large unsigned)
+        return Err(());
+    }
+    
+    // Parent process
     // Mark service as starting
     if let Some(idx) = find_service(config.name) {
         set_service_status(idx, ServiceStatus::Starting);
     }
     
-    // Return placeholder PID (will be actual PID when exec is implemented)
-    Ok(1)
+    // Return PID
+    Ok(pid)
 }
 
 /// Start all core services
@@ -65,19 +96,28 @@ pub fn start_core_services() {
 
 /// Wait for service to be ready
 pub fn wait_for_service(name: &[u8], timeout_ms: u64) -> bool {
-    // TODO: Implement timeout
-    let _ = timeout_ms;
+    let start_time = unsafe { syscall_raw(SYS_GET_UPTIME_MS, 0, 0, 0, 0, 0) };
     
-    // Check if service is registered
-    find_service(name).is_some()
+    loop {
+        if find_service(name).is_some() {
+            return true;
+        }
+        
+        let current_time = unsafe { syscall_raw(SYS_GET_UPTIME_MS, 0, 0, 0, 0, 0) };
+        if timeout_ms > 0 && current_time - start_time > timeout_ms as u64 {
+            return false; // Timeout
+        }
+        
+        unsafe { syscall_raw(SYS_SLEEP, 10, 0, 0, 0, 0) }; // Sleep for a short period
+    }
 }
 
 /// Wait for all core services
 pub fn wait_for_core_services() {
     for service in CORE_SERVICES {
         // Wait for service to register
-        while !wait_for_service(service.name, 5000) {
-            yield_cpu();
+        while !wait_for_service(service.name, 5000) { // 5-second timeout per service
+            // This loop condition already handles yielding/sleeping internally
         }
     }
 }
@@ -85,7 +125,7 @@ pub fn wait_for_core_services() {
 /// Yield CPU to scheduler
 fn yield_cpu() {
     unsafe {
-        syscall_raw(6, 0, 0, 0, 0, 0);  // SYS_YIELD
+        syscall_raw(SYS_YIELD, 0, 0, 0, 0, 0);  // SYS_YIELD
     }
 }
 

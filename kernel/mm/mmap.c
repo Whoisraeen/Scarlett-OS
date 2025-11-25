@@ -249,9 +249,43 @@ error_code_t mmap_free(address_space_t* as, vaddr_t addr, size_t size) {
         }
         kfree(m);
     } else {
-        // Partial unmap logic (TODO: Split mapping)
-        // For now, we just keep the metadata but pages are unmapped.
-        // This is "simplified" but safer than crashing.
+        // Partial unmap logic
+        
+        // Case 1: Unmap from start
+        if (start == m->start) {
+            m->start = end;
+            m->offset += size; // Adjust offset for file-backed mappings
+        }
+        // Case 2: Unmap from end
+        else if (end == m->end) {
+            m->end = start;
+        }
+        // Case 3: Unmap from middle (Split)
+        else {
+            // Create new mapping for the right side
+            memory_mapping_t* new_m = (memory_mapping_t*)kmalloc(sizeof(memory_mapping_t));
+            if (!new_m) {
+                kerror("MMAP: Failed to allocate split mapping metadata. Leaking virtual range.\n");
+                // We already unmapped the pages physically, so we are in an inconsistent state metadata-wise.
+                // Ideally we should have checked this before unmapping pages.
+                // But for now, we just return error.
+                return ERR_OUT_OF_MEMORY;
+            }
+            
+            // Setup new mapping (Right side)
+            new_m->start = end;
+            new_m->end = m->end;
+            new_m->size = new_m->end - new_m->start;
+            new_m->flags = m->flags;
+            new_m->fd = m->fd;
+            new_m->offset = m->offset + (end - m->start);
+            new_m->next = m->next;
+            
+            // Update original mapping (Left side)
+            m->end = start;
+            m->size = m->end - m->start;
+            m->next = new_m;
+        }
     }
     
     kinfo("MMAP: Freed %lu bytes at 0x%016lx\n", size, start);

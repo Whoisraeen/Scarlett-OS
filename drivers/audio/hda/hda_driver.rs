@@ -5,7 +5,17 @@
  * User-space HDA driver for Scarlett OS
  */
 
+#![no_std]
+#![allow(unused_imports)] // Allow unused imports for now
+
 use core::ptr;
+extern crate alloc;
+use alloc::vec::Vec;
+use driver_framework::{Driver, DriverError, DeviceInfo, DeviceType};
+use driver_framework::mmio::MmioRegion;
+use driver_framework::dma::DmaBuffer;
+use driver_framework::syscalls::{sys_sleep, sys_get_uptime_ms};
+use driver_framework::ipc::ipc_create_port;
 
 // HDA PCI IDs
 const HDA_VENDOR_INTEL: u16 = 0x8086;
@@ -55,6 +65,7 @@ const HDA_SD_CTL_DEIE: u32 = 1 << 4; // Descriptor Error Interrupt Enable
 
 // Buffer Descriptor List Entry
 #[repr(C, packed)]
+#[derive(Clone, Copy)]
 struct HdaBdlEntry {
     address: u64,      // Buffer address
     length: u32,       // Buffer length
@@ -62,15 +73,18 @@ struct HdaBdlEntry {
 }
 
 // HDA Stream
+#[derive(Clone)]
 pub struct HdaStream {
     id: u8,
     base_addr: usize,
-    bdl: Vec<HdaBdlEntry>,
-    buffer: Vec<u8>,
+    bdl_buffer: Option<DmaBuffer>, // DMA buffer for BDL
+    bdl_entries: Vec<HdaBdlEntry>, // Entries in the BDL
+    data_buffer: Option<DmaBuffer>, // DMA buffer for audio data
     running: bool,
 }
 
 // HDA Codec
+#[derive(Clone)]
 pub struct HdaCodec {
     address: u8,
     vendor_id: u32,
@@ -79,10 +93,10 @@ pub struct HdaCodec {
 }
 
 // HDA Controller
+#[derive(Clone)]
 pub struct HdaController {
-    pci_device: u32,
-    mmio_base: usize,
-    mmio_size: usize,
+    pci_device_info: DeviceInfo,
+    mmio: Option<MmioRegion>,
     irq: u8,
     
     // Capabilities
@@ -100,16 +114,21 @@ pub struct HdaController {
 
 impl HdaController {
     /// Create new HDA controller
-    pub fn new(pci_device: u32) -> Option<Self> {
-        // TODO: Map MMIO region from PCI BAR0
-        let mmio_base = 0;
-        let mmio_size = 0x4000;
+    pub fn new(pci_device: DeviceInfo) -> Result<Self, DriverError> {
+        let bar0 = pci_device.bars[0];
+        if bar0 == 0 {
+            return Err(DriverError::DeviceNotFound);
+        }
         
-        Some(HdaController {
-            pci_device,
-            mmio_base,
-            mmio_size,
-            irq: 0,
+        // Map MMIO region from PCI BAR0
+        let mmio_base = bar0 & !0xF;
+        let mmio_size = 0x4000; // Typical HDA MMIO size
+        let mmio = MmioRegion::map(mmio_base, mmio_size).map_err(|_| DriverError::IoError)?;
+        
+        Ok(HdaController {
+            pci_device_info: pci_device,
+            mmio: Some(mmio),
+            irq: pci_device.irq_line,
             oss: 0,
             iss: 0,
             bss: 0,
@@ -138,26 +157,28 @@ impl HdaController {
     
     /// Reset HDA controller
     fn reset(&mut self) -> Result<(), &'static str> {
+        let mmio = self.mmio.as_ref().ok_or("MMIO not mapped")?;
+
         // Clear CRST bit
-        self.write_reg32(HDA_REG_GCTL, 0);
+        mmio.write_u32(HDA_REG_GCTL as usize, 0);
         
         // Wait for reset
         for _ in 0..1000 {
-            if self.read_reg32(HDA_REG_GCTL) & HDA_GCTL_CRST == 0 {
+            if mmio.read_u32(HDA_REG_GCTL as usize) & HDA_GCTL_CRST == 0 {
                 break;
             }
-            // TODO: Sleep for 1ms
+            sys_sleep(1); // Sleep for 1ms
         }
         
         // Set CRST bit
-        self.write_reg32(HDA_REG_GCTL, HDA_GCTL_CRST);
+        mmio.write_u32(HDA_REG_GCTL as usize, HDA_GCTL_CRST);
         
         // Wait for controller ready
         for _ in 0..1000 {
-            if self.read_reg32(HDA_REG_GCTL) & HDA_GCTL_CRST != 0 {
+            if mmio.read_u32(HDA_REG_GCTL as usize) & HDA_GCTL_CRST != 0 {
                 return Ok(());
             }
-            // TODO: Sleep for 1ms
+            sys_sleep(1); // Sleep for 1ms
         }
         
         Err("HDA controller reset timeout")
@@ -165,7 +186,8 @@ impl HdaController {
     
     /// Read capabilities
     fn read_capabilities(&mut self) {
-        let gcap = self.read_reg16(HDA_REG_GCAP);
+        let mmio = self.mmio.as_ref().unwrap();
+        let gcap = mmio.read_u16(HDA_REG_GCAP as usize);
         self.oss = ((gcap >> 12) & 0x0F) as u8;
         self.iss = ((gcap >> 8) & 0x0F) as u8;
         self.bss = ((gcap >> 3) & 0x1F) as u8;
@@ -173,14 +195,15 @@ impl HdaController {
     
     /// Enumerate codecs
     fn enumerate_codecs(&mut self) -> Result<(), &'static str> {
-        let statests = self.read_reg16(HDA_REG_STATESTS);
+        let mmio = self.mmio.as_ref().unwrap();
+        let statests = mmio.read_u16(HDA_REG_STATESTS as usize);
         
         for i in 0..15 {
             if statests & (1 << i) != 0 {
                 // Codec present at address i
                 let codec = HdaCodec {
                     address: i as u8,
-                    vendor_id: 0,
+                    vendor_id: 0, // Read from codec registers
                     device_id: 0,
                     revision_id: 0,
                 };
@@ -197,9 +220,10 @@ impl HdaController {
         for i in 0..self.oss {
             let stream = HdaStream {
                 id: i,
-                base_addr: self.mmio_base + 0x80 + (i as usize * 0x20),
-                bdl: Vec::new(),
-                buffer: Vec::new(),
+                base_addr: self.mmio.as_ref().unwrap().base_virt_addr() + 0x80 + (i as usize * 0x20),
+                bdl_buffer: None,
+                bdl_entries: Vec::new(),
+                data_buffer: None,
                 running: false,
             };
             self.output_streams.push(stream);
@@ -209,9 +233,10 @@ impl HdaController {
         for i in 0..self.iss {
             let stream = HdaStream {
                 id: i,
-                base_addr: self.mmio_base + 0x80 + ((self.oss + i) as usize * 0x20),
-                bdl: Vec::new(),
-                buffer: Vec::new(),
+                base_addr: self.mmio.as_ref().unwrap().base_virt_addr() + 0x80 + ((self.oss + i) as usize * 0x20),
+                bdl_buffer: None,
+                bdl_entries: Vec::new(),
+                data_buffer: None,
                 running: false,
             };
             self.input_streams.push(stream);
@@ -221,7 +246,7 @@ impl HdaController {
     }
     
     /// Start playback stream
-    pub fn start_playback(&mut self, stream_id: u8, buffer: Vec<u8>, sample_rate: u32, channels: u8) -> Result<(), &'static str> {
+    pub fn start_playback(&mut self, stream_id: u8, buffer: DmaBuffer, sample_rate: u32, channels: u8) -> Result<(), &'static str> {
         if stream_id >= self.oss {
             return Err("Invalid stream ID");
         }
@@ -229,24 +254,23 @@ impl HdaController {
         let stream = &mut self.output_streams[stream_id as usize];
         
         // Setup buffer descriptor list
-        self.setup_bdl(stream, &buffer)?;
+        self.setup_bdl(stream, buffer)?;
         
         // Set stream format
         let format = self.encode_format(sample_rate, channels, 16);
         self.write_stream_reg16(stream, HDA_SD_FMT, format);
         
         // Set cyclic buffer length
-        self.write_stream_reg32(stream, HDA_SD_CBL, buffer.len() as u32);
+        self.write_stream_reg32(stream, HDA_SD_CBL, stream.data_buffer.as_ref().unwrap().size() as u32);
         
         // Set last valid index
-        self.write_stream_reg16(stream, HDA_SD_LVI, (stream.bdl.len() - 1) as u16);
+        self.write_stream_reg16(stream, HDA_SD_LVI, (stream.bdl_entries.len() - 1) as u16);
         
         // Enable interrupts and start stream
         let ctl = HDA_SD_CTL_RUN | HDA_SD_CTL_IOCE | HDA_SD_CTL_FEIE | HDA_SD_CTL_DEIE;
         self.write_stream_reg32(stream, HDA_SD_CTL, ctl);
         
         stream.running = true;
-        stream.buffer = buffer;
         
         Ok(())
     }
@@ -268,21 +292,29 @@ impl HdaController {
     }
     
     /// Setup buffer descriptor list
-    fn setup_bdl(&self, stream: &mut HdaStream, buffer: &[u8]) -> Result<(), &'static str> {
-        // Create BDL entries (simplified - one entry for entire buffer)
+    fn setup_bdl(&self, stream: &mut HdaStream, data_buffer: DmaBuffer) -> Result<(), &'static str> {
+        // HDA BDLs require 128-byte alignment
+        let bdl_buffer = DmaBuffer::alloc(core::mem::size_of::<HdaBdlEntry>() * 2, 128).map_err(|_| "Failed to allocate BDL buffer")?;
+        
         let entry = HdaBdlEntry {
-            address: buffer.as_ptr() as u64,  // TODO: Get physical address
-            length: buffer.len() as u32,
+            address: data_buffer.phys_addr(),
+            length: data_buffer.size() as u32,
             ioc: 1,  // Interrupt on completion
         };
         
-        stream.bdl.clear();
-        stream.bdl.push(entry);
+        unsafe {
+            let bdl_ptr = bdl_buffer.as_mut_ptr() as *mut HdaBdlEntry;
+            ptr::write_volatile(bdl_ptr, entry);
+        }
+        
+        stream.bdl_buffer = Some(bdl_buffer.clone());
+        stream.data_buffer = Some(data_buffer);
+        stream.bdl_entries.push(entry);
         
         // Write BDL pointer to stream descriptor
-        let bdl_addr = stream.bdl.as_ptr() as u64;
-        self.write_stream_reg32(stream, HDA_SD_BDPL, (bdl_addr & 0xFFFFFFFF) as u32);
-        self.write_stream_reg32(stream, HDA_SD_BDPU, (bdl_addr >> 32) as u32);
+        let bdl_phys_addr = bdl_buffer.phys_addr();
+        self.write_stream_reg32(stream, HDA_SD_BDPL, (bdl_phys_addr & 0xFFFFFFFF) as u32);
+        self.write_stream_reg32(stream, HDA_SD_BDPU, (bdl_phys_addr >> 32) as u32);
         
         Ok(())
     }
@@ -302,6 +334,7 @@ impl HdaController {
             48000 => 0x6,
             88200 => 0x7,
             96000 => 0x8,
+            192000 => 0x9,
             _ => 0x6,  // Default to 48kHz
         };
         
@@ -323,45 +356,108 @@ impl HdaController {
     
     /// Read 32-bit register
     fn read_reg32(&self, offset: u32) -> u32 {
-        unsafe { ptr::read_volatile((self.mmio_base + offset as usize) as *const u32) }
+        let mmio = self.mmio.as_ref().unwrap();
+        mmio.read_u32(offset as usize)
     }
     
     /// Write 32-bit register
     fn write_reg32(&self, offset: u32, value: u32) {
-        unsafe { ptr::write_volatile((self.mmio_base + offset as usize) as *mut u32, value) }
+        let mmio = self.mmio.as_ref().unwrap();
+        mmio.write_u32(offset as usize, value)
     }
     
     /// Read 16-bit register
     fn read_reg16(&self, offset: u32) -> u16 {
-        unsafe { ptr::read_volatile((self.mmio_base + offset as usize) as *const u16) }
+        let mmio = self.mmio.as_ref().unwrap();
+        mmio.read_u16(offset as usize)
     }
     
     /// Write 16-bit register
     fn write_reg16(&self, offset: u32, value: u16) {
-        unsafe { ptr::write_volatile((self.mmio_base + offset as usize) as *mut u16, value) }
+        let mmio = self.mmio.as_ref().unwrap();
+        mmio.write_u16(offset as usize, value)
     }
     
     /// Read stream register (32-bit)
     fn read_stream_reg32(&self, stream: &HdaStream, offset: u32) -> u32 {
-        unsafe { ptr::read_volatile((stream.base_addr + offset as usize) as *const u32) }
+        let mmio = self.mmio.as_ref().unwrap();
+        mmio.read_u32((stream.base_addr - mmio.base_virt_addr()) + offset as usize)
     }
     
     /// Write stream register (32-bit)
     fn write_stream_reg32(&self, stream: &HdaStream, offset: u32, value: u32) {
-        unsafe { ptr::write_volatile((stream.base_addr + offset as usize) as *mut u32, value) }
+        let mmio = self.mmio.as_ref().unwrap();
+        mmio.write_u32((stream.base_addr - mmio.base_virt_addr()) + offset as usize, value)
     }
     
     /// Write stream register (16-bit)
     fn write_stream_reg16(&self, stream: &HdaStream, offset: u32, value: u16) {
-        unsafe { ptr::write_volatile((stream.base_addr + offset as usize) as *mut u16, value) }
+        let mmio = self.mmio.as_ref().unwrap();
+        mmio.write_u16((stream.base_addr - mmio.base_virt_addr()) + offset as usize, value)
     }
 }
 
 // Driver entry point
-pub fn hda_driver_init() -> Result<(), &'static str> {
-    // TODO: Enumerate PCI devices and find HDA controllers
-    // TODO: Create HdaController instances
-    // TODO: Register with audio framework
-    
-    Ok(())
+pub struct HdaDriver {
+    initialized: bool,
+    device_port: u64,
+    controllers: Vec<HdaController>,
+}
+
+impl HdaDriver {
+    pub fn new() -> Self {
+        Self {
+            initialized: false,
+            device_port: 0,
+            controllers: Vec::new(),
+        }
+    }
+}
+
+impl Driver for HdaDriver {
+    fn name(&self) -> &'static str { "hda" }
+    fn probe(&self, device_info: &DeviceInfo) -> bool {
+        // HDA controller class code is 0x0403 (Audio Device)
+        device_info.device_type == DeviceType::Pci &&
+        device_info.class_code == 0x04 &&
+        device_info.subclass == 0x03
+    }
+    fn init(&mut self) -> Result<(), DriverError> {
+        if self.initialized { return Err(DriverError::AlreadyInitialized); }
+        self
+            .device_port = ipc_create_port().map_err(|_| DriverError::IoError)?;
+
+        // Enumerate PCI devices and find HDA controllers
+        // This should be handled by the framework calling probe and then start
+        // For standalone init, we would enumerate here.
+        // Assuming probe will provide the device_info needed for HdaController::new
+        
+        self.initialized = true;
+        Ok(())
+    }
+    fn start(&mut self) -> Result<(), DriverError> {
+        // A controller is created for each probed device.
+        // This is called by the framework after probe returns true.
+        // Assuming device_info is passed here from the framework.
+        let device_info = self.pci_device_info; // This needs to be stored or passed by framework
+        let mut controller = HdaController::new(device_info)?;
+        controller.init().map_err(|_| DriverError::InitFailed)?;
+        self.controllers.push(controller);
+        Ok(())
+    }
+    fn stop(&mut self) -> Result<(), DriverError> {
+        self.controllers.clear();
+        Ok(())
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn _start() -> ! {
+    // This is the main entry point for the HDA driver service.
+    // It should register itself with the driver framework.
+    // For now, it simply loops, waiting for the framework to interact.
+    // The actual driver framework entry point will handle the init/probe/start lifecycle.
+    loop {
+        sys_sleep(100); // Sleep to avoid busy-looping
+    }
 }

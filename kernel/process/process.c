@@ -21,9 +21,9 @@
 static process_t* process_list = NULL;
 static process_t* current_process = NULL;
 static pid_t next_pid = 1;
-static const pid_t MAX_PID = 32767;
 
-// PID bitmap for efficient allocation (one bit per PID)
+// PID limits and bitmap
+#define MAX_PID 32767
 #define PID_BITMAP_SIZE ((MAX_PID + 63) / 64)
 static uint64_t pid_bitmap[PID_BITMAP_SIZE] = {0};
 
@@ -423,3 +423,77 @@ void process_list_remove(process_t* process) {
     process->next = NULL;
 }
 
+/**
+ * Wait for a child process to exit
+ */
+pid_t process_wait(pid_t pid, int* status) {
+    process_t* current = process_get_current();
+    if (!current) {
+        return -1;
+    }
+    
+    while (1) {
+        bool has_children = false;
+        pid_t found_pid = 0;
+        int exit_code = 0;
+        process_t* found_child = NULL;
+        
+        // Iterate through children
+        process_t* child = current->children;
+        while (child) {
+            if (pid == -1 || child->pid == pid) {
+                has_children = true;
+                if (child->state == PROCESS_STATE_ZOMBIE) {
+                    found_pid = child->pid;
+                    exit_code = child->exit_code;
+                    found_child = child;
+                    break;
+                }
+            }
+            child = child->sibling;
+        }
+        
+        if (found_child) {
+            // Found a zombie child
+            if (status) {
+                *status = exit_code;
+            }
+            
+            // Clean up the child process completely
+            process_destroy(found_child);
+            return found_pid;
+        }
+        
+        if (!has_children) {
+            // No children matching criteria
+            return -1; // ECHILD
+        }
+        
+        // Wait for children to change state
+        // In a real OS, we would sleep on a wait queue
+        // For now, yield and retry (busy wait with yield)
+        thread_yield();
+        
+        // Optional: Check for signals/interrupts
+    }
+}
+
+/**
+ * Set process IPC port
+ */
+void process_set_ipc_port(process_t* process, uint64_t port_id) {
+    if (process) {
+        process->ipc_port = port_id;
+    }
+}
+
+/**
+ * Get process IPC port
+ */
+uint64_t process_get_ipc_port(pid_t pid) {
+    process_t* process = process_get_by_pid(pid);
+    if (process) {
+        return process->ipc_port;
+    }
+    return 0;
+}

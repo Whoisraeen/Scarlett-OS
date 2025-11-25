@@ -37,6 +37,13 @@ static void* phys_to_virt(uint64_t paddr) {
     return (void*)paddr;
 }
 
+// Read ID_AA64MMFR0_EL1 to check physical address range
+static inline uint64_t read_sysreg_id_aa64mmfr0(void) {
+    uint64_t val;
+    __asm__ volatile("mrs %0, id_aa64mmfr0_el1" : "=r"(val));
+    return val;
+}
+
 // Read system register
 static inline uint64_t read_sysreg_sctlr(void) {
     uint64_t val;
@@ -84,14 +91,31 @@ void arm64_mmu_init(void) {
                     (MAIR_NORMAL << 16);          // Index 2: Normal cacheable
     write_sysreg_mair(mair);
     
+    // Check supported Physical Address Range (PARange)
+    uint64_t mmfr0 = read_sysreg_id_aa64mmfr0();
+    uint64_t parange = mmfr0 & 0xF;
+    uint64_t ips = 0;
+    
+    // Map ID_AA64MMFR0_EL1.PARange to TCR_EL1.IPS
+    switch (parange) {
+        case 0: ips = 0; break; // 32-bit (4GB)
+        case 1: ips = 1; break; // 36-bit (64GB)
+        case 2: ips = 2; break; // 40-bit (1TB)
+        case 3: ips = 3; break; // 42-bit (4TB)
+        case 4: ips = 4; break; // 44-bit (16TB)
+        case 5: ips = 5; break; // 48-bit (256TB)
+        case 6: ips = 6; break; // 52-bit (4PB)
+        default: ips = 5; break; // Default to 48-bit if unknown
+    }
+    
     // Set up TCR (Translation Control Register)
-    // T0SZ=16 (48-bit), TG0=4KB, IPS=48-bit, Inner/Outer WB WA
+    // T0SZ=16 (48-bit), TG0=4KB, IPS=Dynamic, Inner/Outer WB WA
     uint64_t tcr = (16UL << 0) |   // T0SZ = 16 (48-bit VA)
                    (1UL << 8) |    // IRGN0 = Normal, Write-Back Write-Allocate
                    (1UL << 10) |   // ORGN0 = Normal, Write-Back Write-Allocate
                    (3UL << 12) |   // SH0 = Inner Shareable
                    (0UL << 14) |   // TG0 = 4KB
-                   (5UL << 32);    // IPS = 48-bit (TODO: Check ID_AA64MMFR0_EL1)
+                   (ips << 32);    // IPS = Dynamic
     write_sysreg_tcr(tcr);
     
     // Setup Boot Identity Map for first 1GB (0x0 - 0x40000000)
@@ -261,14 +285,49 @@ void arm64_mmu_unmap(uint64_t vaddr, uint64_t size) {
         
         // Check if Block
         if ((pmd[pmd_idx] & 3) == 1) {
-            // It's a 2MB block. Unmap it.
-            pmd[pmd_idx] = 0;
-            
-            // TODO: If partial unmap of a block, we should split it?
-            // For now assuming unmap is aligned or we just unmap the whole block
-            current_vaddr += 0x200000;
-            if (remaining < 0x200000) remaining = 0; else remaining -= 0x200000;
-            continue;
+            // It's a 2MB block.
+            // Check if we are unmapping the whole block or just a part
+            if ((current_vaddr & 0x1FFFFF) == 0 && remaining >= 0x200000) {
+                // Unmap whole block
+                pmd[pmd_idx] = 0;
+                current_vaddr += 0x200000;
+                remaining -= 0x200000;
+                continue;
+            } else {
+                // Partial unmap! Split the block.
+                uint64_t block_entry = pmd[pmd_idx];
+                uint64_t block_phys = block_entry & 0xFFFFFFFFF000ULL;
+                // Preserve flags relevant to 4KB pages (AttrIndx, SH, AP, NS, AF, Valid)
+                // Block entry format: [63:52] Ignored, [51:48] PXN, XN, [47:12] Output Address, [11:10] nG, AF, SH, AP, NS, AttrIndx, Type (1)
+                // Page entry format: [63:52] Ignored, [51:48] PXN, XN, [47:12] Output Address, [11:10] nG, AF, SH, AP, NS, AttrIndx, Type (3)
+                // The flags to preserve are AttrIndx (bits 2-4), NS (bit 5), AP (bits 6-7), SH (bits 8-9), AF (bit 10), nG (bit 11), XN (bit 54), PXN (bit 53)
+                // A simpler way is to mask out the block type bit and then add page type bit.
+                // The block_flags should be the flags that are common to both block and page descriptors,
+                // excluding the type bits (0-1) and the output address.
+                uint64_t block_flags = (block_entry & ~0x3ULL) & ~0xFFFFFFFFF000ULL; // Clear type bits and address bits
+                
+                // Allocate a new PTE page
+                uint64_t pte_phys = alloc_pt_page();
+                if (!pte_phys) {
+                    kerror("ARM64 MMU: Failed to allocate page table for split\n");
+                    return;
+                }
+                
+                uint64_t* pte = (uint64_t*)phys_to_virt(pte_phys);
+                
+                // Fill PTE with 4KB pages mapping the original 2MB block
+                // The block_phys is the base address of the 2MB block.
+                // The virtual address for this PMD entry starts at (current_vaddr & ~0x1FFFFFULL).
+                uint64_t block_vaddr_base = current_vaddr & ~0x1FFFFFULL;
+                for (int i = 0; i < 512; i++) {
+                    pte[i] = (block_phys + (i * PAGE_SIZE)) | block_flags | PTE_VALID | PTE_PAGE | PTE_AF;
+                }
+                
+                // Update PMD to point to new PTE table
+                pmd[pmd_idx] = pte_phys | PTE_VALID | PTE_TABLE;
+                
+                // Now fall through to PTE handling logic below to unmap the specific page(s)
+            }
         }
         
         uint64_t* pte = (uint64_t*)phys_to_virt(pmd[pmd_idx] & 0xFFFFFFFFF000ULL);

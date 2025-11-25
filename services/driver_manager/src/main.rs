@@ -151,8 +151,15 @@ impl DriverManager {
 
             // Auto-restart if crash count is below threshold
             if driver.crash_count < 3 {
-                // TODO: Send restart request to process manager
-                driver.state = DriverState::Registered;
+                // Send restart request to process manager
+                // Assuming process manager port is 101 and message ID 1
+                let mut restart_msg = IpcMessage::new();
+                restart_msg.msg_type = ipc::IPC_MSG_REQUEST;
+                restart_msg.msg_id = 1; // PM_MSG_RESTART_PROCESS
+                restart_msg.inline_data[0..4].copy_from_slice(&driver.driver_pid.to_le_bytes()); // PID to restart
+                restart_msg.inline_size = 4;
+                let _ = sys_ipc_send(101, &restart_msg); // Assuming 101 is Process Manager's port
+                driver.state = DriverState::Registered; // Mark as registered for restart
             }
         }
     }

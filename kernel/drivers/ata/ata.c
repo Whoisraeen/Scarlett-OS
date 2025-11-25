@@ -338,7 +338,7 @@ static error_code_t ata_block_read(block_device_t* dev, uint64_t block_num, void
         return ata_read_sectors_28(device, (uint32_t)block_num, 1, buffer);
     }
     
-    // TODO: Implement LBA48 for larger drives - DONE: LBA48 read implemented
+    // DONE: LBA48 read implemented
     // Use LBA48 read command (READ SECTORS EXT - 0x24)
     return ata_read_sectors_48(device, block_num, 1, buffer);
 }
@@ -352,14 +352,9 @@ static error_code_t ata_block_write(block_device_t* dev, uint64_t block_num, con
         return ERR_DEVICE_NOT_FOUND;
     }
     
-    // For now, use LBA28
-    if (block_num > 0x0FFFFFFF || !device->lba48) {
-        return ata_write_sectors_28(device, (uint32_t)block_num, 1, buffer);
-    }
-    
-    // TODO: Implement LBA48 for larger drives - DONE: LBA48 read implemented
-    // Use LBA48 read command (READ SECTORS EXT - 0x24)
-    return ata_read_sectors_48(device, block_num, 1, buffer);
+    // DONE: LBA48 write implemented
+    // Use LBA48 write command (WRITE SECTORS EXT - 0x34)
+    return ata_write_sectors_48(device, block_num, 1, buffer);
 }
 
 /**
@@ -389,9 +384,9 @@ static error_code_t ata_block_read_blocks(block_device_t* dev, uint64_t start_bl
         return ERR_OK;
     }
     
-    // TODO: Implement LBA48 for larger drives - DONE: LBA48 read implemented
+    // DONE: LBA48 read implemented
     // Use LBA48 read command (READ SECTORS EXT - 0x24)
-    return ata_read_sectors_48(device, block_num, 1, buffer);
+    return ata_read_sectors_48(device, start_block, count, buffer);
 }
 
 /**
@@ -421,9 +416,9 @@ static error_code_t ata_block_write_blocks(block_device_t* dev, uint64_t start_b
         return ERR_OK;
     }
     
-    // TODO: Implement LBA48 for larger drives - DONE: LBA48 read implemented
-    // Use LBA48 read command (READ SECTORS EXT - 0x24)
-    return ata_read_sectors_48(device, block_num, 1, buffer);
+    // DONE: LBA48 write implemented
+    // Use LBA48 write command (WRITE SECTORS EXT - 0x34)
+    return ata_write_sectors_48(device, start_block, count, buffer);
 }
 
 /**

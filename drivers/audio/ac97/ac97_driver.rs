@@ -59,224 +59,180 @@ pub struct Ac97Channel {
     running: bool,
 }
 
-// AC'97 Controller
-pub struct Ac97Controller {
-    pci_device: u32,
-    nam_base: u16,      // Native Audio Mixer base (I/O port)
-    nabm_base: u16,     // Native Audio Bus Master base (I/O port)
+/**
+ * @file ac97_driver.rs
+ * @brief AC'97 Audio Codec Driver
+ *
+ * User-space AC'97 driver using driver_framework
+ */
+
+#![no_std]
+
+use driver_framework::{Driver, DeviceInfo, DeviceType, DriverError};
+use driver_framework::io::IoPort;
+use driver_framework::dma::DmaBuffer;
+use driver_framework::ipc::ipc_create_port;
+
+// AC'97 Register Offsets
+const AC97_RESET: u16 = 0x00;
+const AC97_MASTER_VOLUME: u16 = 0x02;
+const AC97_PCM_OUT_VOLUME: u16 = 0x18;
+const AC97_EXTENDED_AUDIO_ID: u16 = 0x28;
+const AC97_EXTENDED_AUDIO_STATUS: u16 = 0x2A;
+const AC97_PCM_FRONT_DAC_RATE: u16 = 0x2C;
+
+// NAM Bus Master Register Offsets
+const AC97_NABM_BDBAR: u16 = 0x00;
+const AC97_NABM_CIV: u16 = 0x04;
+const AC97_NABM_LVI: u16 = 0x05;
+const AC97_NABM_SR: u16 = 0x06;
+const AC97_NABM_CR: u16 = 0x0B;
+
+// Control Register Bits
+const AC97_CR_RPBM: u8 = 1 << 0;
+const AC97_CR_RR: u8 = 1 << 1;
+const AC97_CR_IOCE: u8 = 1 << 4;
+
+// Buffer Descriptor Entry
+#[repr(C, packed)]
+struct Ac97BdEntry {
+    buffer_addr: u32,
+    control: u32,
+}
+
+pub struct Ac97Driver {
+    initialized: bool,
+    nam_bar: Option<u16>,
+    nabm_bar: Option<u16>,
     irq: u8,
-    
-    // Channels
-    pcm_out: Ac97Channel,
-    pcm_in: Ac97Channel,
-    mic_in: Ac97Channel,
-    
-    // Capabilities
-    variable_rate: bool,
-    double_rate: bool,
+    bd_list: Option<DmaBuffer>,
+    pcm_buffer: Option<DmaBuffer>,
 }
 
-impl Ac97Controller {
-    /// Create new AC'97 controller
-    pub fn new(pci_device: u32) -> Option<Self> {
-        // TODO: Read BAR0 (NAM) and BAR1 (NABM) from PCI config
-        let nam_base = 0;
-        let nabm_base = 0;
-        
-        Some(Ac97Controller {
-            pci_device,
-            nam_base,
-            nabm_base,
+impl Ac97Driver {
+    pub fn new() -> Self {
+        Self {
+            initialized: false,
+            nam_bar: None,
+            nabm_bar: None,
             irq: 0,
-            pcm_out: Ac97Channel {
-                base_addr: nabm_base as usize + 0x10,
-                bd_list: Vec::new(),
-                buffer: Vec::new(),
-                running: false,
-            },
-            pcm_in: Ac97Channel {
-                base_addr: nabm_base as usize + 0x00,
-                bd_list: Vec::new(),
-                buffer: Vec::new(),
-                running: false,
-            },
-            mic_in: Ac97Channel {
-                base_addr: nabm_base as usize + 0x20,
-                bd_list: Vec::new(),
-                buffer: Vec::new(),
-                running: false,
-            },
-            variable_rate: false,
-            double_rate: false,
-        })
-    }
-    
-    /// Initialize AC'97 controller
-    pub fn init(&mut self) -> Result<(), &'static str> {
-        // Reset codec
-        self.reset_codec()?;
-        
-        // Read capabilities
-        self.read_capabilities();
-        
-        // Set default volumes
-        self.set_master_volume(75);
-        self.set_pcm_volume(75);
-        
-        // Enable variable rate if supported
-        if self.variable_rate {
-            self.enable_variable_rate();
+            bd_list: None,
+            pcm_buffer: None,
         }
-        
-        Ok(())
     }
-    
-    /// Reset codec
-    fn reset_codec(&mut self) -> Result<(), &'static str> {
-        // Write to reset register
-        self.write_nam(AC97_RESET, 0);
-        
-        // Wait for codec ready
-        for _ in 0..1000 {
-            let powerdown = self.read_nam(AC97_POWERDOWN);
-            if powerdown & 0x0F == 0x0F {
-                return Ok(());
-            }
-            // TODO: Sleep for 1ms
-        }
-        
-        Err("AC'97 codec reset timeout")
-    }
-    
-    /// Read capabilities
-    fn read_capabilities(&mut self) {
-        let ext_id = self.read_nam(AC97_EXTENDED_AUDIO_ID);
-        self.variable_rate = (ext_id & 0x01) != 0;
-        self.double_rate = (ext_id & 0x02) != 0;
-    }
-    
-    /// Enable variable rate audio
-    fn enable_variable_rate(&mut self) {
-        let mut status = self.read_nam(AC97_EXTENDED_AUDIO_STATUS);
-        status |= 0x01;  // VRA bit
-        self.write_nam(AC97_EXTENDED_AUDIO_STATUS, status);
-    }
-    
-    /// Set master volume (0-100)
-    pub fn set_master_volume(&mut self, volume: u8) {
-        let vol = ((100 - volume) * 63 / 100) as u16;
-        let val = (vol << 8) | vol;  // Left and right
-        self.write_nam(AC97_MASTER_VOLUME, val);
-    }
-    
-    /// Set PCM output volume (0-100)
-    pub fn set_pcm_volume(&mut self, volume: u8) {
-        let vol = ((100 - volume) * 31 / 100) as u16;
-        let val = (vol << 8) | vol;  // Left and right
-        self.write_nam(AC97_PCM_OUT_VOLUME, val);
-    }
-    
-    /// Set sample rate
-    pub fn set_sample_rate(&mut self, rate: u32) -> Result<(), &'static str> {
-        if !self.variable_rate && rate != 48000 {
-            return Err("Variable rate not supported");
-        }
-        
-        self.write_nam(AC97_PCM_FRONT_DAC_RATE, rate as u16);
-        Ok(())
-    }
-    
-    /// Start playback
-    pub fn start_playback(&mut self, buffer: Vec<u8>, sample_rate: u32) -> Result<(), &'static str> {
-        // Set sample rate
-        self.set_sample_rate(sample_rate)?;
-        
-        // Setup buffer descriptors
-        self.setup_bd_list(&mut self.pcm_out, &buffer)?;
-        
-        // Reset channel
-        self.write_channel_u8(&self.pcm_out, AC97_NABM_CR, AC97_CR_RR);
-        
-        // Wait for reset
-        for _ in 0..100 {
-            if self.read_channel_u8(&self.pcm_out, AC97_NABM_CR) & AC97_CR_RR == 0 {
-                break;
-            }
-        }
-        
-        // Set buffer descriptor base address
-        let bd_addr = self.pcm_out.bd_list.as_ptr() as u32;
-        self.write_channel_u32(&self.pcm_out, AC97_NABM_BDBAR, bd_addr);
-        
-        // Set last valid index
-        let lvi = (self.pcm_out.bd_list.len() - 1) as u8;
-        self.write_channel_u8(&self.pcm_out, AC97_NABM_LVI, lvi);
-        
-        // Start playback
-        let cr = AC97_CR_RPBM | AC97_CR_IOCE;
-        self.write_channel_u8(&self.pcm_out, AC97_NABM_CR, cr);
-        
-        self.pcm_out.running = true;
-        self.pcm_out.buffer = buffer;
-        
-        Ok(())
-    }
-    
-    /// Stop playback
-    pub fn stop_playback(&mut self) {
-        self.write_channel_u8(&self.pcm_out, AC97_NABM_CR, 0);
-        self.pcm_out.running = false;
-    }
-    
-    /// Setup buffer descriptor list
-    fn setup_bd_list(&self, channel: &mut Ac97Channel, buffer: &[u8]) -> Result<(), &'static str> {
-        // Create BD entries (simplified - one entry for entire buffer)
-        let samples = buffer.len() / 4;  // 16-bit stereo = 4 bytes per sample
-        
-        let entry = Ac97BdEntry {
-            buffer_addr: buffer.as_ptr() as u32,  // TODO: Get physical address
-            control: ((samples as u32) << 16) | 0x8000,  // IOC bit set
-        };
-        
-        channel.bd_list.clear();
-        channel.bd_list.push(entry);
-        
-        Ok(())
-    }
-    
-    /// Read NAM register
+
     fn read_nam(&self, reg: u16) -> u16 {
-        // TODO: Implement I/O port read
-        unsafe { ptr::read_volatile((self.nam_base + reg) as *const u16) }
+        if let Some(base) = self.nam_bar {
+            unsafe { IoPort::new(base + reg).read_u16() }
+        } else { 0 }
     }
-    
-    /// Write NAM register
-    fn write_nam(&self, reg: u16, value: u16) {
-        // TODO: Implement I/O port write
-        unsafe { ptr::write_volatile((self.nam_base + reg) as *mut u16, value) }
+
+    fn write_nam(&self, reg: u16, val: u16) {
+        if let Some(base) = self.nam_bar {
+            unsafe { IoPort::new(base + reg).write_u16(val) }
+        }
     }
-    
-    /// Read channel register (8-bit)
-    fn read_channel_u8(&self, channel: &Ac97Channel, offset: u32) -> u8 {
-        unsafe { ptr::read_volatile((channel.base_addr + offset as usize) as *const u8) }
+
+    fn read_nabm_u8(&self, offset: u16) -> u8 {
+        if let Some(base) = self.nabm_bar {
+            unsafe { IoPort::new(base + offset).read_u8() }
+        } else { 0 }
     }
-    
-    /// Write channel register (8-bit)
-    fn write_channel_u8(&self, channel: &Ac97Channel, offset: u32, value: u8) {
-        unsafe { ptr::write_volatile((channel.base_addr + offset as usize) as *mut u8, value) }
+
+    fn write_nabm_u8(&self, offset: u16, val: u8) {
+        if let Some(base) = self.nabm_bar {
+            unsafe { IoPort::new(base + offset).write_u8(val) }
+        }
     }
-    
-    /// Write channel register (32-bit)
-    fn write_channel_u32(&self, channel: &Ac97Channel, offset: u32, value: u32) {
-        unsafe { ptr::write_volatile((channel.base_addr + offset as usize) as *mut u32, value) }
+
+    fn write_nabm_u32(&self, offset: u16, val: u32) {
+        if let Some(base) = self.nabm_bar {
+            unsafe { IoPort::new(base + offset).write_u32(val) }
+        }
     }
 }
 
-// Driver entry point
-pub fn ac97_driver_init() -> Result<(), &'static str> {
-    // TODO: Enumerate PCI devices and find AC'97 controllers
-    // TODO: Create Ac97Controller instances
-    // TODO: Register with audio framework
+impl Driver for Ac97Driver {
+    fn name(&self) -> &'static str { "ac97" }
     
-    Ok(())
+    fn probe(&self, dev: &DeviceInfo) -> bool {
+        // AC'97 Multimedia Audio Controller (Class 0x04, Subclass 0x01)
+        dev.class_code == 0x04 && dev.subclass == 0x01
+    }
+
+    fn init(&mut self) -> Result<(), DriverError> {
+        if self.initialized { return Err(DriverError::AlreadyInitialized); }
+        
+        // Register with framework handled by caller/framework
+        Ok(())
+    }
+
+    fn start(&mut self) -> Result<(), DriverError> {
+        // Initialize hardware
+        // Reset
+        self.write_nam(AC97_RESET, 1); // Any write resets
+        
+        // Set Volume
+        self.write_nam(AC97_MASTER_VOLUME, 0x0000); // Unmute, max vol
+        self.write_nam(AC97_PCM_OUT_VOLUME, 0x0808); // ~0dB
+        
+        // Allocate BD List
+        let bd_size = 32 * core::mem::size_of::<Ac97BdEntry>();
+        let mut bd = DmaBuffer::alloc(bd_size, 4096).map_err(|_| DriverError::OutOfMemory)?;
+        
+        // Allocate PCM buffer
+        let pcm = DmaBuffer::alloc(65536, 4096).map_err(|_| DriverError::OutOfMemory)?;
+        
+        // Setup BD Entry
+        unsafe {
+            let entries = bd.as_mut_slice_of::<Ac97BdEntry>(32);
+            entries[0].buffer_addr = pcm.phys_addr() as u32;
+            entries[0].control = (16384 << 16) | 0x8000; // Length (samples) | IOC
+        }
+        
+        self.bd_list = Some(bd);
+        self.pcm_buffer = Some(pcm);
+        
+        // Setup Bus Master
+        // Reset PCM Out
+        self.write_nabm_u8(AC97_NABM_CR + 0x10, AC97_CR_RR);
+        // Wait?
+        
+        // Set BDBAR
+        if let Some(ref bd) = self.bd_list {
+             self.write_nabm_u32(AC97_NABM_BDBAR + 0x10, bd.phys_addr() as u32);
+        }
+        
+        // Set LVI
+        self.write_nabm_u8(AC97_NABM_LVI + 0x10, 0);
+        
+        // Enable interrupts and Bus Master
+        // self.write_nabm_u8(AC97_NABM_CR + 0x10, AC97_CR_IOCE | AC97_CR_RPBM);
+        
+        self.initialized = true;
+        Ok(())
+    }
+
+    fn stop(&mut self) -> Result<(), DriverError> {
+        // Stop Bus Master
+        self.write_nabm_u8(AC97_NABM_CR + 0x10, 0);
+        self.initialized = false;
+        Ok(())
+    }
 }
+
+// Initialization helper called by framework
+pub fn init_driver(dev: &DeviceInfo, driver: &mut Ac97Driver) -> Result<(), DriverError> {
+    // Get BARs
+    let nam = dev.bars[0] & !1; // IO Space
+    let nabm = dev.bars[1] & !1;
+    
+    if nam == 0 || nabm == 0 { return Err(DriverError::DeviceNotFound); }
+    
+    driver.nam_bar = Some(nam as u16);
+    driver.nabm_bar = Some(nabm as u16);
+    driver.irq = dev.irq_line;
+    
+    driver.init()
+}
+

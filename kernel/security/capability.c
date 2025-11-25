@@ -184,27 +184,54 @@ bool capability_check(uint64_t cap_id, uint32_t right) {
 int capability_transfer(ipc_message_t* msg, uint64_t cap_id) {
     if (!msg) return -1;
     
-    // Verify ownership
-    if (!capability_check(cap_id, CAP_RIGHT_TRANSFER)) return -1;
+    extern process_t* process_get_current(void);
+    process_t* proc = process_get_current();
+    if (!proc) return -1;
     
-    // TODO: In a real implementation, we need to:
-    // 1. Look up the source capability details.
-    // 2. Create a "pending transfer" or actually copy it to the target process immediately if known.
-    // Since IPC usually buffers messages, we should attach the capability metadata to the message kernel-side.
-    // The recipient will "claim" it upon receive, generating a NEW cap_id for their table.
+    capability_table_t* table = get_process_table(proc->pid);
+    if (!table || !table->initialized) return -1;
     
-    // For this implementation, we'll just validate checking passed.
-    // We add the ID to the message. The receiver logic (not shown here fully) needs to import it.
+    // Lookup and verify capability
+    capability_t source_cap = {0};
+    bool found = false;
     
-    if (msg->inline_size + 8 <= IPC_INLINE_SIZE) {
-        uint64_t* cap_ptr = (uint64_t*)(msg->inline_data + msg->inline_size);
-        *cap_ptr = cap_id;
-        msg->inline_size += 8;
-    } else {
-        return -1;
+    spinlock_lock(&table->lock);
+    for (size_t i = 0; i < table->count; i++) {
+        if (table->capabilities[i].cap_id == cap_id) {
+            if ((table->capabilities[i].rights & CAP_RIGHT_TRANSFER) == CAP_RIGHT_TRANSFER) {
+                source_cap = table->capabilities[i];
+                found = true;
+            }
+            break;
+        }
+    }
+    spinlock_unlock(&table->lock);
+    
+    if (!found) return -1; // Not found or no transfer rights
+    
+    // In a full implementation, we would attach this metadata to the kernel-side message object.
+    // Since `ipc_message_t` here refers to the user-facing struct which is copied to kernel buffer,
+    // we will pack the capability details into the message data as a "transferred capability descriptor".
+    // The receiver's IPC handler in kernel will detect this and insert it into receiver's table.
+    
+    // Assuming msg has space for capability descriptor (cap_id, type, resource, rights)
+    // We use the last 32 bytes of inline_data as a hidden area or special field if supported.
+    // For this implementation, we will append a special tag if space permits.
+    
+    // Check space: we need sizeof(uint64_t) * 4 (type, resource, rights, padding)
+    if (msg->inline_size + 32 <= IPC_INLINE_SIZE) {
+        // Write capability data to end of inline buffer
+        uint64_t* ptr = (uint64_t*)(msg->inline_data + msg->inline_size);
+        ptr[0] = 0xCAFEBABECAFEBABE; // Magic signature for transferred cap
+        ptr[1] = (uint64_t)source_cap.type;
+        ptr[2] = source_cap.resource_id;
+        ptr[3] = (uint64_t)source_cap.rights;
+        
+        msg->inline_size += 32;
+        return 0;
     }
     
-    return 0;
+    return -1; // No space
 }
 
 /**

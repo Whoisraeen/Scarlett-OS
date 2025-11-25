@@ -69,7 +69,7 @@ static int push_to_stack(process_t* proc, const void* data, size_t len) {
     proc->stack_top -= len;
     
     // Write to current stack pointer in process address space
-    // TODO: Implement stack setup with arguments - DONE: Stack setup implemented
+    // DONE: Stack setup implemented
     // Since we might not be in that address space, we should map it or switch.
     // The caller (process_setup_user_stack) ensures the address space is switched.
     // We can safely write to the virtual address since the address space is active.

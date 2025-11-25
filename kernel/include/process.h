@@ -115,6 +115,7 @@ error_code_t process_exec(process_t* process, const char* path, char* const* arg
 // Process spawning
 pid_t process_spawn(const char* name, const char* path, vaddr_t entry_point);
 uint64_t process_get_ipc_port(pid_t pid);
+void process_set_ipc_port(process_t* process, uint64_t port_id);
 
 #endif // KERNEL_PROCESS_H
 

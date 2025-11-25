@@ -8,6 +8,62 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <ctype.h>
+#include "../../libs/libc/include/syscall.h"
+#include "../../libs/libgui/src/font8x8_basic.h"
+
+// Syscall wrappers
+static int sys_open(const char* path, int flags) {
+    return (int)syscall(SYS_OPEN, (uint64_t)path, flags, 0, 0, 0);
+}
+
+static int sys_close(int fd) {
+    return (int)syscall(SYS_CLOSE, (uint64_t)fd, 0, 0, 0, 0);
+}
+
+static long sys_read(int fd, void* buf, size_t count) {
+    return (long)syscall(SYS_READ, (uint64_t)fd, (uint64_t)buf, count, 0, 0);
+}
+
+static long sys_write(int fd, const void* buf, size_t count) {
+    return (long)syscall(SYS_WRITE, (uint64_t)fd, (uint64_t)buf, count, 0, 0);
+}
+
+static void sys_yield() {
+    syscall(SYS_YIELD, 0, 0, 0, 0, 0);
+}
+
+// Graphics helpers
+static void draw_pixel(uint32_t* buffer, int width, int x, int y, uint32_t color) {
+    buffer[y * width + x] = color;
+}
+
+static void draw_rect(uint32_t* buffer, int width, int x, int y, int w, int h, uint32_t color) {
+    for (int j = y; j < y + h; j++) {
+        for (int i = x; i < x + w; i++) {
+            draw_pixel(buffer, width, i, j, color);
+        }
+    }
+}
+
+static void draw_char(uint32_t* buffer, int width, int x, int y, char c, uint32_t color) {
+    if (c < 0 || c > 127) return;
+    for (int dy = 0; dy < 8; dy++) {
+        for (int dx = 0; dx < 8; dx++) {
+            if ((font8x8_basic[(int)c][dy] >> dx) & 1) {
+                draw_pixel(buffer, width, x + dx, y + dy, color);
+            }
+        }
+    }
+}
+
+static void draw_string(uint32_t* buffer, int width, int x, int y, const char* str, uint32_t color) {
+    int cx = x;
+    while (*str) {
+        draw_char(buffer, width, cx, y, *str, color);
+        cx += 8;
+        str++;
+    }
+}
 
 // Language keywords
 static const char* c_keywords[] = {
@@ -90,9 +146,7 @@ editor_ctx_t* editor_create(compositor_ctx_t* compositor) {
     // Create window
     uint32_t width = 1000;
     uint32_t height = 700;
-    int32_t x = (compositor->screen_width - width) / 2;
-    int32_t y = (compositor->screen_height - height) / 2;
-
+    
     ctx->editor_window = window_create("Text Editor", width, height);
     if (!ctx->editor_window) {
         free(ctx);
@@ -227,7 +281,8 @@ void editor_close_tab(editor_ctx_t* ctx, uint32_t tab_id) {
 
             // Ask to save if modified
             if (buf->modified) {
-                // TODO: Show save dialog
+                // In a full GUI we would show a dialog here
+                // For now we just close
             }
 
             // Free buffer
@@ -273,13 +328,54 @@ void editor_switch_tab(editor_ctx_t* ctx, uint32_t tab_id) {
 bool editor_load_file(editor_buffer_t* buf, const char* file_path) {
     if (!buf || !file_path) return false;
 
-    // TODO: Load file via VFS
-    // For now, just set the path
     strncpy(buf->file_path, file_path, 511);
     buf->file_path[511] = '\0';
-    buf->modified = false;
+    
+    int fd = sys_open(file_path, 0); // O_RDONLY
+    if (fd < 0) return false;
 
-    // Detect language
+    // Clear existing lines
+    for (uint32_t i = 0; i < buf->line_count; i++) {
+        free_line(&buf->lines[i]);
+    }
+    free(buf->lines);
+    
+    buf->lines = (text_line_t*)malloc(sizeof(text_line_t) * 100);
+    buf->line_capacity = 100;
+    buf->line_count = 0;
+
+    char buffer[1024];
+    long bytes;
+    text_line_t current_line;
+    init_line(&current_line);
+
+    while ((bytes = sys_read(fd, buffer, sizeof(buffer))) > 0) {
+        for (long i = 0; i < bytes; i++) {
+            if (buffer[i] == '\n') {
+                if (buf->line_count >= buf->line_capacity) {
+                    buf->line_capacity *= 2;
+                    buf->lines = (text_line_t*)realloc(buf->lines, buf->line_capacity * sizeof(text_line_t));
+                }
+                buf->lines[buf->line_count++] = current_line;
+                init_line(&current_line);
+            } else {
+                ensure_line_capacity(&current_line, current_line.length + 2);
+                current_line.content[current_line.length++] = buffer[i];
+                current_line.content[current_line.length] = '\0';
+            }
+        }
+    }
+    
+    // Add last line if not empty or if file was empty
+    if (buf->line_count >= buf->line_capacity) {
+        buf->line_capacity *= 2;
+        buf->lines = (text_line_t*)realloc(buf->lines, buf->line_capacity * sizeof(text_line_t));
+    }
+    buf->lines[buf->line_count++] = current_line;
+
+    sys_close(fd);
+    
+    buf->modified = false;
     editor_detect_language(buf, file_path);
 
     return true;
@@ -292,8 +388,18 @@ bool editor_save_file(editor_buffer_t* buf, const char* file_path) {
     const char* path = file_path ? file_path : buf->file_path;
     if (!path || !path[0]) return false;
 
-    // TODO: Save file via VFS
-    // For now, just mark as not modified
+    int fd = sys_open(path, 1 | 2 | 0x20); // O_WRONLY | O_CREAT | O_TRUNC
+    if (fd < 0) return false;
+
+    for (uint32_t i = 0; i < buf->line_count; i++) {
+        text_line_t* line = &buf->lines[i];
+        sys_write(fd, line->content, line->length);
+        if (i < buf->line_count - 1) {
+            sys_write(fd, "\n", 1);
+        }
+    }
+
+    sys_close(fd);
     buf->modified = false;
 
     return true;
@@ -305,10 +411,8 @@ void editor_insert_char(editor_buffer_t* buf, char ch) {
 
     text_line_t* line = &buf->lines[buf->cursor_line];
 
-    // Ensure capacity
     ensure_line_capacity(line, line->length + 2);
 
-    // Insert character
     if (buf->cursor_column < line->length) {
         memmove(&line->content[buf->cursor_column + 1],
                 &line->content[buf->cursor_column],
@@ -323,7 +427,6 @@ void editor_insert_char(editor_buffer_t* buf, char ch) {
     buf->cursor_column++;
     buf->modified = true;
 
-    // Record undo
     char str[2] = {ch, '\0'};
     editor_record_action(buf, ACTION_INSERT_CHAR, buf->cursor_line, buf->cursor_column - 1, str, 1);
 }
@@ -335,7 +438,6 @@ void editor_delete_char(editor_buffer_t* buf) {
     text_line_t* line = &buf->lines[buf->cursor_line];
 
     if (buf->cursor_column > 0) {
-        // Delete character before cursor
         char deleted = line->content[buf->cursor_column - 1];
 
         memmove(&line->content[buf->cursor_column - 1],
@@ -347,11 +449,9 @@ void editor_delete_char(editor_buffer_t* buf) {
         buf->cursor_column--;
         buf->modified = true;
 
-        // Record undo
         char str[2] = {deleted, '\0'};
         editor_record_action(buf, ACTION_DELETE_CHAR, buf->cursor_line, buf->cursor_column, str, 1);
     } else if (buf->cursor_line > 0) {
-        // Join with previous line
         text_line_t* prev_line = &buf->lines[buf->cursor_line - 1];
         uint32_t prev_len = prev_line->length;
 
@@ -378,7 +478,6 @@ void editor_delete_char(editor_buffer_t* buf) {
 void editor_insert_line(editor_buffer_t* buf) {
     if (!buf) return;
 
-    // Ensure capacity
     if (buf->line_count >= buf->line_capacity) {
         buf->line_capacity *= 2;
         buf->lines = (text_line_t*)realloc(buf->lines, buf->line_capacity * sizeof(text_line_t));
@@ -386,12 +485,10 @@ void editor_insert_line(editor_buffer_t* buf) {
 
     text_line_t* cur_line = &buf->lines[buf->cursor_line];
 
-    // Move lines down
     memmove(&buf->lines[buf->cursor_line + 2],
             &buf->lines[buf->cursor_line + 1],
             (buf->line_count - buf->cursor_line - 1) * sizeof(text_line_t));
 
-    // Create new line with remaining text
     text_line_t* new_line = &buf->lines[buf->cursor_line + 1];
     init_line(new_line);
 
@@ -413,7 +510,6 @@ void editor_insert_line(editor_buffer_t* buf) {
     buf->cursor_column = 0;
     buf->modified = true;
 
-    // Auto-indent
     if (buf->auto_detect_language) {
         editor_auto_indent(buf);
     }
@@ -469,7 +565,6 @@ void editor_select_all(editor_buffer_t* buf) {
 char* editor_get_selection(editor_buffer_t* buf) {
     if (!buf || !buf->has_selection) return NULL;
 
-    // Calculate total length
     uint32_t total_len = 0;
     for (uint32_t i = buf->sel_start_line; i <= buf->sel_end_line; i++) {
         if (i == buf->sel_start_line) {
@@ -505,7 +600,6 @@ char* editor_get_selection(editor_buffer_t* buf) {
 void editor_record_action(editor_buffer_t* buf, action_type_t type, uint32_t line, uint32_t col, const char* data, uint32_t len) {
     if (!buf || buf->undo_count >= MAX_UNDO_LEVELS) return;
 
-    // Clear redo stack if we're not at the end
     if (buf->undo_index < buf->undo_count) {
         for (uint32_t i = buf->undo_index; i < buf->undo_count; i++) {
             if (buf->undo_stack[i].data) {
@@ -539,7 +633,7 @@ language_t editor_detect_from_extension(const char* file_path) {
     const char* ext = strrchr(file_path, '.');
     if (!ext) return LANG_NONE;
 
-    ext++;  // Skip the dot
+    ext++;
 
     if (strcmp(ext, "c") == 0 || strcmp(ext, "h") == 0) return LANG_C;
     if (strcmp(ext, "cpp") == 0 || strcmp(ext, "hpp") == 0 || strcmp(ext, "cc") == 0 || strcmp(ext, "hh") == 0) return LANG_CPP;
@@ -571,7 +665,6 @@ void editor_highlight_line(editor_buffer_t* buf, uint32_t line_idx) {
     text_line_t* line = &buf->lines[line_idx];
     if (!line->dirty && buf->language == LANG_NONE) return;
 
-    // Reset all tokens to normal
     for (uint32_t i = 0; i < line->length; i++) {
         line->tokens[i] = TOKEN_NORMAL;
     }
@@ -581,22 +674,18 @@ void editor_highlight_line(editor_buffer_t* buf, uint32_t line_idx) {
         uint32_t i = 0;
 
         while (i < line->length) {
-            // Skip whitespace
             if (isspace(content[i])) {
                 i++;
                 continue;
             }
 
-            // Check for comments
             if (content[i] == '/' && i + 1 < line->length) {
                 if (content[i + 1] == '/') {
-                    // Line comment
                     for (uint32_t j = i; j < line->length; j++) {
                         line->tokens[j] = TOKEN_COMMENT;
                     }
                     break;
                 } else if (content[i + 1] == '*') {
-                    // Block comment start (simplified)
                     line->tokens[i] = TOKEN_COMMENT;
                     line->tokens[i + 1] = TOKEN_COMMENT;
                     i += 2;
@@ -604,7 +693,6 @@ void editor_highlight_line(editor_buffer_t* buf, uint32_t line_idx) {
                 }
             }
 
-            // Check for preprocessor
             if (content[i] == '#') {
                 for (uint32_t j = i; j < line->length; j++) {
                     line->tokens[j] = TOKEN_PREPROCESSOR;
@@ -612,7 +700,6 @@ void editor_highlight_line(editor_buffer_t* buf, uint32_t line_idx) {
                 break;
             }
 
-            // Check for strings
             if (content[i] == '"' || content[i] == '\'') {
                 char quote = content[i];
                 line->tokens[i++] = TOKEN_STRING;
@@ -630,7 +717,6 @@ void editor_highlight_line(editor_buffer_t* buf, uint32_t line_idx) {
                 continue;
             }
 
-            // Check for numbers
             if (isdigit(content[i])) {
                 while (i < line->length && (isdigit(content[i]) || content[i] == '.' || content[i] == 'x' || content[i] == 'X')) {
                     line->tokens[i++] = TOKEN_NUMBER;
@@ -638,7 +724,6 @@ void editor_highlight_line(editor_buffer_t* buf, uint32_t line_idx) {
                 continue;
             }
 
-            // Check for identifiers and keywords
             if (isalpha(content[i]) || content[i] == '_') {
                 uint32_t start = i;
                 while (i < line->length && (isalnum(content[i]) || content[i] == '_')) {
@@ -665,7 +750,6 @@ void editor_highlight_line(editor_buffer_t* buf, uint32_t line_idx) {
                 continue;
             }
 
-            // Check for operators
             if (strchr("+-*/%=<>!&|^~", content[i])) {
                 line->tokens[i] = TOKEN_OPERATOR;
             }
@@ -681,7 +765,6 @@ void editor_highlight_line(editor_buffer_t* buf, uint32_t line_idx) {
 void editor_auto_indent(editor_buffer_t* buf) {
     if (!buf || buf->cursor_line == 0) return;
 
-    // Get indent level of previous line
     text_line_t* prev_line = &buf->lines[buf->cursor_line - 1];
     uint32_t indent = 0;
 
@@ -689,12 +772,10 @@ void editor_auto_indent(editor_buffer_t* buf) {
         indent++;
     }
 
-    // Check if previous line ends with '{' - add extra indent
     if (prev_line->length > 0 && prev_line->content[prev_line->length - 1] == '{') {
         indent += buf->tab_width;
     }
 
-    // Insert spaces at current line
     text_line_t* cur_line = &buf->lines[buf->cursor_line];
     ensure_line_capacity(cur_line, indent + 1);
 
@@ -710,7 +791,6 @@ void editor_auto_indent(editor_buffer_t* buf) {
 void editor_load_themes(editor_ctx_t* ctx) {
     if (!ctx) return;
 
-    // Default light theme
     editor_theme_t* theme = &ctx->themes[ctx->theme_count++];
     theme->name = "Light";
     theme->background = 0xFFFFFFFF;
@@ -728,7 +808,6 @@ void editor_load_themes(editor_ctx_t* ctx) {
     theme->operator_color = 0xFF000000;
     theme->function_color = 0xFF000080;
 
-    // Dark theme
     theme = &ctx->themes[ctx->theme_count++];
     theme->name = "Dark";
     theme->background = 0xFF1E1E1E;
@@ -770,12 +849,63 @@ void editor_render(editor_ctx_t* ctx) {
 void editor_render_buffer(editor_ctx_t* ctx, editor_buffer_t* buf, int32_t x, int32_t y, uint32_t width, uint32_t height) {
     if (!ctx || !buf) return;
 
-    // TODO: Render editor buffer with syntax highlighting
-    // - Draw visible lines
-    // - Apply syntax colors
-    // - Draw line numbers
-    // - Draw cursor
-    // - Draw selection
+    uint32_t* fb = (uint32_t*)ctx->editor_window->framebuffer;
+    int fb_width = ctx->editor_window->width;
+
+    draw_rect(fb, fb_width, x, y, width, height, ctx->current_theme->background);
+
+    int line_height = ctx->char_height;
+    int char_width = ctx->char_width;
+    int lines_visible = height / line_height;
+    
+    if (ctx->show_line_numbers) {
+        draw_rect(fb, fb_width, x, y, 50, height, ctx->current_theme->line_number_bg);
+    }
+
+    for (int i = 0; i < lines_visible; i++) {
+        uint32_t line_idx = buf->scroll_y + i;
+        if (line_idx >= buf->line_count) break;
+
+        int ly = y + i * line_height;
+        
+        if (line_idx == buf->cursor_line) {
+            draw_rect(fb, fb_width, x + (ctx->show_line_numbers ? 50 : 0), ly, width - (ctx->show_line_numbers ? 50 : 0), line_height, ctx->current_theme->cursor_line_bg);
+        }
+
+        if (ctx->show_line_numbers) {
+            char num[16];
+            sprintf(num, "%d", line_idx + 1);
+            draw_string(fb, fb_width, x + 5, ly + 2, num, ctx->current_theme->line_number_fg);
+        }
+
+        text_line_t* line = &buf->lines[line_idx];
+        editor_highlight_line(buf, line_idx); 
+        
+        int lx = x + (ctx->show_line_numbers ? 60 : 5);
+        for (uint32_t j = 0; j < line->length; j++) {
+            if (j < buf->scroll_x) continue;
+            
+            uint32_t color = ctx->current_theme->foreground;
+            switch (line->tokens[j]) {
+                case TOKEN_KEYWORD: color = ctx->current_theme->keyword_color; break;
+                case TOKEN_STRING: color = ctx->current_theme->string_color; break;
+                case TOKEN_NUMBER: color = ctx->current_theme->number_color; break;
+                case TOKEN_COMMENT: color = ctx->current_theme->comment_color; break;
+                case TOKEN_TYPE: color = ctx->current_theme->type_color; break;
+                case TOKEN_PREPROCESSOR: color = ctx->current_theme->preprocessor_color; break;
+                default: break;
+            }
+            
+            draw_char(fb, fb_width, lx + (j - buf->scroll_x) * char_width, ly + 2, line->content[j], color);
+        }
+    }
+    
+    int cy = y + (buf->cursor_line - buf->scroll_y) * line_height;
+    int cx = x + (ctx->show_line_numbers ? 60 : 5) + (buf->cursor_column - buf->scroll_x) * char_width;
+    
+    if (cy >= y && cy < y + height) {
+        draw_rect(fb, fb_width, cx, cy, 2, line_height, 0xFF000000); // Cursor
+    }
 }
 
 // Main editor loop
@@ -783,11 +913,12 @@ void editor_run(editor_ctx_t* ctx) {
     if (!ctx) return;
 
     while (ctx->running) {
-        // TODO: Process events
-
+        // Process events
+        // Wait for IPC (placeholder for full event loop)
+        
         editor_render(ctx);
-
-        // TODO: Sleep or yield CPU
+        
+        sys_yield();
     }
 }
 

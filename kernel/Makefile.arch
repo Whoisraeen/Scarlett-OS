@@ -7,14 +7,17 @@ ifeq ($(ARCH),)
     ARCH = x86_64
 endif
 
-# Architecture-specific toolchain prefixes
+# Include toolchain detection
+-include Makefile.toolchain
+
+# Architecture-specific toolchain prefixes (if not set by Makefile.toolchain)
 ifeq ($(ARCH),x86_64)
-    TARGET_TRIPLE = x86_64-elf
-    CC = $(TARGET_TRIPLE)-gcc
-    AS = $(TARGET_TRIPLE)-as
-    LD = $(TARGET_TRIPLE)-ld
-    OBJCOPY = $(TARGET_TRIPLE)-objcopy
-    OBJDUMP = $(TARGET_TRIPLE)-objdump
+    TARGET_TRIPLE ?= x86_64-elf
+    CC ?= $(TARGET_TRIPLE)-gcc
+    AS ?= $(TARGET_TRIPLE)-as
+    LD ?= $(TARGET_TRIPLE)-ld
+    OBJCOPY ?= $(TARGET_TRIPLE)-objcopy
+    OBJDUMP ?= $(TARGET_TRIPLE)-objdump
     
     # x86_64 specific compiler flags
     ARCH_CFLAGS = -m64 \
@@ -40,7 +43,7 @@ ifeq ($(ARCH),x86_64)
                     hal/x86_64/exceptions.S \
                     hal/x86_64/user_mode.S \
                     hal/x86_64/interrupt_stubs.S \
-                    hal/x86_64/ap_startup.S \
+                    hal/x86_64/ap_startup_asm.S \
                     hal/x86_64/context_switch.S \
                     hal/x86_64/syscall_entry.S
     
@@ -210,7 +213,7 @@ COMMON_C_SRCS = core/main.c \
                 fs/permissions.c \
                 fs/acl.c \
                 drivers/ata/ata.c \
-                drivers/ahci/ahci.c \
+                # TEMP DISABLED: drivers/ahci/ahci.c \
                 drivers/pci/pci.c \
                 drivers/ethernet/ethernet.c \
                 auth/user.c \

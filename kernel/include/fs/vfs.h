@@ -63,7 +63,7 @@ typedef struct vfs_filesystem {
     error_code_t (*unmount)(struct vfs_filesystem* fs);
     
     // File operations
-    error_code_t (*open)(struct vfs_filesystem* fs, const char* path, uint64_t flags, fd_t* fd);
+    error_code_t (*open)(struct vfs_filesystem* fs, const char* path, uint64_t flags, fd_t* fd, void** file_data);
     error_code_t (*close)(struct vfs_filesystem* fs, fd_t fd);
     error_code_t (*read)(struct vfs_filesystem* fs, fd_t fd, void* buf, size_t count, size_t* bytes_read);
     error_code_t (*write)(struct vfs_filesystem* fs, fd_t fd, const void* buf, size_t count, size_t* bytes_written);
@@ -124,6 +124,12 @@ error_code_t vfs_stat(const char* path, vfs_stat_t* stat);
 
 // Path resolution
 error_code_t vfs_resolve_path(const char* path, vfs_mount_t** mount, char* resolved_path);
+
+// Helper to get file data
+void* vfs_get_file_data(fd_t fd);
+
+// Helper to get file position
+uint64_t vfs_get_position(fd_t fd);
 
 #endif // KERNEL_FS_VFS_H
 

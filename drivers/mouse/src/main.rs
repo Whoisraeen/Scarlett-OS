@@ -244,9 +244,18 @@ fn handle_get_event() -> IpcMessage {
     }
 }
 
-fn handle_set_resolution(_msg: &IpcMessage) -> IpcMessage {
-    // TODO: Implement resolution setting
-    create_success_response()
+fn handle_set_resolution(msg: &IpcMessage) -> IpcMessage {
+    unsafe {
+        if msg.data[0] < 4 { // Resolution byte is 0-3
+            mouse_write(0xE8); // Set Resolution Command
+            mouse_read();      // Read ACK
+            mouse_write(msg.data[0]); // Send resolution byte
+            mouse_read();      // Read ACK
+            create_success_response()
+        } else {
+            create_error_response(2) // Invalid resolution
+        }
+    }
 }
 
 fn create_success_response() -> IpcMessage {

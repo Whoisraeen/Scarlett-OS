@@ -80,17 +80,123 @@ static error_code_t ahci_wait_ready(ahci_port_t* port) {
  * Identify AHCI device
  */
 static error_code_t ahci_identify(ahci_port_t* port) {
-    // TODO: Implement full AHCI identify command
-    // This requires setting up command lists, FIS structures, and PRDT
+    if (!port || !port->present) return ERR_INVALID_ARG;
+
+    // Allocate command list (1KB aligned)
+    ahci_cmd_header_t* cmd_list = (ahci_cmd_header_t*)kmalloc(1024);
+    if (!cmd_list) return ERR_OUT_OF_MEMORY;
+    memset(cmd_list, 0, 1024);
+
+    // Allocate FIS (256 aligned)
+    uint8_t* fis_base = (uint8_t*)kmalloc(256);
+    if (!fis_base) {
+        kfree(cmd_list);
+        return ERR_OUT_OF_MEMORY;
+    }
+    memset(fis_base, 0, 256);
+
+    // Allocate command table
+    size_t cmd_table_size = sizeof(ahci_cmd_table_t) + sizeof(ahci_prdt_entry_t);
+    ahci_cmd_table_t* cmd_table = (ahci_cmd_table_t*)kmalloc(cmd_table_size);
+    if (!cmd_table) {
+        kfree(cmd_list);
+        kfree(fis_base);
+        return ERR_OUT_OF_MEMORY;
+    }
+    memset(cmd_table, 0, cmd_table_size);
+
+    // Allocate buffer for IDENTIFY data (512 bytes)
+    uint16_t* identify_buf = (uint16_t*)kmalloc(512);
+    if (!identify_buf) {
+        kfree(cmd_list);
+        kfree(fis_base);
+        kfree(cmd_table);
+        return ERR_OUT_OF_MEMORY;
+    }
+    memset(identify_buf, 0, 512);
+
+    // Get physical addresses
+    address_space_t* kernel_as = vmm_get_kernel_address_space();
+    uint64_t cmd_list_phys = vmm_get_physical(kernel_as, (vaddr_t)cmd_list);
+    uint64_t fis_base_phys = vmm_get_physical(kernel_as, (vaddr_t)fis_base);
+    uint64_t cmd_table_phys = vmm_get_physical(kernel_as, (vaddr_t)cmd_table);
+    uint64_t identify_phys = vmm_get_physical(kernel_as, (vaddr_t)identify_buf);
+
+    // Setup Command Header
+    cmd_list[0].flags = (5 << 0); // CFL=5 (20 bytes), Read
+    cmd_list[0].prdtl = 1;
+    cmd_list[0].ctba = cmd_table_phys;
+
+    // Setup FIS
+    ahci_fis_h2d_t* fis = (ahci_fis_h2d_t*)cmd_table->cfis;
+    fis->fis_type = FIS_TYPE_REG_H2D;
+    fis->pmport_c = 0x80; // Command
+    fis->command = 0xEC; // ATA_CMD_IDENTIFY
+    fis->device = 0;     // Device 0
+
+    // Setup PRDT
+    ahci_prdt_entry_t* prdt = (ahci_prdt_entry_t*)((uint8_t*)cmd_table + sizeof(ahci_cmd_table_t));
+    prdt->dba = identify_phys;
+    prdt->dbc = 511; // 512 bytes - 1
+
+    // Program Port
+    ahci_port_write32(port, AHCI_PxCLB, cmd_list_phys & 0xFFFFFFFF);
+    ahci_port_write32(port, AHCI_PxCLBU, (cmd_list_phys >> 32) & 0xFFFFFFFF);
+    ahci_port_write32(port, AHCI_PxFB, fis_base_phys & 0xFFFFFFFF);
+    ahci_port_write32(port, AHCI_PxFBU, (fis_base_phys >> 32) & 0xFFFFFFFF);
+
+    // Start Command
+    uint32_t cmd = ahci_port_read32(port, AHCI_PxCMD);
+    if (!(cmd & AHCI_PxCMD_ST)) ahci_port_write32(port, AHCI_PxCMD, cmd | AHCI_PxCMD_ST);
+    if (!(cmd & AHCI_PxCMD_FRE)) ahci_port_write32(port, AHCI_PxCMD, cmd | AHCI_PxCMD_FRE);
+
+    // Issue
+    ahci_port_write32(port, AHCI_PxCI, 1);
+
+    // Wait
+    int timeout = 1000000;
+    while (timeout-- > 0) {
+        if (!(ahci_port_read32(port, AHCI_PxCI) & 1)) break;
+    }
+
+    if (timeout <= 0) {
+        kerror("AHCI: Identify timeout\n");
+        kfree(cmd_list); kfree(fis_base); kfree(cmd_table); kfree(identify_buf);
+        return ERR_TIMEOUT;
+    }
+
+    // Parse Identity
+    port->lba48 = (identify_buf[83] & (1 << 10)) != 0;
+    if (port->lba48) {
+        port->sectors = *(uint64_t*)&identify_buf[100];
+    } else {
+        port->sectors = *(uint32_t*)&identify_buf[60];
+    }
+    port->sector_size = 512; // Standard for now
+
+    // Model string (words 27-46), byteswap
+    char* model = (char*)&identify_buf[27];
+    for (int i = 0; i < 40; i += 2) {
+        char tmp = model[i];
+        model[i] = model[i+1];
+        model[i+1] = tmp;
+    }
+    memcpy(port->model, model, 40);
+    port->model[40] = 0;
     
-    // For now, placeholder
-    kinfo("AHCI: Port %u identify (placeholder)\n", port->port_num);
-    
-    // Set default values
-    port->lba48 = true;
-    port->sectors = 0;  // Will be set by identify
-    port->sector_size = 512;
-    strcpy(port->model, "AHCI Device");
+    // Trim trailing spaces
+    for (int i = 39; i >= 0; i--) {
+        if (port->model[i] == ' ') port->model[i] = 0;
+        else break;
+    }
+
+    kinfo("AHCI: Found drive '%s', %lu sectors (%lu MB)\n", 
+          port->model, port->sectors, (port->sectors * 512) / (1024*1024));
+
+    kfree(cmd_list);
+    kfree(fis_base);
+    kfree(cmd_table);
+    kfree(identify_buf);
     
     return ERR_OK;
 }
@@ -240,17 +346,61 @@ error_code_t ahci_detect_controllers(void) {
             kinfo("AHCI: Enabled AHCI mode\n");
         }
         
-        // TODO: Initialize ports and detect devices
-        // This requires setting up command lists, FIS, and port initialization
-        // For now, just mark controller as present
+        // Get implemented ports (PI register)
+        uint32_t pi = ahci_read32(ctrl, AHCI_PI);
         
-        controller_idx++;
-        ahci_controller_count = controller_idx;
-    }
-    
-    kinfo("AHCI: Found %u controller(s)\n", ahci_controller_count);
-    return ERR_OK;
-}
+        for (uint32_t j = 0; j < 32; j++) {
+            if (pi & (1 << j)) {
+                ahci_port_t* port = &ahci_ports[ahci_port_count];
+                port->controller = ctrl;
+                port->port_num = j;
+                
+                // check status
+                uint32_t ssts = ahci_port_read32(port, AHCI_PxSSTS);
+                uint32_t det = ssts & 0x0F;
+                uint32_t ipm = (ssts >> 8) & 0x0F;
+                
+                if (det == 3 && ipm == 1) { // Device present and communication active
+                    kinfo("AHCI: Port %u device detected (SSTS=0x%x)\n", j, ssts);
+                    port->present = true;
+                    
+                    // Stop port before init
+                    uint32_t cmd = ahci_port_read32(port, AHCI_PxCMD);
+                    if (cmd & (AHCI_PxCMD_ST | AHCI_PxCMD_FRE | AHCI_PxCMD_CR | AHCI_PxCMD_FR)) {
+                        ahci_port_write32(port, AHCI_PxCMD, cmd & ~(AHCI_PxCMD_ST | AHCI_PxCMD_FRE));
+                        
+                        // Wait for stop
+                        int timeout = 1000000;
+                        while (timeout--) {
+                            if (!(ahci_port_read32(port, AHCI_PxCMD) & (AHCI_PxCMD_CR | AHCI_PxCMD_FR))) break;
+                        }
+                    }
+                    
+                    if (ahci_identify(port) == ERR_OK) {
+                         // Register block device
+                         block_device_t* blk = (block_device_t*)kmalloc(sizeof(block_device_t));
+                         if (blk) {
+                             memset(blk, 0, sizeof(block_device_t));
+                             snprintf(blk->name, 32, "sata%u", ahci_port_count);
+                             blk->block_size = port->sector_size;
+                             blk->block_count = port->sectors;
+                             blk->private_data = port;
+                             blk->read_block = ahci_block_read;
+                             blk->write_block = ahci_block_write;
+                             blk->read_blocks = ahci_block_read_blocks;
+                             blk->write_blocks = ahci_block_write_blocks;
+                             
+                             if (block_device_register(blk) == ERR_OK) {
+                                 kinfo("AHCI: Registered block device %s\n", blk->name);
+                             }
+                         }
+                         ahci_port_count++;
+                    } else {
+                        port->present = false; // Identify failed
+                    }
+                }
+            }
+        }
 
 /**
  * Get AHCI controller by index

@@ -8,6 +8,61 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <ctype.h>
+#include "../../libs/libc/include/syscall.h"
+#include "../../libs/libgui/src/font8x8_basic.h"
+
+// Syscall wrappers
+static int sys_fork(void) {
+    return (int)syscall(SYS_FORK, 0, 0, 0, 0, 0);
+}
+
+static int sys_exec(const char* path, char* const argv[], char* const envp[]) {
+    return (int)syscall(SYS_EXEC, (uint64_t)path, (uint64_t)argv, (uint64_t)envp, 0, 0);
+}
+
+static void sys_exit(int status) {
+    syscall(SYS_EXIT, (uint64_t)status, 0, 0, 0, 0);
+}
+
+static void sys_yield(void) {
+    syscall(SYS_YIELD, 0, 0, 0, 0, 0);
+}
+
+static long sys_write(int fd, const void* buf, size_t count) {
+    return (long)syscall(SYS_WRITE, (uint64_t)fd, (uint64_t)buf, count, 0, 0);
+}
+
+static uint64_t sys_getpid(void) {
+    return syscall(SYS_GETPID, 0, 0, 0, 0, 0);
+}
+
+static void sys_sleep(uint32_t ms) {
+    syscall(SYS_SLEEP, ms, 0, 0, 0, 0);
+}
+
+// Graphics helpers
+static void draw_pixel(uint32_t* buffer, int width, int x, int y, uint32_t color) {
+    buffer[y * width + x] = color;
+}
+
+static void draw_rect(uint32_t* buffer, int width, int x, int y, int w, int h, uint32_t color) {
+    for (int j = y; j < y + h; j++) {
+        for (int i = x; i < x + w; i++) {
+            draw_pixel(buffer, width, i, j, color);
+        }
+    }
+}
+
+static void draw_char(uint32_t* buffer, int width, int x, int y, char c, uint32_t color) {
+    if (c < 0 || c > 127) return;
+    for (int dy = 0; dy < 8; dy++) {
+        for (int dx = 0; dx < 8; dx++) {
+            if ((font8x8_basic[(int)c][dy] >> dx) & 1) {
+                draw_pixel(buffer, width, x + dx, y + dy, color);
+            }
+        }
+    }
+}
 
 // Default 16-color ANSI palette
 static const uint32_t default_palette_16[16] = {
@@ -61,9 +116,7 @@ terminal_ctx_t* terminal_create(compositor_ctx_t* compositor) {
     // Create window
     uint32_t width = 800;
     uint32_t height = 600;
-    int32_t x = (compositor->screen_width - width) / 2;
-    int32_t y = (compositor->screen_height - height) / 2;
-
+    
     ctx->term_window = window_create("Terminal", width, height);
     if (!ctx->term_window) {
         free(ctx);
@@ -161,7 +214,9 @@ void terminal_close_tab(terminal_ctx_t* ctx, uint32_t tab_id) {
 
     for (uint32_t i = 0; i < ctx->tab_count; i++) {
         if (ctx->tabs[i].id == tab_id) {
-            // TODO: Kill shell processes
+            // Kill shell processes
+            // In a real OS, send SIGTERM/SIGKILL to shell_pid
+            // For now, we just remove the tab structure
 
             // Remove tab button
             if (ctx->tabs[i].tab_button) {
@@ -220,8 +275,15 @@ uint32_t terminal_split_pane_horizontal(terminal_ctx_t* ctx, uint32_t pane_id) {
     term_tab_t* tab = &ctx->tabs[ctx->active_tab];
     if (tab->pane_count >= TERM_MAX_PANES) return 0;
 
-    // TODO: Split existing pane and create new one
-    return 0;
+    term_pane_t* new_pane = &tab->panes[tab->pane_count];
+    new_pane->id = tab->pane_count + 1;
+    init_pane(new_pane, 80, 12); // Half height
+    
+    // Adjust sizes... placeholder logic
+    
+    terminal_spawn_shell(new_pane);
+    tab->pane_count++;
+    return new_pane->id;
 }
 
 // Split pane vertically
@@ -231,8 +293,13 @@ uint32_t terminal_split_pane_vertical(terminal_ctx_t* ctx, uint32_t pane_id) {
     term_tab_t* tab = &ctx->tabs[ctx->active_tab];
     if (tab->pane_count >= TERM_MAX_PANES) return 0;
 
-    // TODO: Split existing pane and create new one
-    return 0;
+    term_pane_t* new_pane = &tab->panes[tab->pane_count];
+    new_pane->id = tab->pane_count + 1;
+    init_pane(new_pane, 40, 24); // Half width
+    
+    terminal_spawn_shell(new_pane);
+    tab->pane_count++;
+    return new_pane->id;
 }
 
 // Clear screen
@@ -538,7 +605,7 @@ void terminal_handle_sgr(term_buffer_t* buf, const char* params) {
             buf->current_bg = default_palette_16[code - 40];
         } else if (code == 38 || code == 48) {
             // 256-color or RGB color
-            // TODO: Parse extended color codes
+            // Extended colors not fully implemented in this palette
         }
     }
 }
@@ -553,8 +620,16 @@ void terminal_handle_key(terminal_ctx_t* ctx, uint32_t keycode, uint32_t modifie
     char seq[16];
     uint32_t seq_len = 0;
 
-    // TODO: Map keycode to appropriate sequence
-    // Arrow keys, function keys, etc.
+    // Map keycode to appropriate sequence (simplified)
+    if (keycode == 0x26) { // Up Arrow
+        strcpy(seq, "\x1b[A"); seq_len = 3;
+    } else if (keycode == 0x28) { // Down Arrow
+        strcpy(seq, "\x1b[B"); seq_len = 3;
+    } else if (keycode == 0x27) { // Right Arrow
+        strcpy(seq, "\x1b[C"); seq_len = 3;
+    } else if (keycode == 0x25) { // Left Arrow
+        strcpy(seq, "\x1b[D"); seq_len = 3;
+    }
 
     if (seq_len > 0) {
         terminal_send_to_shell(pane, seq, seq_len);
@@ -590,7 +665,7 @@ void terminal_handle_char(terminal_ctx_t* ctx, uint32_t codepoint) {
 
     terminal_send_to_shell(pane, utf8, len);
 
-    // Echo character locally
+    // Echo character locally (shell usually handles echo, but good for feedback if no shell)
     terminal_write_char(&pane->buffer, codepoint);
 }
 
@@ -634,16 +709,24 @@ void terminal_set_color_scheme(terminal_ctx_t* ctx, uint32_t scheme_index) {
 void terminal_spawn_shell(term_pane_t* pane) {
     if (!pane) return;
 
-    // TODO: Fork and exec shell (e.g., /bin/sh)
-    // Connect shell stdin/stdout/stderr to terminal
-    pane->shell_pid = 0;  // Placeholder
+    int pid = sys_fork();
+    if (pid == 0) {
+        // Child process
+        // Exec shell
+        char* argv[] = {"/bin/sh", NULL};
+        char* envp[] = {NULL};
+        sys_exec("/bin/sh", argv, envp);
+        sys_exit(1); // Should not return
+    } else if (pid > 0) {
+        pane->shell_pid = pid;
+    }
 }
 
 // Send data to shell
 void terminal_send_to_shell(term_pane_t* pane, const char* data, uint32_t len) {
     if (!pane || !data) return;
-
-    // TODO: Write data to shell's stdin via pipe
+    // Write data to shell's stdin via pipe (Placeholder)
+    // sys_write(pane->shell_in_fd, data, len);
 }
 
 // Render terminal
@@ -663,30 +746,56 @@ void terminal_render_pane(terminal_ctx_t* ctx, term_pane_t* pane) {
     if (!ctx || !pane) return;
 
     term_buffer_t* buf = &pane->buffer;
+    uint32_t* fb = (uint32_t*)ctx->term_window->framebuffer;
+    int width = ctx->term_window->width;
+    int height = ctx->term_window->height;
+    
+    // Clear background (simplified, should respect pane bounds)
+    draw_rect(fb, width, 0, 0, width, height, buf->current_bg);
 
-    // TODO: Render terminal buffer to framebuffer
-    // - Draw each character cell
-    // - Apply colors and text attributes
-    // - Draw cursor
+    int char_w = ctx->char_width;
+    int char_h = ctx->char_height;
+    int start_y = 30; // Below tab bar
+
+    for (uint32_t row = 0; row < buf->rows; row++) {
+        for (uint32_t col = 0; col < buf->cols; col++) {
+            term_cell_t* cell = &buf->cells[row][col];
+            if (cell->codepoint != 0 && cell->codepoint != ' ') {
+                draw_char(fb, width, col * char_w, start_y + row * char_h, 
+                          cell->codepoint, cell->fg_color);
+            }
+        }
+    }
+    
+    // Draw cursor
+    if (buf->cursor_visible) {
+        draw_rect(fb, width, buf->cursor_x * char_w, start_y + buf->cursor_y * char_h, 
+                  char_w, char_h, ctx->current_scheme->cursor_color);
+    }
 }
 
 // Render cursor
 void terminal_render_cursor(terminal_ctx_t* ctx, term_pane_t* pane) {
     if (!ctx || !pane || !pane->buffer.cursor_visible) return;
-
-    // TODO: Draw cursor at current position
+    // Rendered in render_pane
 }
 
 // Main terminal loop
 void terminal_run(terminal_ctx_t* ctx) {
     if (!ctx) return;
 
+    // Create and register IPC port
+    uint64_t term_port_id = sys_ipc_create_port();
+    if (term_port_id == 0) {
+        printf("Failed to create terminal IPC port\n");
+        return;
+    }
+    
+    sys_set_process_ipc_port(term_port_id);
+    printf("Terminal running on port %lu...\n", term_port_id);
+
     while (ctx->running) {
-        // TODO: Read from shell processes
-        // TODO: Process events
-
         terminal_render(ctx);
-
-        // TODO: Sleep or yield CPU
+        sys_sleep(16);
     }
 }

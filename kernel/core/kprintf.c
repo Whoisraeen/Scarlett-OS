@@ -1,11 +1,3 @@
-/**
- * @file kprintf.c
- * @brief Kernel printf implementation
- * 
- * A simple printf implementation for kernel debugging.
- * Supports basic format specifiers: %s, %c, %d, %u, %x, %p, %lu, %lx
- */
-
 #include "../include/kprintf.h"
 #include "../include/types.h"
 #include "../include/string.h"
@@ -163,7 +155,7 @@ int kvprintf(const char* fmt, va_list args) {
                     if (is_long_long) {
                         val = va_arg(args, uint64_t);
                     } else if (is_long) {
-                        val = va_arg(args, unsigned long);
+                        val = va_arg(args, uint64_t);
                     } else {
                         val = va_arg(args, unsigned int);
                     }
@@ -195,7 +187,7 @@ int kvprintf(const char* fmt, va_list args) {
                     if (is_long_long) {
                         val = va_arg(args, uint64_t);
                     } else if (is_long) {
-                        val = va_arg(args, unsigned long);
+                        val = va_arg(args, uint64_t);
                     } else {
                         val = va_arg(args, unsigned int);
                     }
@@ -286,4 +278,3 @@ int kprintf(const char* fmt, ...) {
     va_end(args);
     return count;
 }
-

@@ -75,7 +75,7 @@ void ap_init(void) {
 /**
  * Wake up an Application Processor
  */
-error_code_t ap_startup(uint32_t apic_id) {
+error_code_t ap_initiate_startup(uint32_t apic_id) {
     kinfo("Starting AP with APIC ID %u...\n", apic_id);
     
     // Find CPU ID from APIC ID

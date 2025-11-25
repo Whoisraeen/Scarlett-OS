@@ -171,7 +171,7 @@ dt b_node_t* dtb_find_node(const char* path) {
     }
     
     // Path parsing logic: /path/to/node
-    // TODO: Implement full path traversal - DONE: Full path traversal implemented
+    // DONE: Full path traversal implemented
     // This function now properly traverses the full path by:
     // 1. Splitting path into components
     // 2. For each component, searching all children (including siblings)
@@ -298,7 +298,7 @@ int dtb_enumerate_devices(void) {
     }
     
     printf("DTB: Enumerating devices...\n");
-    // TODO: Walk device tree and enumerate devices - DONE: Tree walking implemented
+    // DONE: Tree walking implemented
     // The dtb_walk_tree function recursively walks the entire device tree,
     // calling enumerate_device_callback for each node to identify devices
     dtb_walk_tree(g_root_node, enumerate_device_callback);
@@ -366,7 +366,7 @@ void dtb_print_tree(void) {
     }
     
     printf("Device Tree:\n");
-    // TODO: Recursively print tree structure - DONE: Recursive printing implemented
+    // DONE: Recursive printing implemented
     // The visit_node_print function recursively traverses the tree,
     // printing nodes with proper indentation based on depth
     visit_node_print(g_root_node, 0);

@@ -134,11 +134,26 @@ static const char scancode_to_ascii_shift[128] = {
     [0x35] = '?',
 };
 
+// Extended scancode (E0 prefix) to ASCII/Keycode conversion
+static const char scancode_e0_to_ascii[128] = {
+    [0x1C] = '\n', // Keypad Enter
+    [0x35] = '/',  // Keypad /
+    // Most extended keys don't have direct ASCII representation (arrows, etc.)
+};
+
 /**
  * Convert scancode to ASCII character
  */
 char keyboard_scancode_to_ascii(uint8_t scancode, bool shift, bool caps_lock) {
     if (scancode >= 128) {
+        return 0;
+    }
+    
+    // Handle extended keys if prefix was E0
+    if (keyboard_state.extended_scancode) {
+        if (scancode_e0_to_ascii[scancode]) {
+            return scancode_e0_to_ascii[scancode];
+        }
         return 0;
     }
     

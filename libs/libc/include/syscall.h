@@ -193,5 +193,18 @@ static inline int sys_mmio_unmap(void* vaddr, size_t size) {
     return (int)syscall(SYS_MMIO_UNMAP, (uint64_t)vaddr, size, 0, 0, 0);
 }
 
+#define SYS_SET_PROCESS_IPC_PORT 48
+#define SYS_IO_READ 49
+#define SYS_IO_WRITE 50
+#define SYS_STAT 51
+
+// IPC message structure (must match kernel/include/ipc/ipc.h)
+
+// ... (existing code)
+
+static inline int sys_set_process_ipc_port(uint64_t port_id) {
+    return (int)syscall(SYS_SET_PROCESS_IPC_PORT, port_id, 0, 0, 0, 0);
+}
+
 #endif // SYSCALL_H
 

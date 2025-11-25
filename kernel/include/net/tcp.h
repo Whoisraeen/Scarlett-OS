@@ -46,6 +46,9 @@ typedef struct {
     size_t receive_buffer_size;
     size_t receive_buffer_pos;
     void* user_data;
+    struct tcp_connection* next_pending; // For listener queue
+    struct tcp_connection* pending_head; // For listener: head of pending connections
+    struct tcp_connection* pending_tail; // For listener: tail of pending connections
 } tcp_connection_t;
 
 // TCP header structure
@@ -65,6 +68,8 @@ typedef struct {
 // TCP functions
 error_code_t tcp_init(void);
 tcp_connection_t* tcp_create_connection(uint32_t local_ip, uint16_t local_port, uint32_t remote_ip, uint16_t remote_port);
+error_code_t tcp_listen(uint16_t port);
+tcp_connection_t* tcp_accept(uint16_t port);
 error_code_t tcp_send(tcp_connection_t* conn, void* data, size_t len);
 error_code_t tcp_receive(tcp_connection_t* conn, void* buffer, size_t* len);
 error_code_t tcp_handle_packet(void* buffer, size_t len, uint32_t src_ip);

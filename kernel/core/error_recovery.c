@@ -9,18 +9,6 @@
 #include "../include/mm/heap.h"
 #include "../include/kprintf.h"
 #include "../include/debug.h"
-
-/**
- * @file error_recovery.c
- * @brief Error recovery implementation
- */
-
-#include "../include/types.h"
-#include "../include/error_recovery.h"
-#include "../include/errors.h"
-#include "../include/mm/heap.h"
-#include "../include/kprintf.h"
-#include "../include/debug.h"
 #include "../sched/sched_o1.h" // Access task_t
 
 // Access current task from scheduler

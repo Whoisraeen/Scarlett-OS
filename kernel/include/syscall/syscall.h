@@ -57,9 +57,13 @@
 #define SYS_SPAWN_PROCESS 45
 #define SYS_GET_PROCESS_IPC_PORT 46
 #define SYS_GET_UPTIME_MS 47
+#define SYS_SET_PROCESS_IPC_PORT 48
+#define SYS_IO_READ 49
+#define SYS_IO_WRITE 50
+#define SYS_STAT 51
 
 // Maximum syscall number
-#define SYS_MAX         47
+#define SYS_MAX         51
 
 /**
  * Initialize system call handling

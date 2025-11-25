@@ -147,7 +147,7 @@ int elf_load_segments(const elf64_header_t* header, void* file_data,
                                    (ph->p_filesz - offset) : PAGE_SIZE;
                 
                 // Copy data using proper virtual address access
-                // TODO: Use proper virtual address access - DONE: Virtual address access implemented
+                // DONE: Virtual address access implemented
                 // Use the virtual address directly (page is already mapped in the address space)
                 uint8_t* dest = (uint8_t*)page_vaddr;  // Use virtual address directly
                 const uint8_t* src = file_data_ptr + offset;

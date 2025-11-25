@@ -198,7 +198,7 @@ error_code_t fat32_delete_file(fat32_fs_t* fs, const char* path) {
     // Parse path to get parent directory and filename
     char components[32][12];
     uint32_t component_count = 0;
-    error_code_t err = fat32_parse_path(path, components, &component_count);
+    err = fat32_parse_path(path, components, &component_count);
     if (err != ERR_OK || component_count == 0) {
         return err;
     }

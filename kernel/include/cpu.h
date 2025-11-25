@@ -62,6 +62,9 @@ uint32_t cpu_get_current_id(void);
 per_cpu_data_t* cpu_get_per_cpu_data(uint32_t cpu_id);
 per_cpu_data_t* cpu_get_current_per_cpu_data(void);
 
+// AP Startup
+error_code_t ap_initiate_startup(uint32_t apic_id);
+
 // CPUID wrapper
 void cpuid(uint32_t leaf, uint32_t subleaf, uint32_t* eax, uint32_t* ebx, uint32_t* ecx, uint32_t* edx);
 

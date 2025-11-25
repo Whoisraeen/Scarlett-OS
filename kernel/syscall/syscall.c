@@ -22,6 +22,8 @@
 #include "../include/mm/dma.h"
 #include "../include/process.h"
 #include "../include/time.h"
+#include "../include/auth/user.h"
+#include "../include/string.h"
 
 /**
  * Initialize system calls
@@ -276,9 +278,22 @@ uint64_t syscall_handler(uint64_t syscall_num, uint64_t arg1, uint64_t arg2,
         
         case SYS_WAIT: {
             // arg1 = pid, arg2 = status
-            // TODO: Implement process waiting
-            kwarn("SYS_WAIT not yet implemented\n");
-            return (uint64_t)ERR_NOT_SUPPORTED;
+            pid_t pid = (pid_t)arg1;
+            int* status = (int*)arg2;
+            
+            // Validate status pointer if provided
+            if (status && !validate_user_ptr(status, sizeof(int))) {
+                return (uint64_t)ERR_INVALID_ARG;
+            }
+            
+            extern pid_t process_wait(pid_t pid, int* status);
+            pid_t ret = process_wait(pid, status);
+            
+            if (ret < 0) {
+                return (uint64_t)ERR_INVALID_STATE; // Or ECHILD
+            }
+            
+            return (uint64_t)ret;
         }
         
         case SYS_MMAP: {
@@ -714,9 +729,62 @@ uint64_t syscall_handler(uint64_t syscall_num, uint64_t arg1, uint64_t arg2,
             return time_get_uptime_ms();
         }
         
+        case SYS_SET_PROCESS_IPC_PORT: {
+            // arg1 = port_id
+            uint64_t port_id = arg1;
+            
+            process_t* current = process_get_current();
+            if (!current) {
+                return (uint64_t)ERR_INVALID_STATE;
+            }
+            
+            // Verify port ownership (optional but good practice)
+            // For now, we assume if they have the ID, they can set it.
+            // Ideally we should check if port->owner_tid == current->tid
+            
+            extern void process_set_ipc_port(process_t* process, uint64_t port_id);
+            process_set_ipc_port(current, port_id);
+            
+            return 0;
+        }
+        
+        
+        case SYS_IO_READ: {
+            // arg1 = port, arg2 = size
+            uint16_t port = (uint16_t)arg1;
+            uint8_t size = (uint8_t)arg2;
+            // For now, disallow direct I/O port access from user-space for security
+            // A full implementation would check capabilities (e.g., CAP_IO_PORT_ACCESS)
+            kwarn("SYS_IO_READ(%x, %u) called from user-space. Not permitted.\n", port, size);
+            return (uint64_t)ERR_PERMISSION_DENIED;
+            break;
+        }
+
+        case SYS_IO_WRITE: {
+            // arg1 = port, arg2 = value, arg3 = size
+            uint16_t port = (uint16_t)arg1;
+            uint32_t value = (uint32_t)arg2;
+            uint8_t size = (uint8_t)arg3;
+            // For now, disallow direct I/O port access from user-space for security
+            // A full implementation would check capabilities
+            kwarn("SYS_IO_WRITE(%x, %lu, %u) called from user-space. Not permitted.\n", port, value, size);
+            return (uint64_t)ERR_PERMISSION_DENIED;
+        }
+
+        case SYS_STAT: {
+            // arg1 = path, arg2 = stat_buf
+            const char* path = (const char*)arg1;
+            void* buf = (void*)arg2;
+            
+            if (!validate_user_ptr((void*)path, 256) || !validate_user_ptr(buf, sizeof(vfs_stat_t))) {
+                return (uint64_t)ERR_INVALID_ARG;
+            }
+            
+            extern error_code_t vfs_stat(const char* path, vfs_stat_t* stat);
+            return (uint64_t)vfs_stat(path, (vfs_stat_t*)buf);
+        }
+        
         default:
-            kwarn("Unknown system call: %lu\n", syscall_num);
-            return (uint64_t)ERR_INVALID_SYSCALL;
     }
 }
 

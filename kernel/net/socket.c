@@ -119,9 +119,13 @@ error_code_t socket_listen(int sockfd, int backlog) {
         return ERR_NOT_SUPPORTED;
     }
     
-    // For now, just mark as listening
-    // Full TCP implementation would need connection queue
-    return ERR_OK;
+    if (!sock->bound) {
+        return ERR_INVALID_STATE;
+    }
+    
+    // Call TCP listen
+    extern error_code_t tcp_listen(uint16_t port);
+    return tcp_listen(sock->local_port);
 }
 
 /**
@@ -182,9 +186,44 @@ int socket_accept(int sockfd, sockaddr_in_t* addr) {
         return -1;
     }
     
-    // Simplified - would need TCP connection queue
-    // For now, return error
-    return -1;
+    if (!sock->bound) {
+        return -1;
+    }
+    
+    // Call TCP accept
+    extern tcp_connection_t* tcp_accept(uint16_t port);
+    tcp_connection_t* conn = tcp_accept(sock->local_port);
+    
+    if (!conn) {
+        return -1; // Would block
+    }
+    
+    // Create new socket for connection
+    int new_fd = socket_create(2, SOCK_STREAM, 0); // AF_INET
+    if (new_fd < 0) {
+        // Close connection if socket creation fails?
+        // tcp_close(conn);
+        return -1;
+    }
+    
+    socket_t* new_sock = socket_find(new_fd);
+    if (new_sock) {
+        new_sock->connected = true;
+        new_sock->bound = true;
+        new_sock->local_ip = conn->local_ip;
+        new_sock->local_port = conn->local_port;
+        new_sock->remote_ip = conn->remote_ip;
+        new_sock->remote_port = conn->remote_port;
+        new_sock->data = conn;
+        
+        if (addr) {
+            addr->family = 2; // AF_INET
+            addr->port = conn->remote_port;
+            addr->addr = conn->remote_ip;
+        }
+    }
+    
+    return new_fd;
 }
 
 /**

@@ -6,22 +6,15 @@
 #include "launcher.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include "../../libs/libgui/include/compositor_ipc.h" // Needed for compositor_get_screen_info
 
 int main(int argc, char* argv[]) {
     printf("Scarlett OS Application Launcher v1.0\n");
 
-    // TODO: Connect to compositor via IPC
-    compositor_ctx_t* compositor = compositor_create(1920, 1080);
-    if (!compositor) {
-        fprintf(stderr, "Failed to connect to compositor\n");
-        return 1;
-    }
-
     // Create launcher
-    launcher_ctx_t* launcher = launcher_create(compositor);
+    launcher_ctx_t* launcher = launcher_create(NULL); // Pass NULL as compositor is handled via IPC
     if (!launcher) {
         fprintf(stderr, "Failed to create launcher\n");
-        compositor_destroy(compositor);
         return 1;
     }
 
@@ -35,7 +28,6 @@ int main(int argc, char* argv[]) {
 
     // Cleanup
     launcher_destroy(launcher);
-    compositor_destroy(compositor);
 
     return 0;
 }

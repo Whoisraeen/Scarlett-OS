@@ -229,7 +229,7 @@ error_code_t vfs_resolve_path(const char* path, vfs_mount_t** mount, char* resol
 
     // Resolve the relative path inside the mount
     const char* rel = path + best_len;
-    if (*rel == \'/' ) rel++; // skip leading slash
+    if (*rel == '/' ) rel++; // skip leading slash
     strncpy(resolved_path, rel, 255);
     resolved_path[255] = '\0';
 
@@ -317,11 +317,13 @@ error_code_t vfs_open(const char* path, uint64_t flags, fd_t* fd) {
     
     // Call filesystem open
     if (mount->fs->open) {
-        err = mount->fs->open(mount->fs, resolved_path, flags, &new_fd);
+        void* file_data = NULL;
+        err = mount->fs->open(mount->fs, resolved_path, flags, &new_fd, &file_data);
         if (err != ERR_OK) {
             free_fd(new_fd);
             return err;
         }
+        fd_table[new_fd].file_data = file_data;
     }
     
     // Set up FD entry
@@ -660,4 +662,24 @@ error_code_t vfs_unmount(const char* mountpoint) {
         cur = cur->next;
     }
     return ERR_NOT_FOUND;
+}
+
+/**
+ * Get file data from FD
+ */
+void* vfs_get_file_data(fd_t fd) {
+    if (fd < 0 || fd >= MAX_FDS || !fd_table[fd].used) {
+        return NULL;
+    }
+    return fd_table[fd].file_data;
+}
+
+/**
+ * Get file position from FD
+ */
+uint64_t vfs_get_position(fd_t fd) {
+    if (fd < 0 || fd >= MAX_FDS || !fd_table[fd].used) {
+        return 0;
+    }
+    return fd_table[fd].position;
 }

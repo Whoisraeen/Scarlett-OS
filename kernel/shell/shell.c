@@ -184,7 +184,7 @@ int shell_execute_command(const char* line) {
     }
     
     // Not a built-in command - try to execute as program
-    // TODO: Implement program execution via ELF loader - DONE: Program execution implemented
+    // DONE: Program execution implemented
     extern error_code_t process_exec(process_t* process, const char* path, char* const* argv, char* const* envp);
     extern process_t* process_get_current(void);
     

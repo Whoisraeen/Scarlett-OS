@@ -10,6 +10,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "../../../libs/libgui/include/compositor_ipc.h" // For compositor_window_state_t
 
 // Widget types
 typedef enum {
@@ -91,7 +92,9 @@ struct window {
     char* title;
     int32_t x, y;
     uint32_t width, height;
-    void* framebuffer;
+    void* framebuffer;       // Pointer to shared memory framebuffer
+    uint32_t shm_id;         // Shared memory ID
+    uint32_t framebuffer_size; // Size of framebuffer in bytes
     bool visible;
 };
 

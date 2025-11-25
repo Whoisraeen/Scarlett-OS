@@ -10,7 +10,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-#include "../hal/context.h"
+#include "../include/hal/context.h"
 #include "../include/error_recovery.h" // For error_recovery_ctx_t
 
 #define MAX_PRIORITY 140

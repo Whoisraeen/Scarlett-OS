@@ -168,7 +168,7 @@ disk: setup bootloader kernel
 		MTOOLS_SKIP_CHECK=1 mmd -i $(BUILD_DIR)/part.img ::/EFI/BOOT 2>/dev/null || true; \
 		MTOOLS_SKIP_CHECK=1 mcopy -i $(BUILD_DIR)/part.img $(BOOT_DIR)/limine/BOOTX64.EFI ::/EFI/BOOT/ 2>/dev/null || true; \
 		MTOOLS_SKIP_CHECK=1 mcopy -i $(BUILD_DIR)/part.img limine.cfg ::/ 2>/dev/null || true; \
-		MTOOLS_SKIP_CHECK=1 mcopy -i $(BUILD_DIR)/part.img $(BUILD_DIR)/kernel-$(ARCH).elf ::/ 2>/dev/null || true; \
+		MTOOLS_SKIP_CHECK=1 mcopy -i $(BUILD_DIR)/part.img $(BUILD_DIR)/kernel-$(ARCH).elf ::/kernel.elf 2>/dev/null || true; \
 		dd if=$(BUILD_DIR)/part.img of=$(DISK_IMG) bs=512 seek=2048 conv=notrunc 2>/dev/null || true; \
 		rm -f $(BUILD_DIR)/part.img; \
 		echo "[DISK] GPT disk image created and populated for $(ARCH)"; \

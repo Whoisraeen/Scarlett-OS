@@ -81,8 +81,10 @@ typedef struct {
     action_type_t type;
     uint32_t line;
     uint32_t column;
-    char* text;
-    uint32_t text_len;
+    char* old_text; // For insert/delete, this is the text inserted/deleted. For replace, this is the old text.
+    char* new_text; // For replace, this is the new text. NULL for other actions.
+    uint32_t old_text_len;
+    uint32_t new_text_len;
 } editor_action_t;
 
 // Text selection

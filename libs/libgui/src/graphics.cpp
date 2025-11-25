@@ -4,6 +4,7 @@
  */
 
 #include "graphics.h"
+#include "font.h" // Include Font class
 #include <cstring>
 
 namespace gui {
@@ -34,11 +35,11 @@ void GraphicsContext::draw_line(int x1, int y1, int x2, int y2, uint32_t color) 
     int steps = (dx > dy ? dx : dy);
     if (steps == 0) return;
     
+    float x = (float)x1;
+    float y = (float)y1;
+    
     float x_inc = (float)dx / steps;
     float y_inc = (float)dy / steps;
-    
-    float x = x1;
-    float y = y1;
     
     for (int i = 0; i <= steps; ++i) {
         int px = (int)x;
@@ -52,12 +53,13 @@ void GraphicsContext::draw_line(int x1, int y1, int x2, int y2, uint32_t color) 
 }
 
 void GraphicsContext::draw_text(int x, int y, const char* text, uint32_t color) {
-    // TODO: Implement font rendering
-    (void)x;
-    (void)y;
-    (void)text;
-    (void)color;
+    if (!text) return;
+    Font font; // Use default font instance
+    int current_x = x;
+    for (size_t i = 0; i < strlen(text); ++i) {
+        font.render_char(framebuffer_, width_, current_x, y, text[i], color);
+        current_x += 8; // Assuming 8-pixel wide font
+    }
 }
 
 } // namespace gui
-

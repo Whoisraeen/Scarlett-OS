@@ -6,7 +6,7 @@
 
 OUTPUT_FORMAT(elf64-x86-64)
 OUTPUT_ARCH(i386:x86-64)
-ENTRY(multiboot2_entry)
+ENTRY(_start)
 
 PHDRS
 {
@@ -17,8 +17,9 @@ PHDRS
 
 SECTIONS
 {
-    /* Start at 1MB - standard for multiboot2 */
-    . = 0x100000;
+    /* Higher-half kernel - Limine requirement */
+    /* FFFFFFFF80000000 + 1MB offset for compatibility */
+    . = 0xFFFFFFFF80100000;
 
     _kernel_start = .;
 

@@ -6,23 +6,15 @@
 #include "login.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include "../../libs/libgui/include/compositor_ipc.h" // Needed for compositor_get_screen_info
 
 int main(int argc, char* argv[]) {
     printf("Scarlett OS Login Screen v1.0\n");
 
-    // TODO: Connect to compositor via IPC
-    // For now, create a local compositor instance
-    compositor_ctx_t* compositor = compositor_create(1920, 1080);
-    if (!compositor) {
-        fprintf(stderr, "Failed to create compositor\n");
-        return 1;
-    }
-
     // Create login screen
-    login_ctx_t* login = login_create(compositor);
+    login_ctx_t* login = login_create(NULL); // Pass NULL as compositor is handled via IPC
     if (!login) {
         fprintf(stderr, "Failed to create login screen\n");
-        compositor_destroy(compositor);
         return 1;
     }
 
@@ -33,7 +25,6 @@ int main(int argc, char* argv[]) {
 
     // Cleanup
     login_destroy(login);
-    compositor_destroy(compositor);
 
     return 0;
 }

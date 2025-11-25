@@ -6,17 +6,19 @@
 #include "settings.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include "../../libs/libgui/include/compositor_ipc.h" // For compositor_connect/disconnect
 
 int main(int argc, char** argv) {
     // Connect to compositor
-    compositor_ctx_t* compositor = compositor_connect();
-    if (!compositor) {
+    uint64_t compositor_port_id = compositor_connect(); // Connect to compositor service
+    if (compositor_port_id == 0) {
         fprintf(stderr, "Failed to connect to compositor\n");
         return 1;
     }
     
     // Create settings application
-    settings_ctx_t* settings = settings_create(compositor);
+    settings_ctx_t* settings = settings_create(NULL); // compositor is now handled via IPC
     
     // Open specific panel if requested
     if (argc > 1) {
@@ -54,9 +56,12 @@ int main(int argc, char** argv) {
     printf("Sound: Master volume %u%%\n", settings->sound.master_volume);
     printf("Power: %s plan\n", settings->power.power_plan);
     
+    // Run the settings app main loop
+    settings_run(settings);
+
     // Cleanup
     settings_destroy(settings);
-    compositor_disconnect(compositor);
+    compositor_disconnect(); // Disconnect from compositor
     
     return 0;
 }

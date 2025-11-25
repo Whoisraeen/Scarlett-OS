@@ -5,6 +5,8 @@
 
 #include "ugal.h"
 #include <string.h>
+#include <stdlib.h> // For malloc, free
+#include <stdio.h> // For debugging printfs, can be removed
 
 // Maximum number of GPU devices
 #define MAX_GPU_DEVICES 8
@@ -14,17 +16,27 @@ struct ugal_device {
     ugal_device_info_t info;
     void* driver_data;  // Vendor-specific driver data
 
-    // Function pointers for vendor-specific operations
+    // Function pointers for vendor-specific operations (mocked for now)
     void* (*create_buffer)(void* driver_data, uint64_t size, uint32_t usage);
     void (*destroy_buffer)(void* driver_data, void* buffer);
     void* (*map_buffer)(void* driver_data, void* buffer);
     void (*unmap_buffer)(void* driver_data, void* buffer);
+    void (*update_buffer)(void* driver_data, void* buffer, const void* data, uint64_t offset, uint64_t size);
 
     void* (*create_texture)(void* driver_data, uint32_t width, uint32_t height, ugal_format_t format);
     void (*destroy_texture)(void* driver_data, void* texture);
+    void (*update_texture)(void* driver_data, void* texture, const void* data, uint32_t x, uint32_t y, uint32_t width, uint32_t height);
 
-    void (*present)(void* driver_data, void* framebuffer);
+    void* (*create_framebuffer)(void* driver_data, uint32_t width, uint32_t height);
+    void (*destroy_framebuffer)(void* driver_data, void* framebuffer);
+
     void (*clear)(void* driver_data, void* framebuffer, uint32_t color);
+    void (*fill_rect)(void* driver_data, void* framebuffer, int32_t x, int32_t y, uint32_t width, uint32_t height, uint32_t color);
+    void (*draw_line)(void* driver_data, void* framebuffer, int32_t x1, int32_t y1, int32_t x2, int32_t y2, uint32_t color);
+    void (*blit)(void* driver_data, void* src, void* dst, int32_t sx, int32_t sy, int32_t dx, int32_t dy, uint32_t width, uint32_t height);
+    
+    void (*present)(void* driver_data, void* framebuffer);
+    void (*set_vsync)(void* driver_data, bool enable);
 };
 
 // UGAL buffer structure
@@ -55,7 +67,7 @@ struct ugal_framebuffer {
     uint32_t height;
 };
 
-// UGAL pipeline structure
+// UGAL pipeline structure (simplified)
 struct ugal_pipeline {
     ugal_device_t* device;
     void* driver_pipeline;
@@ -63,7 +75,7 @@ struct ugal_pipeline {
     char* fragment_shader;
 };
 
-// UGAL command buffer structure
+// UGAL command buffer structure (simplified)
 struct ugal_command_buffer {
     ugal_device_t* device;
     void* driver_cmd;
@@ -74,11 +86,56 @@ struct ugal_command_buffer {
 static ugal_device_t* g_devices[MAX_GPU_DEVICES] = {NULL};
 static uint32_t g_device_count = 0;
 
+// --- Mock Vendor-Specific Driver Hooks (for illustration) ---
+static void* mock_create_buffer(void* driver_data, uint64_t size, uint32_t usage) {
+    (void)driver_data; (void)size; (void)usage;
+    // In a real driver, this would allocate GPU memory
+    return malloc(size); // Software buffer
+}
+static void mock_destroy_buffer(void* driver_data, void* buffer) {
+    (void)driver_data;
+    free(buffer);
+}
+static void* mock_map_buffer(void* driver_data, void* buffer) {
+    (void)driver_data;
+    return buffer; // Software buffer is directly accessible
+}
+static void mock_unmap_buffer(void* driver_data, void* buffer) { (void)driver_data; (void)buffer; }
+static void mock_update_buffer(void* driver_data, void* buffer, const void* data, uint64_t offset, uint64_t size) {
+    (void)driver_data;
+    memcpy((uint8_t*)buffer + offset, data, size);
+}
+
+static void* mock_create_texture(void* driver_data, uint32_t width, uint32_t height, ugal_format_t format) {
+    (void)driver_data; (void)width; (void)height; (void)format;
+    // In a real driver, this allocates GPU texture memory
+    return NULL; // Software fallback handles pixel data
+}
+static void mock_destroy_texture(void* driver_data, void* texture) { (void)driver_data; free(texture); }
+static void mock_update_texture(void* driver_data, void* texture, const void* data, uint32_t x, uint32_t y, uint32_t width, uint32_t height) {
+    (void)driver_data; (void)texture; (void)data; (void)x; (void)y; (void)width; (void)height;
+    // Data is copied to software texture. Driver would upload to GPU.
+}
+
+static void* mock_create_framebuffer(void* driver_data, uint32_t width, uint32_t height) {
+    (void)driver_data; (void)width; (void)height;
+    // Real driver would create GPU framebuffer objects
+    return NULL; // Software fallback for color_texture is sufficient
+}
+static void mock_destroy_framebuffer(void* driver_data, void* framebuffer) { (void)driver_data; free(framebuffer); }
+
+static void mock_clear(void* driver_data, void* framebuffer, uint32_t color) { (void)driver_data; (void)framebuffer; (void)color; }
+static void mock_fill_rect(void* driver_data, void* framebuffer, int32_t x, int32_t y, uint32_t width, uint32_t height, uint32_t color) { (void)driver_data; (void)framebuffer; (void)x; (void)y; (void)width; (void)height; (void)color; }
+static void mock_draw_line(void* driver_data, void* framebuffer, int32_t x1, int32_t y1, int32_t x2, int32_t y2, uint32_t color) { (void)driver_data; (void)framebuffer; (void)x1; (void)y1; (void)x2; (void)y2; (void)color; }
+static void mock_blit(void* driver_data, void* src, void* dst, int32_t sx, int32_t sy, int32_t dx, int32_t dy, uint32_t width, uint32_t height) { (void)driver_data; (void)src; (void)dst; (void)sx; (void)sy; (void)dx; (void)dy; (void)width; (void)height; }
+static void mock_present(void* driver_data, void* framebuffer) { (void)driver_data; (void)framebuffer; }
+static void mock_set_vsync(void* driver_data, bool enable) { (void)driver_data; (void)enable; }
+// --- End Mock Hooks ---
+
 // Enumerate available GPU devices
 uint32_t ugal_enumerate_devices(ugal_device_info_t* devices, uint32_t max_devices) {
-    // TODO: Query PCI for GPU devices
+    // This would typically query PCI for GPU devices
     // For now, return a dummy VirtIO GPU device
-
     if (max_devices > 0 && devices != NULL) {
         devices[0].vendor = UGAL_VENDOR_VIRTIO;
         devices[0].device_id = 0x1050;
@@ -110,7 +167,30 @@ ugal_device_t* ugal_create_device(uint32_t device_index) {
     // Get device info
     ugal_enumerate_devices(&device->info, 1);
 
-    // TODO: Initialize vendor-specific driver
+    // Initialize vendor-specific driver (mocking for now)
+    device->create_buffer = mock_create_buffer;
+    device->destroy_buffer = mock_destroy_buffer;
+    device->map_buffer = mock_map_buffer;
+    device->unmap_buffer = mock_unmap_buffer;
+    device->update_buffer = mock_update_buffer;
+
+    device->create_texture = mock_create_texture;
+    device->destroy_texture = mock_destroy_texture;
+    device->update_texture = mock_update_texture;
+
+    device->create_framebuffer = mock_create_framebuffer;
+    device->destroy_framebuffer = mock_destroy_framebuffer;
+
+    device->clear = mock_clear;
+    device->fill_rect = mock_fill_rect;
+    device->draw_line = mock_draw_line;
+    device->blit = mock_blit;
+
+    device->present = mock_present;
+    device->set_vsync = mock_set_vsync;
+    
+    // Vendor-specific driver data would be allocated/initialized here
+    device->driver_data = NULL; // No specific data for mock
 
     g_devices[g_device_count++] = device;
 
@@ -121,7 +201,10 @@ ugal_device_t* ugal_create_device(uint32_t device_index) {
 void ugal_destroy_device(ugal_device_t* device) {
     if (!device) return;
 
-    // TODO: Cleanup vendor-specific driver
+    // Cleanup vendor-specific driver (mocking for now)
+    if (device->driver_data) {
+        free(device->driver_data);
+    }
 
     free(device);
 }
@@ -144,8 +227,12 @@ ugal_buffer_t* ugal_create_buffer(ugal_device_t* device, uint64_t size, uint32_t
     buffer->size = size;
     buffer->usage = usage;
 
-    // TODO: Call vendor-specific buffer creation
-    buffer->driver_buffer = NULL;
+    // Call vendor-specific buffer creation
+    if (device->create_buffer) {
+        buffer->driver_buffer = device->create_buffer(device->driver_data, size, usage);
+    } else {
+        buffer->driver_buffer = malloc(size); // Software fallback
+    }
 
     return buffer;
 }
@@ -154,7 +241,12 @@ ugal_buffer_t* ugal_create_buffer(ugal_device_t* device, uint64_t size, uint32_t
 void ugal_destroy_buffer(ugal_buffer_t* buffer) {
     if (!buffer) return;
 
-    // TODO: Call vendor-specific buffer destruction
+    // Call vendor-specific buffer destruction
+    if (buffer->device->destroy_buffer && buffer->driver_buffer) {
+        buffer->device->destroy_buffer(buffer->device->driver_data, buffer->driver_buffer);
+    } else if (buffer->driver_buffer) {
+        free(buffer->driver_buffer); // Software fallback
+    }
 
     free(buffer);
 }
@@ -163,22 +255,35 @@ void ugal_destroy_buffer(ugal_buffer_t* buffer) {
 void* ugal_map_buffer(ugal_buffer_t* buffer) {
     if (!buffer || !buffer->device) return NULL;
 
-    // TODO: Call vendor-specific map
-    return NULL;
+    // Call vendor-specific map
+    if (buffer->device->map_buffer && buffer->driver_buffer) {
+        return buffer->device->map_buffer(buffer->device->driver_data, buffer->driver_buffer);
+    }
+    return buffer->driver_buffer; // Software fallback is direct
 }
 
 // Unmap buffer
 void ugal_unmap_buffer(ugal_buffer_t* buffer) {
     if (!buffer || !buffer->device) return;
 
-    // TODO: Call vendor-specific unmap
+    // Call vendor-specific unmap
+    if (buffer->device->unmap_buffer && buffer->driver_buffer) {
+        buffer->device->unmap_buffer(buffer->device->driver_data, buffer->driver_buffer);
+    }
 }
 
 // Update buffer
 void ugal_update_buffer(ugal_buffer_t* buffer, const void* data, uint64_t offset, uint64_t size) {
     if (!buffer || !data) return;
 
-    // TODO: Call vendor-specific update
+    if (buffer->device->update_buffer && buffer->driver_buffer) {
+        buffer->device->update_buffer(buffer->device->driver_data, buffer->driver_buffer, data, offset, size);
+    } else {
+        // Software fallback
+        if (buffer->driver_buffer) {
+            memcpy((uint8_t*)buffer->driver_buffer + offset, data, size);
+        }
+    }
 }
 
 // Create texture
@@ -203,7 +308,10 @@ ugal_texture_t* ugal_create_texture(ugal_device_t* device, uint32_t width, uint3
     }
     memset(texture->data, 0, width * height * pixel_size);
 
-    // TODO: Call vendor-specific texture creation when driver available
+    // Call vendor-specific texture creation
+    if (device->create_texture) {
+        texture->driver_texture = device->create_texture(device->driver_data, width, height, format);
+    }
 
     return texture;
 }
@@ -212,7 +320,10 @@ ugal_texture_t* ugal_create_texture(ugal_device_t* device, uint32_t width, uint3
 void ugal_destroy_texture(ugal_texture_t* texture) {
     if (!texture) return;
 
-    // TODO: Call vendor-specific texture destruction when driver available
+    // Call vendor-specific texture destruction
+    if (texture->device->destroy_texture && texture->driver_texture) {
+        texture->device->destroy_texture(texture->device->driver_data, texture->driver_texture);
+    }
 
     // Free software fallback pixel buffer
     if (texture->data) {
@@ -246,7 +357,10 @@ void ugal_update_texture(ugal_texture_t* texture, const void* data, uint32_t x, 
         }
     }
 
-    // TODO: Call vendor-specific texture update when driver available
+    // Call vendor-specific texture update
+    if (texture->device->update_texture && texture->driver_texture) {
+        texture->device->update_texture(texture->device->driver_data, texture->driver_texture, data, x, y, width, height);
+    }
 }
 
 // Create framebuffer
@@ -262,8 +376,10 @@ ugal_framebuffer_t* ugal_create_framebuffer(ugal_device_t* device, uint32_t widt
     framebuffer->color_texture = NULL;
     framebuffer->depth_texture = NULL;
 
-    // TODO: Call vendor-specific framebuffer creation
-    framebuffer->driver_framebuffer = NULL;
+    // Call vendor-specific framebuffer creation
+    if (device->create_framebuffer) {
+        framebuffer->driver_framebuffer = device->create_framebuffer(device->driver_data, width, height);
+    }
 
     return framebuffer;
 }
@@ -272,10 +388,26 @@ ugal_framebuffer_t* ugal_create_framebuffer(ugal_device_t* device, uint32_t widt
 void ugal_destroy_framebuffer(ugal_framebuffer_t* framebuffer) {
     if (!framebuffer) return;
 
-    // TODO: Call vendor-specific framebuffer destruction
+    // Call vendor-specific framebuffer destruction
+    if (framebuffer->device->destroy_framebuffer && framebuffer->driver_framebuffer) {
+        framebuffer->device->destroy_framebuffer(framebuffer->device->driver_data, framebuffer->driver_framebuffer);
+    }
 
     free(framebuffer);
 }
+
+// Attach color texture to framebuffer
+void ugal_attach_color_texture(ugal_framebuffer_t* framebuffer, ugal_texture_t* texture) {
+    if (!framebuffer || !texture) return;
+    framebuffer->color_texture = texture;
+}
+
+// Attach depth texture to framebuffer
+void ugal_attach_depth_texture(ugal_framebuffer_t* framebuffer, ugal_texture_t* texture) {
+    if (!framebuffer || !texture) return;
+    framebuffer->depth_texture = texture;
+}
+
 
 // 2D acceleration - Clear
 void ugal_clear(ugal_device_t* device, ugal_framebuffer_t* framebuffer, uint32_t color) {
@@ -290,7 +422,10 @@ void ugal_clear(ugal_device_t* device, ugal_framebuffer_t* framebuffer, uint32_t
         }
     }
 
-    // TODO: Call vendor-specific clear when driver available
+    // Call vendor-specific clear
+    if (device->clear && framebuffer->driver_framebuffer) {
+        device->clear(device->driver_data, framebuffer->driver_framebuffer, color);
+    }
 }
 
 // 2D acceleration - Fill rectangle
@@ -319,7 +454,10 @@ void ugal_fill_rect(ugal_device_t* device, ugal_framebuffer_t* fb, int32_t x, in
         }
     }
 
-    // TODO: Call vendor-specific fill when driver available
+    // Call vendor-specific fill_rect
+    if (device->fill_rect && fb->driver_framebuffer) {
+        device->fill_rect(device->driver_data, fb->driver_framebuffer, x, y, width, height, color);
+    }
 }
 
 // 2D acceleration - Draw line
@@ -361,7 +499,10 @@ void ugal_draw_line(ugal_device_t* device, ugal_framebuffer_t* fb, int32_t x1, i
         }
     }
 
-    // TODO: Call vendor-specific line draw when driver available
+    // Call vendor-specific line draw
+    if (device->draw_line && fb->driver_framebuffer) {
+        device->draw_line(device->driver_data, fb->driver_framebuffer, x1, y1, x2, y2, color);
+    }
 }
 
 // 2D acceleration - Blit
@@ -376,7 +517,7 @@ void ugal_blit(ugal_device_t* device, ugal_texture_t* src, ugal_texture_t* dst, 
 
     // Clamp destination bounds
     if (dx < 0) { width += dx; sx -= dx; dx = 0; }
-    if (dy < 0) { height += dy; sy -= dy; dy = 0; }
+    if (dy < 0) { height += dy; sy -= sy; dy = 0; }
     if (dx + (int32_t)width > (int32_t)dst->width) { width = dst->width - dx; }
     if (dy + (int32_t)height > (int32_t)dst->height) { height = dst->height - dy; }
 
@@ -394,14 +535,25 @@ void ugal_blit(ugal_device_t* device, ugal_texture_t* src, ugal_texture_t* dst, 
         memcpy(&dst_pixels[dst_offset], &src_pixels[src_offset], width * sizeof(uint32_t));
     }
 
-    // TODO: Call vendor-specific blit when driver available
+    // Call vendor-specific blit
+    if (device->blit && src->driver_texture && dst->driver_texture) { // Assuming driver_texture is needed for blit
+        device->blit(device->driver_data, src->driver_texture, dst->driver_texture, sx, sy, dx, dy, width, height);
+    }
 }
+
+#include "../../../libs/libc/include/syscall.h"
 
 // Present framebuffer to display
 void ugal_present(ugal_device_t* device, ugal_framebuffer_t* framebuffer) {
     if (!device || !framebuffer) return;
 
-    // TODO: Call vendor-specific present
+    // Call kernel to swap buffers (vsync)
+    syscall(SYS_GFX_SWAP_BUFFERS, 0, 0, 0, 0, 0);
+
+    // Call vendor-specific present
+    if (device->present && framebuffer->driver_framebuffer) {
+        device->present(device->driver_data, framebuffer->driver_framebuffer);
+    }
 }
 
 // Attach color texture to framebuffer
@@ -420,6 +572,8 @@ void ugal_attach_depth_texture(ugal_framebuffer_t* framebuffer, ugal_texture_t* 
 void ugal_set_vsync(ugal_device_t* device, bool enable) {
     if (!device) return;
 
-    // TODO: Call vendor-specific vsync
-    // For now, no-op (software rendering doesn't need vsync)
+    // Call vendor-specific vsync
+    if (device->set_vsync) {
+        device->set_vsync(device->driver_data, enable);
+    }
 }

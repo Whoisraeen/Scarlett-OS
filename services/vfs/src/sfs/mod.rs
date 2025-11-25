@@ -10,30 +10,106 @@ pub mod cow;
 pub mod snapshot;
 pub mod cache;
 
+extern crate alloc;
+use alloc::vec::Vec;
+use alloc::string::String;
+use core::convert::TryInto;
+
 use crate::file_ops::*;
 use superblock::*;
 use inode::*;
 use cow::*;
 use snapshot::*;
 
+// Syscall constants (copied from ipc.rs for convenience)
+const SYS_IPC_SEND: u64 = 9;
+const SYS_IPC_RECEIVE: u64 = 10;
+const SYS_GET_UPTIME_MS: u64 = 47;
+
+// Device Manager IPC constants
+const DRIVER_MANAGER_PORT: u32 = 100; // From services/driver_manager/src/main.rs
+const DM_MSG_OPEN_DEVICE: u32 = 6;    // Arbitrary new message ID for opening device
+
+// IPC message structure (must match kernel/include/ipc/ipc.h)
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct IpcMessage {
+    sender_tid: u64,
+    msg_id: u64,
+    msg_type: u32,
+    inline_size: u32,
+    inline_data: [u8; 64],
+    buffer: u64,
+    buffer_size: u64,
+}
+
+// Syscall raw (copied from ipc.rs for convenience)
+#[cfg(target_arch = "x86_64")]
+unsafe fn syscall_raw(num: u64, arg1: u64, arg2: u64, arg3: u64, arg4: u64, arg5: u64) -> u64 {
+    let ret: u64;
+    core::arch::asm!(
+        "syscall",
+        in("rax") num,
+        in("rdi") arg1,
+        in("rsi") arg2,
+        in("rdx") arg3,
+        in("r10") arg4,
+        in("r8") arg5,
+        out("rax") ret,
+        options(nostack, preserves_flags)
+    );
+    ret
+}
+
+#[cfg(not(target_arch = "x86_64"))]
+unsafe fn syscall_raw(_num: u64, _arg1: u64, _arg2: u64, _arg3: u64, _arg4: u64, _arg5: u64) -> u64 {
+    0
+}
+
+// Helper to send IPC messages and get response
+fn send_ipc_request(target_port: u64, msg_id: u64, inline_data: &[u8]) -> Result<IpcMessage, ()> {
+    let mut msg = IpcMessage {
+        sender_tid: 0, // Filled by kernel
+        msg_id,
+        msg_type: 1, // Request
+        inline_size: inline_data.len() as u32,
+        inline_data: [0; 64],
+        buffer: 0,
+        buffer_size: 0,
+    };
+    msg.inline_data[0..inline_data.len()].copy_from_slice(inline_data);
+
+    unsafe {
+        let _ = syscall_raw(SYS_IPC_SEND, target_port, &msg as *const _ as u64, 0, 0, 0);
+        let mut response = IpcMessage {
+            sender_tid: 0, msg_id: 0, msg_type: 0, inline_size: 0, inline_data: [0; 64], buffer: 0, buffer_size: 0,
+        };
+        // Blocking receive (timeout could be added)
+        let _ = syscall_raw(SYS_IPC_RECEIVE, 0, &mut response as *mut _ as u64, 0, 0, 0); 
+        Ok(response)
+    }
+}
+
+// Function to open a block device via Device Manager
+fn open_block_device(device_name: &str) -> Result<u64, ()> {
+    let inline_data = device_name.as_bytes();
+    let response = send_ipc_request(DRIVER_MANAGER_PORT as u64, DM_MSG_OPEN_DEVICE as u64, inline_data)?;
+
+    if response.msg_id == DM_MSG_OPEN_DEVICE as u64 && response.msg_type == 2 /* Response */ && response.inline_size == 8 {
+        let device_handle = u64::from_le_bytes(response.inline_data[0..8].try_into().unwrap());
+        if device_handle != 0 {
+            Ok(device_handle)
+        } else {
+            Err(())
+        }
+    } else {
+        Err(())
+    }
+}
+
 // Get uptime helper
 fn get_uptime_ms() -> u64 {
-    const SYS_GET_UPTIME_MS: u64 = 47;
-    unsafe {
-        #[cfg(target_arch = "x86_64")]
-        {
-            let ret: u64;
-            core::arch::asm!(
-                "syscall",
-                in("rax") SYS_GET_UPTIME_MS,
-                out("rax") ret,
-                options(nostack, preserves_flags)
-            );
-            ret
-        }
-        #[cfg(not(target_arch = "x86_64"))]
-        0
-    }
+    unsafe { syscall_raw(SYS_GET_UPTIME_MS, 0, 0, 0, 0, 0) }
 }
 
 /// SFS Magic number
@@ -113,7 +189,7 @@ impl SfsFileSystem {
         let mut block_buffer = [0u8; 4096];
         let copy_len = superblock_bytes.len().min(4096);
         block_buffer[0..copy_len].copy_from_slice(&superblock_bytes[0..copy_len]);
-        let _ = write_blocks(0, 0, 1, &block_buffer); // Write to block 0, port 0
+        let _ = write_blocks(device_handle as u8, 0, 1, &block_buffer); // Write to block 0, port 0
 
         Ok(())
     }
@@ -267,9 +343,7 @@ impl SfsFileSystem {
                 return Err(VfsError::NotDirectory);
             }
 
-            // Search directory for component using B-tree
-            // TODO: Implement directory lookup using B-tree
-            // For now, use placeholder
+            // Search directory for component using linear scan (B-tree not implemented)
             current_inode = self.lookup_dir_entry(current_inode, component)?;
         }
 
@@ -278,8 +352,50 @@ impl SfsFileSystem {
 
     /// Look up directory entry
     fn lookup_dir_entry(&self, dir_inode: u64, name: &str) -> VfsResult<u64> {
-        // TODO: Implement directory lookup using B-tree
-        // For now, return error
+        let inode = self.read_inode(dir_inode)?;
+        
+        if inode.file_type != InodeType::Directory {
+            return Err(VfsError::NotDirectory);
+        }
+        
+        // Scan all blocks to find directory entry (B-tree not implemented)
+        let num_blocks = (inode.size + BLOCK_SIZE as u64 - 1) / BLOCK_SIZE as u64;
+        
+        for i in 0..num_blocks {
+            let mut buffer = [0u8; BLOCK_SIZE];
+            // Use extent tree to find block (placeholder, assumes simple mapping)
+            let block_num = if inode.extent_root != 0 {
+                inode.extent_root + i
+            } else {
+                0
+            };
+            
+            if block_num == 0 { continue; }
+            
+            self.read_block(block_num, &mut buffer)?;
+            
+            // Iterate entries (assuming fixed 64-byte entries for now)
+            const ENTRY_SIZE: usize = 68; // 4 bytes for inode + 64 bytes for name
+            const ENTRIES_PER_BLOCK: usize = BLOCK_SIZE / ENTRY_SIZE;
+            
+            for j in 0..ENTRIES_PER_BLOCK {
+                let offset = j * ENTRY_SIZE;
+                let entry_inode = u32::from_le_bytes(buffer[offset..offset+4].try_into().unwrap()) as u64;
+                
+                if entry_inode == 0 { continue; } // Empty entry
+                
+                // Check name
+                let name_bytes = &buffer[offset+4..offset+ENTRY_SIZE];
+                let len = name_bytes.iter().position(|&c| c == 0).unwrap_or(64);
+                let entry_name = core::str::from_utf8(&name_bytes[0..len])
+                    .map_err(|_| VfsError::InvalidData)?;
+                
+                if entry_name == name {
+                    return Ok(entry_inode);
+                }
+            }
+        }
+        
         Err(VfsError::NotFound)
     }
 
@@ -321,8 +437,10 @@ impl SfsFileSystem {
 
 impl FileSystemOps for SfsFileSystem {
     fn mount(&mut self, device: &str, flags: u32) -> VfsResult<()> {
-        // TODO: Open device via device manager
-        self.device_handle = 1; // Placeholder
+        // Open device via device manager
+        let device_handle = open_block_device(device)
+            .map_err(|_| VfsError::DeviceNotFound)?;
+        self.device_handle = device_handle;
 
         // Read superblock
         let mut buffer = [0u8; BLOCK_SIZE];
@@ -401,7 +519,7 @@ impl FileSystemOps for SfsFileSystem {
         // Read inode
         let inode = self.read_inode(file_handle)?;
 
-        if inode.file_type != InodeType::RegularFile {
+        if inode.file_type != InodeType::RegularFile && inode.file_type != InodeType::Directory {
             return Err(VfsError::InvalidArgument);
         }
 

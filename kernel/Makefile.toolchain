@@ -1,0 +1,27 @@
+# Temporary toolchain override for x86_64
+# Use system GCC with freestanding flags until proper cross-compiler is installed
+
+ifeq ($(ARCH),x86_64)
+    # Try x86_64-elf first, fall back to system GCC
+    CROSS_GCC := $(shell which x86_64-elf-gcc 2>/dev/null)
+
+    ifeq ($(CROSS_GCC),)
+        # Cross-compiler not found, use system GCC
+        $(info [INFO] x86_64-elf-gcc not found, using system GCC)
+        CC := gcc
+        AS := as
+        LD := ld
+        OBJCOPY := objcopy
+        OBJDUMP := objdump
+    else
+        # Use cross-compiler
+        $(info [INFO] Using x86_64-elf cross-compiler)
+        CC := x86_64-elf-gcc
+        AS := x86_64-elf-as
+        LD := x86_64-elf-ld
+        OBJCOPY := x86_64-elf-objcopy
+        OBJDUMP := x86_64-elf-objdump
+    endif
+
+    override TARGET_TRIPLE := x86_64-elf
+endif

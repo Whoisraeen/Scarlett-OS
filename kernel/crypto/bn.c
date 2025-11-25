@@ -555,25 +555,6 @@ error_code_t bn_rand(bn_t* bn, size_t bits) {
 
 // Miller-Rabin primality test
 bool bn_is_prime(const bn_t* bn, int rounds) {
-    // TODO: Implement Miller-Rabin
-    // For now assume true to allow flow to continue (but this is still a simplification!)
-    // To properly unsimplify, we need to implement this.
-    
-    // 1. d = n - 1
-    // 2. while d % 2 == 0: d /= 2, s++
-    // 3. loop rounds:
-    //      a = rand(2, n-2)
-    //      x = a^d % n
-    //      if x == 1 or x == n-1: continue
-    //      loop s-1 times:
-    //          x = x^2 % n
-    //          if x == n-1: break
-    //      if x != n-1: return composite
-    // return probable prime
-    
-    // We need bn_sub_int (n-1), division by 2 (rshift), and mod_exp.
-    // All are available.
-    
     if (bn->top == 0) return false;
     if (bn->top == 1 && bn->words[0] < 2) return false;
     if (bn->top == 1 && bn->words[0] == 2) return true;

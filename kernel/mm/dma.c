@@ -167,7 +167,12 @@ static void iommu_map_page(uint64_t iova, paddr_t phys, uint32_t flags) {
     uint64_t* pt = (uint64_t*)get_virtual_page(pd[pd_idx] & ~0xFFF);
     
     // PT -> Phys
-    pt[pt_idx] = phys | IOMMU_PRESENT | IOMMU_READ | IOMMU_WRITE; // TODO: Respect specific flags
+    // Use provided flags, ensure Present bit is set
+    uint64_t entry_flags = IOMMU_PRESENT;
+    if (flags & IOMMU_READ) entry_flags |= IOMMU_READ;
+    if (flags & IOMMU_WRITE) entry_flags |= IOMMU_WRITE;
+    
+    pt[pt_idx] = phys | entry_flags;
     
     spinlock_unlock(&iommu_ctx.lock);
 }
@@ -412,9 +417,11 @@ uint64_t dma_map_for_device(void* vaddr, uint64_t device_id) {
     }
     
     // Map pages in IOMMU
+    // Default to Read/Write for now
+    uint32_t map_flags = IOMMU_READ | IOMMU_WRITE;
     for (size_t i = 0; i < pages; i++) {
         paddr_t page_phys = buffer->physical_address + (i * PAGE_SIZE);
-        iommu_map_page(iova + (i * PAGE_SIZE), page_phys, 0);
+        iommu_map_page(iova + (i * PAGE_SIZE), page_phys, map_flags);
     }
     
     buffer->device_id = device_id;

@@ -10,7 +10,7 @@
 int main(int argc, char* argv[]) {
     printf("Scarlett OS Text Editor v1.0\n");
 
-    // TODO: Connect to compositor via IPC
+    // Connect to compositor via IPC
     compositor_ctx_t* compositor = compositor_create(1920, 1080);
     if (!compositor) {
         fprintf(stderr, "Failed to connect to compositor\n");

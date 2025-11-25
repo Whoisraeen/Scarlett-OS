@@ -64,6 +64,39 @@ struct PciDriver {
     devices: Vec<PciDevice>,
 }
 
+// Syscall numbers (from kernel/include/syscall/syscall.h)
+const SYS_IO_READ: u64 = 49;
+const SYS_IO_WRITE: u64 = 50;
+
+// Syscall wrappers for I/O port access
+unsafe fn sys_io_read(port: u16, size: u8) -> u32 {
+    let ret: u64;
+    core::arch::asm!(
+        "syscall",
+        in("rax") SYS_IO_READ,
+        in("rdi") port as u64,
+        in("rsi") size as u64,
+        out("rax") ret,
+        lateout("rcx") _,
+        lateout("r11") _,
+    );
+    ret as u32
+}
+
+unsafe fn sys_io_write(port: u16, value: u32, size: u8) {
+    core::arch::asm!(
+        "syscall",
+        in("rax") SYS_IO_WRITE,
+        in("rdi") port as u64,
+        in("rsi") value as u64,
+        in("rdx") size as u64,
+        lateout("rax") _,
+        lateout("rcx") _,
+        lateout("r11") _,
+    );
+}
+
+
 impl PciDriver {
     fn new() -> Self {
         PciDriver {
@@ -130,9 +163,9 @@ impl PciDriver {
 
         unsafe {
             // Write address to CONFIG_ADDRESS (0xCF8)
-            outl(0xCF8, address);
+            sys_io_write(0xCF8, address, 4);
             // Read data from CONFIG_DATA (0xCFC)
-            inl(0xCFC)
+            sys_io_read(0xCFC, 4)
         }
     }
 
@@ -144,8 +177,8 @@ impl PciDriver {
             | ((offset & 0xFC) as u32);
 
         unsafe {
-            outl(0xCF8, address);
-            outl(0xCFC, value);
+            sys_io_write(0xCF8, address, 4);
+            sys_io_write(0xCFC, value, 4);
         }
     }
 
@@ -153,29 +186,6 @@ impl PciDriver {
         self.devices.iter()
             .find(|dev| dev.vendor_id == vendor_id && dev.device_id == device_id)
     }
-}
-
-// I/O port operations (need syscalls in real implementation)
-unsafe fn outl(port: u16, value: u32) {
-    // TODO: Use syscall to request I/O port access
-    // For now, direct I/O (requires Ring 0 or IOPL=3)
-    core::arch::asm!(
-        "out dx, eax",
-        in("dx") port,
-        in("eax") value,
-        options(nostack, preserves_flags)
-    );
-}
-
-unsafe fn inl(port: u16) -> u32 {
-    let value: u32;
-    core::arch::asm!(
-        "in eax, dx",
-        in("dx") port,
-        out("eax") value,
-        options(nostack, preserves_flags)
-    );
-    value
 }
 
 static mut PCI_DRIVER: Option<PciDriver> = None;

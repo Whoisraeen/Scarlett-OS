@@ -16,8 +16,8 @@
     // ARM64 HAL implementation is in hal/arm64/hal_impl.c
     // Functions are defined there
 #elif defined(__riscv) && __riscv_xlen == 64
-    // RISC-V HAL implementation (TODO)
-    #error "RISC-V HAL not yet implemented"
+    // RISC-V HAL implementation is in hal/riscv/hal_impl.c
+    // Functions are defined there
 #else
     #error "Unknown or unsupported architecture"
 #endif

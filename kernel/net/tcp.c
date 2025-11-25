@@ -291,17 +291,55 @@ error_code_t tcp_handle_packet(void* buffer, size_t len, uint32_t src_ip) {
     
     if (!conn && (flags & TCP_FLAG_SYN)) {
         // New connection - SYN received
-        // Create connection in LISTEN state
-        conn = tcp_create_connection(device->ip_address, dest_port, src_ip, src_port);
-        if (conn) {
-            conn->state = TCP_STATE_SYN_RECEIVED;
-            conn->ack_num = seq_num + 1;
-            
-            // Send SYN-ACK
-            tcp_send_packet(conn, TCP_FLAG_SYN | TCP_FLAG_ACK, NULL, 0);
-            conn->state = TCP_STATE_ESTABLISHED;
+        // Check for listener
+        tcp_connection_t* listener = tcp_find_connection(0, dest_port, 0, 0); // Listener has 0 remote IP/Port
+        // Actually listeners might have local_ip set or 0 (INADDR_ANY).
+        // Let's search for listener with matching local port and state LISTEN
+        if (!listener) {
+            spinlock_lock(&tcp_state.lock);
+            for (int i = 0; i < MAX_TCP_CONNECTIONS; i++) {
+                tcp_connection_t* c = tcp_state.connections[i];
+                if (c && c->state == TCP_STATE_LISTEN && c->local_port == dest_port) {
+                    listener = c;
+                    break;
+                }
+            }
+            spinlock_unlock(&tcp_state.lock);
         }
-        return ERR_OK;
+        
+        if (listener) {
+            // Create connection in SYN_RECEIVED state
+            conn = tcp_create_connection(device->ip_address, dest_port, src_ip, src_port);
+            if (conn) {
+                conn->state = TCP_STATE_SYN_RECEIVED;
+                conn->ack_num = seq_num + 1;
+                
+                // Send SYN-ACK
+                tcp_send_packet(conn, TCP_FLAG_SYN | TCP_FLAG_ACK, NULL, 0);
+                
+                // For simplified TCP, assume established after SYN-ACK sent (skip 3-way handshake completion wait)
+                // In real TCP, we wait for ACK.
+                // But for now, let's just mark it established and queue it.
+                conn->state = TCP_STATE_ESTABLISHED;
+                
+                // Add to listener's pending queue
+                spinlock_lock(&tcp_state.lock);
+                if (listener->pending_tail) {
+                    listener->pending_tail->next_pending = conn;
+                    listener->pending_tail = conn;
+                } else {
+                    listener->pending_head = conn;
+                    listener->pending_tail = conn;
+                }
+                conn->next_pending = NULL;
+                spinlock_unlock(&tcp_state.lock);
+            }
+            return ERR_OK;
+        }
+        
+        // No listener, reject
+        // Send RST?
+        return ERR_NOT_FOUND;
     }
     
     if (!conn) {
@@ -357,6 +395,75 @@ error_code_t tcp_handle_packet(void* buffer, size_t len, uint32_t src_ip) {
     }
     
     return ERR_OK;
+}
+
+/**
+ * Listen on a port
+ */
+error_code_t tcp_listen(uint16_t port) {
+    if (!tcp_state.initialized) {
+        tcp_init();
+    }
+    
+    // Check if already listening
+    spinlock_lock(&tcp_state.lock);
+    for (int i = 0; i < MAX_TCP_CONNECTIONS; i++) {
+        tcp_connection_t* c = tcp_state.connections[i];
+        if (c && c->state == TCP_STATE_LISTEN && c->local_port == port) {
+            spinlock_unlock(&tcp_state.lock);
+            return ERR_ALREADY_EXISTS;
+        }
+    }
+    spinlock_unlock(&tcp_state.lock);
+    
+    // Create listener connection
+    // Use 0.0.0.0 (INADDR_ANY) for local IP to listen on all interfaces
+    // But tcp_create_connection takes specific IP.
+    // We can use 0 to indicate ANY?
+    // Let's use 0.
+    tcp_connection_t* conn = tcp_create_connection(0, port, 0, 0);
+    if (!conn) {
+        return ERR_OUT_OF_MEMORY;
+    }
+    
+    conn->state = TCP_STATE_LISTEN;
+    return ERR_OK;
+}
+
+/**
+ * Accept a connection
+ */
+tcp_connection_t* tcp_accept(uint16_t port) {
+    // Find listener
+    tcp_connection_t* listener = NULL;
+    spinlock_lock(&tcp_state.lock);
+    for (int i = 0; i < MAX_TCP_CONNECTIONS; i++) {
+        tcp_connection_t* c = tcp_state.connections[i];
+        if (c && c->state == TCP_STATE_LISTEN && c->local_port == port) {
+            listener = c;
+            break;
+        }
+    }
+    
+    if (!listener) {
+        spinlock_unlock(&tcp_state.lock);
+        return NULL;
+    }
+    
+    // Check pending queue
+    if (listener->pending_head) {
+        tcp_connection_t* conn = listener->pending_head;
+        listener->pending_head = conn->next_pending;
+        if (!listener->pending_head) {
+            listener->pending_tail = NULL;
+        }
+        conn->next_pending = NULL;
+        spinlock_unlock(&tcp_state.lock);
+        return conn;
+    }
+    
+    spinlock_unlock(&tcp_state.lock);
+    return NULL; // No pending connections (would block in blocking mode)
 }
 
 /**

@@ -6,22 +6,15 @@
 #include "taskbar.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include "../../libs/libgui/include/compositor_ipc.h" // Needed for compositor_get_screen_info
 
 int main(int argc, char* argv[]) {
     printf("Scarlett OS Taskbar v1.0\n");
 
-    // TODO: Connect to compositor via IPC
-    compositor_ctx_t* compositor = compositor_create(1920, 1080);
-    if (!compositor) {
-        fprintf(stderr, "Failed to connect to compositor\n");
-        return 1;
-    }
-
     // Create taskbar
-    taskbar_ctx_t* taskbar = taskbar_create(compositor);
+    taskbar_ctx_t* taskbar = taskbar_create(NULL); // Pass NULL as compositor is handled via IPC
     if (!taskbar) {
         fprintf(stderr, "Failed to create taskbar\n");
-        compositor_destroy(compositor);
         return 1;
     }
 
@@ -32,7 +25,6 @@ int main(int argc, char* argv[]) {
 
     // Cleanup
     taskbar_destroy(taskbar);
-    compositor_destroy(compositor);
 
     return 0;
 }
