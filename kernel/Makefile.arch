@@ -43,7 +43,7 @@ ifeq ($(ARCH),x86_64)
                     hal/x86_64/exceptions.S \
                     hal/x86_64/user_mode.S \
                     hal/x86_64/interrupt_stubs.S \
-                    hal/x86_64/ap_startup_asm.S \
+                    hal/x86_64/ap_startup.S \
                     hal/x86_64/context_switch.S \
                     hal/x86_64/syscall_entry.S
     
