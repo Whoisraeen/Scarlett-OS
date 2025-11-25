@@ -6,8 +6,8 @@
 #ifndef KERNEL_CRYPTO_BN_H
 #define KERNEL_CRYPTO_BN_H
 
-#include "../types.h"
-#include "../errors.h"
+#include "../include/types.h"
+#include "../include/errors.h"
 
 // Big Number structure
 // Represents a non-negative integer

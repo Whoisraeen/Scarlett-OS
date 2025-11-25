@@ -8,6 +8,7 @@
 
 #include "../types.h"
 #include "../errors.h"
+#include "network.h"
 
 // IP protocol numbers
 #define IP_PROTOCOL_ICMP 1
@@ -31,7 +32,7 @@ typedef struct {
 
 // IP functions
 error_code_t ip_send(uint32_t dest_ip, uint8_t protocol, void* data, size_t len);
-error_code_t ip_receive(void* buffer, size_t* len, uint32_t* src_ip, uint8_t* protocol);
+error_code_t ip_receive(net_device_t* device, void* buffer, size_t len);
 uint16_t ip_checksum(ip_header_t* header);
 
 #endif // KERNEL_NET_IP_H

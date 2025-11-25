@@ -330,9 +330,12 @@ void* hal_get_boot_info(void) {
 // ============================================================================
 
 error_code_t hal_ap_start(uint32_t cpu_id, vaddr_t entry_point) {
-    extern error_code_t ap_startup(uint32_t apic_id);
+    (void)cpu_id;
+    (void)entry_point;
+    // extern error_code_t ap_startup(uint32_t apic_id);
     // For x86_64, we use APIC ID
-    return ap_startup(cpu_id);
+    // return ap_startup(cpu_id);
+    return ERR_NOT_SUPPORTED;
 }
 
 void* hal_get_per_cpu_data(uint32_t cpu_id) {

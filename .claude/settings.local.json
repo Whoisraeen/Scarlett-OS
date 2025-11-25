@@ -25,7 +25,10 @@
       "Bash(wsl sudo losetup -a)",
       "Bash(wsl nm:*)",
       "Bash(mkdir:*)",
-      "Bash(wsl sudo:*)"
+      "Bash(wsl sudo:*)",
+      "Bash(wsl pwd:*)",
+      "Bash(wsl sed:*)",
+      "Bash(cat:*)"
     ],
     "deny": [],
     "ask": []

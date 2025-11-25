@@ -37,7 +37,7 @@ framebuffer_tag_end:
 
 multiboot2_header_end:
 
-.section .text
+.section .boot.text, "ax"
 .code32
 .global multiboot2_entry
 .extern _start
@@ -123,10 +123,13 @@ long_mode_start:
     # Pop the 32-bit value (zero-extended to 64-bit)
     pop %rdi                            # RDI = Multiboot2 info address (arg1 to kernel_main)
 
-    # Jump to kernel entry
-    jmp _start
+    # Jump to kernel entry (higher-half kernel)
+    # Use absolute 64-bit address since we're jumping from low memory to high memory
+    movabs $_start, %rax
+    jmp *%rax
 
 # Minimal GDT for long mode
+.section .boot.data, "aw"
 .align 16
 gdt64:
     .quad 0                             # Null descriptor
@@ -136,8 +139,8 @@ gdt64_ptr:
     .word gdt64_ptr - gdt64 - 1
     .quad gdt64
 
-# Page tables (4KB aligned)
-.section .bss
+# Page tables (4KB aligned) - in low memory boot BSS
+.section .boot.bss, "aw", @nobits
 .align 4096
 pml4:
     .skip 4096

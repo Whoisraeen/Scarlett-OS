@@ -325,11 +325,11 @@ error_code_t tcp_handle_packet(void* buffer, size_t len, uint32_t src_ip) {
                 // Add to listener's pending queue
                 spinlock_lock(&tcp_state.lock);
                 if (listener->pending_tail) {
-                    listener->pending_tail->next_pending = conn;
-                    listener->pending_tail = conn;
+                    listener->pending_tail->next_pending = (struct tcp_connection*)conn;
+                    listener->pending_tail = (struct tcp_connection*)conn;
                 } else {
-                    listener->pending_head = conn;
-                    listener->pending_tail = conn;
+                    listener->pending_head = (struct tcp_connection*)conn;
+                    listener->pending_tail = (struct tcp_connection*)conn;
                 }
                 conn->next_pending = NULL;
                 spinlock_unlock(&tcp_state.lock);
@@ -452,7 +452,7 @@ tcp_connection_t* tcp_accept(uint16_t port) {
     
     // Check pending queue
     if (listener->pending_head) {
-        tcp_connection_t* conn = listener->pending_head;
+        tcp_connection_t* conn = (tcp_connection_t*)listener->pending_head;
         listener->pending_head = conn->next_pending;
         if (!listener->pending_head) {
             listener->pending_tail = NULL;

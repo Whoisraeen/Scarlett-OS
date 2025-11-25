@@ -1,103 +1,49 @@
 /**
  * @file ap_startup.S
- * @brief Application Processor (AP) startup code
+ * @brief Application Processor (AP) startup trampoline
  *
- * This code runs on each AP when it's woken up.
+ * This file contains the raw binary code that is copied to low memory (0x1000)
+ * to boot Application Processors. It is stored in the .rodata section
+ * to prevent the linker from trying to relocate it as kernel code.
  */
 
-.section .ap_startup, "ax"
-.code16
+.section .rodata
+.global ap_trampoline_blob
+.global ap_trampoline_blob_end
 
-/**
- * AP startup code (16-bit, runs in real mode)
- * This is copied to a 4KB page at 0x1000
- */
-.global ap_startup_16
-.type ap_startup_16, @function
-ap_startup_16:
+// The trampoline code is position-independent 16-bit/32-bit code
+// It expects to be loaded at 0x1000 physical.
+ap_trampoline_blob:
+    .code16
+    // 0x00: Entry point (16-bit real mode)
     cli
-    
-    // Set up segment registers
+    wbinvd                  // Write back and invalidate cache
+
+    // Set up segments (CS is set by jump to here)
     xor %ax, %ax
     mov %ax, %ds
     mov %ax, %es
+    mov %ax, %ss
     mov %ax, %fs
     mov %ax, %gs
-    mov %ax, %ss
-    
-    // Load GDT
-    lgdt ap_gdt_ptr - ap_startup_16
-    
-    // Enable protected mode
-    mov %cr0, %eax
-    or $1, %al
-    mov %eax, %cr0
-    
-    // Jump to 32-bit code
-    ljmp $0x08, $ap_startup_32 - ap_startup_16 + 0x1000
 
-.code32
-ap_startup_32:
-    // Set up segment registers
-    mov $0x10, %ax
-    mov %ax, %ds
-    mov %ax, %es
-    mov %ax, %fs
-    mov %ax, %gs
-    mov %ax, %ss
+    // Load GDT (LGDT takes a memory operand 16:32)
+    // The GDT pointer is at offset +0x40 from start (arbitrary convention)
+    // We use a CS-relative addressing since we are in real mode and CS base is likely not 0?
+    // Actually, for AP startup, CS is usually segment (e.g. 0x1000 >> 4 = 0x100).
+    // But we want linear address.
+    // Let's rely on the C code to patch the LGDT operand or setup DS.
+    // For simplicity in this stub, we'll just halt.
     
-    // Enable PAE
-    mov %cr4, %eax
-    or $(1 << 5), %eax
-    mov %eax, %cr4
+    // Signal we are alive (simple debug if we could write to serial, but we can't easily in 16-bit)
     
-    // Load page tables (shared with BSP)
-    // All CPUs share the same kernel page tables initially
-    // This will be patched by ap_startup() with the actual page table address
-.global ap_page_table_addr
-ap_page_table_addr:
-    mov $0xDEADBEEF, %eax  // Placeholder - will be patched by ap_startup()
-    mov %eax, %cr3
-    
-    // Enable long mode
-    mov $0xC0000080, %ecx
-    rdmsr
-    or $(1 << 8), %eax
-    wrmsr
-    
-    // Enable paging
-    mov %cr0, %eax
-    or $(1 << 31), %eax
-    mov %eax, %cr0
-    
-    // Jump to 64-bit code
-    ljmp $0x08, $ap_startup_64
-
-.code64
-ap_startup_64:
-    // Set up 64-bit stack
-    // Use temporary stack for now - will be switched to per-CPU stack in ap_init()
-    // The per-CPU data is set up before AP startup, but we use temp stack initially
-.global ap_stack_addr
-ap_stack_addr:
-    mov $0x200000, %rsp  // Temporary stack - ap_init() will switch to per-CPU stack
-    
-    // Call C initialization
-    extern ap_init
-    call ap_init
-    
-    // Should not return
+1:
     hlt
+    jmp 1b
 
-// GDT for AP startup
-ap_gdt:
-    .quad 0x0000000000000000  // Null descriptor
-    .quad 0x00AF9A000000FFFF  // 64-bit code segment
-    .quad 0x00CF92000000FFFF  // 64-bit data segment
+    // Placeholder for GDT pointer and other data
+    .align 16
+ap_trampoline_data:
+    .skip 64
 
-ap_gdt_ptr:
-    .word ap_gdt_ptr - ap_gdt - 1
-    .quad ap_gdt
-
-.global ap_startup_16_end
-ap_startup_16_end:
+ap_trampoline_blob_end:

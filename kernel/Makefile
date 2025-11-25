@@ -26,7 +26,7 @@ kernel.elf: $(TARGET)
 	@echo "[CC] $<"
 	@$(CC) $(CFLAGS) -c $< -o $@
 
-# Special rule for math.c, stdio.c, and graphics.c - allow SSE for floating point (x86_64 only)
+# Special rule for math.c, stdio.c, graphics.c, and cursor.c - allow SSE for floating point (x86_64 only)
 ifeq ($(ARCH),x86_64)
 core/math.o: core/math.c
 	@echo "[CC] $< (with SSE for FP)"
@@ -37,6 +37,10 @@ core/stdio.o: core/stdio.c
 	@$(CC) $(filter-out -mno-sse -mno-sse2,$(CFLAGS)) -c $< -o $@
 
 graphics/graphics.o: graphics/graphics.c
+	@echo "[CC] $< (with SSE for FP)"
+	@$(CC) $(filter-out -mno-sse -mno-sse2,$(CFLAGS)) -c $< -o $@
+
+graphics/cursor.o: graphics/cursor.c
 	@echo "[CC] $< (with SSE for FP)"
 	@$(CC) $(filter-out -mno-sse -mno-sse2,$(CFLAGS)) -c $< -o $@
 endif

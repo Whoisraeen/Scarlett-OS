@@ -23,19 +23,23 @@ if %ERRORLEVEL% NEQ 0 (
 
 REM Build kernel if needed
 if not exist "%KERNEL_PATH%" (
-    echo Kernel not found. Building...
-    cd %KERNEL_DIR%
-    make clean
-    make
-    cd ..
-    if exist "%KERNEL_DIR%\kernel.elf" (
-        copy "%KERNEL_DIR%\kernel.elf" "%KERNEL_PATH%" >nul 2>&1
+    if not exist "%KERNEL_DIR%\kernel-x86_64.elf" (
+        echo Kernel not found. Building...
+        cd %KERNEL_DIR%
+        make clean
+        make
+        cd ..
+        if exist "%KERNEL_DIR%\kernel.elf" (
+            copy "%KERNEL_DIR%\kernel.elf" "%KERNEL_PATH%" >nul 2>&1
+        )
     )
 )
 
 REM Check if kernel exists
 if not exist "%KERNEL_PATH%" (
-    if exist "%KERNEL_DIR%\kernel.elf" (
+    if exist "%KERNEL_DIR%\kernel-x86_64.elf" (
+        set KERNEL_PATH=%KERNEL_DIR%\kernel-x86_64.elf
+    ) else if exist "%KERNEL_DIR%\kernel.elf" (
         set KERNEL_PATH=%KERNEL_DIR%\kernel.elf
     ) else (
         echo Error: Kernel not found.
@@ -51,5 +55,5 @@ echo Press Ctrl+C to exit QEMU
 echo.
 
 REM Boot with QEMU using multiboot2
-%QEMU% -kernel %KERNEL_PATH% -m %MEMORY% -serial stdio -no-reboot -no-shutdown -d guest_errors -monitor stdio
+%QEMU% -kernel %KERNEL_PATH% -m %MEMORY% -serial stdio -display none -no-reboot -no-shutdown -d guest_errors -monitor stdio
 

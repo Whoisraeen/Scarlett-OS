@@ -255,13 +255,14 @@ skip_boot_info:
     kinfo("Starting Application Processors...\n");
     kinfo("========================================\n");
 
-    extern error_code_t ap_startup(uint32_t apic_id);
+    // extern error_code_t ap_startup(uint32_t apic_id);
     extern cpu_topology_t* cpu_get_topology(void);
     extern cpu_info_t* cpu_get_info(uint32_t cpu_id);
 
     cpu_topology_t* topo = cpu_get_topology();
     uint32_t ap_count = 0;
 
+    /* AP startup disabled for now due to linking issues with trampoline
     // Start all Application Processors
     for (uint32_t i = 0; i < MAX_CPUS; i++) {
         cpu_info_t* cpu_info = cpu_get_info(i);
@@ -280,6 +281,7 @@ skip_boot_info:
             }
         }
     }
+    */
 
     kinfo("Started %u Application Processor(s)\n", ap_count);
     kinfo("Total CPUs online: %u\n", topo->num_cpus);

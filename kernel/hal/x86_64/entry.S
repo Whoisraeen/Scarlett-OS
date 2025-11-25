@@ -15,16 +15,17 @@ _start:
     # Can be called from Limine (64-bit) or Multiboot2 (via our transition code)
     # RDI contains boot_info pointer (or NULL from Limine)
 
+    # Early serial output - write 'K' to indicate kernel entry
+    # Assuming bootloader initialized serial port
+    mov $0x3F8, %dx
+    mov $'K', %al
+    out %al, %dx
+
     # Disable interrupts (just to be safe)
     cli
 
     # Save boot_info pointer (RDI) to R15 (callee-saved register)
     mov %rdi, %r15
-
-    # Early serial output - write 'K' to indicate kernel entry
-    mov $0x3F8, %dx          # COM1 base
-    mov $'K', %al
-    out %al, %dx
 
     # Set up kernel stack (use RIP-relative addressing)
     lea stack_top(%rip), %rsp

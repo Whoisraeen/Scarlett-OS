@@ -278,7 +278,7 @@ error_code_t crypto_rsa_generate_keypair(crypto_asym_type_t type, uint8_t* publi
         kerror("RSA: Failed to generate private exponent (gcd(e, phi) != 1)\n");
         bn_free(p); bn_free(q); bn_free(n); bn_free(e); bn_free(d);
         bn_free(phi); bn_free(p_minus_1); bn_free(q_minus_1); bn_free(one);
-        return ERR_INTERNAL;
+        return ERR_FAILED;
     }
     
     // Export keys
@@ -536,7 +536,7 @@ error_code_t crypto_ecc_sign(const uint8_t* private_key, size_t private_key_len,
     }
     
     if (retries <= 0) {
-        err = ERR_INTERNAL;
+        err = ERR_FAILED;
     } else {
         bn_to_bytes(r, signature, key_size);
         bn_to_bytes(s, signature + key_size, key_size);

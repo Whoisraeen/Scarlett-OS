@@ -8,6 +8,7 @@
 
 #include "../types.h"
 #include "../errors.h"
+#include "network.h"
 
 // ARP operation codes
 #define ARP_OP_REQUEST 1
@@ -44,7 +45,7 @@ typedef struct {
 error_code_t arp_init(void);
 error_code_t arp_request(uint32_t ip_address);
 error_code_t arp_resolve(uint32_t ip_address, uint8_t* mac_address);
-error_code_t arp_handle_packet(void* buffer, size_t len);
+error_code_t arp_handle_packet(net_device_t* device, void* buffer, size_t len);
 void arp_update_cache(uint32_t ip_address, uint8_t* mac_address);
 
 #endif // KERNEL_NET_ARP_H

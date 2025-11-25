@@ -11,6 +11,7 @@
 #include "../include/string.h"
 #include "../include/mm/heap.h"
 #include "../include/errors.h"
+#include "../include/process.h"
 
 // Forward declaration for persistence functions
 extern error_code_t user_save_to_disk(void);
@@ -19,13 +20,13 @@ extern error_code_t group_save_to_disk(void);
 extern error_code_t group_load_from_disk(void);
 extern error_code_t create_home_directory(const char* username, uid_t uid, gid_t gid);
 
-// User and group databases
-static user_t users[MAX_USERS];
-static group_t groups[MAX_GROUPS];
-static uint32_t user_count = 0;
-static uint32_t group_count = 0;
-static uid_t next_uid = 1000;  // Start UIDs at 1000 (0 is root)
-static gid_t next_gid = 1000;  // Start GIDs at 1000 (0 is root)
+// User and group databases (non-static for user_persistence.c access)
+user_t users[MAX_USERS];
+group_t groups[MAX_GROUPS];
+uint32_t user_count = 0;
+uint32_t group_count = 0;
+uid_t next_uid = 1000;  // Start UIDs at 1000 (0 is root)
+gid_t next_gid = 1000;  // Start GIDs at 1000 (0 is root)
 
 // Current user/group - Now stored in process_t, globals removed
 

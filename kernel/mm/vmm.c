@@ -20,7 +20,7 @@ static address_space_t kernel_address_space;
 static uint64_t next_asid = 1;
 
 // Track whether PHYS_MAP_BASE is set up
-static bool phys_map_ready = false;
+bool phys_map_ready = false;  // Non-static for mmap.c access
 
 // Track the maximum physical address that's mapped to PHYS_MAP_BASE
 static paddr_t phys_map_max_addr = 0;

@@ -36,16 +36,15 @@ ifeq ($(ARCH),x86_64)
     LINKER_SCRIPT = kernel.ld
     
     # x86_64 specific sources
-    ARCH_ASM_SRCS = hal/x86_64/multiboot2.S \
-                    hal/x86_64/entry.S \
+    ARCH_ASM_SRCS = hal/x86_64/entry.S \
                     hal/x86_64/gdt_load.S \
                     hal/x86_64/idt_load.S \
                     hal/x86_64/exceptions.S \
                     hal/x86_64/user_mode.S \
                     hal/x86_64/interrupt_stubs.S \
-                    hal/x86_64/ap_startup.S \
                     hal/x86_64/context_switch.S \
-                    hal/x86_64/syscall_entry.S
+                    hal/x86_64/syscall_entry.S \
+                    hal/x86_64/ap_startup.S
     
     ARCH_C_SRCS = hal/x86_64/hal_impl.c \
                   hal/x86_64/serial.c \
@@ -56,8 +55,7 @@ ifeq ($(ARCH),x86_64)
                   hal/x86_64/interrupts.c \
                   hal/x86_64/apic.c \
                   hal/x86_64/cpu.c \
-                  hal/x86_64/irq_handler.c \
-                  hal/x86_64/ap_startup.c
+                  hal/x86_64/irq_handler.c
     
     # x86_64 Rust target
     RUST_TARGET = x86_64-unknown-none
@@ -174,6 +172,9 @@ COMMON_C_SRCS = core/main.c \
                 core/math.c \
                 core/stdio.c \
                 core/multiboot2_parser.c \
+                core/compiler_builtins.c \
+                core/stubs.c \
+                time.c \
                 hal/hal_common.c \
                 hal/hal_wrapper.c \
                 hal/arch_detect.c \
@@ -213,7 +214,6 @@ COMMON_C_SRCS = core/main.c \
                 fs/permissions.c \
                 fs/acl.c \
                 drivers/ata/ata.c \
-                # TEMP DISABLED: drivers/ahci/ahci.c \
                 drivers/pci/pci.c \
                 drivers/ethernet/ethernet.c \
                 auth/user.c \
@@ -224,6 +224,8 @@ COMMON_C_SRCS = core/main.c \
                 crypto/crypto.c \
                 crypto/sha256.c \
                 crypto/sha512.c \
+                crypto/aes128.c \
+                crypto/aes192.c \
                 crypto/aes256.c \
                 crypto/rng.c \
                 security/memory_protection.c \

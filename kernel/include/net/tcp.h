@@ -33,7 +33,7 @@ typedef enum {
 } tcp_state_t;
 
 // TCP connection structure
-typedef struct {
+typedef struct tcp_connection {
     uint32_t local_ip;
     uint32_t remote_ip;
     uint16_t local_port;

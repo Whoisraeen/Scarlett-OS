@@ -56,28 +56,47 @@ static void serial_wait_transmit(void) {
 }
 
 /**
- * Initialize serial port
+ * Initialize serial port (C implementation replacing Rust)
  */
-/**
- * Initialize serial port
- */
-extern void rust_serial_init(void);
+void rust_serial_init(void) {
+    // Disable interrupts
+    outb(COM1_PORT + COM_IER_REG, 0x00);
+
+    // Enable DLAB (set baud rate divisor)
+    outb(COM1_PORT + COM_LCR_REG, 0x80);
+
+    // Set divisor to 3 (38400 baud)
+    outb(COM1_PORT + COM_DATA_REG, 0x03);
+    outb(COM1_PORT + COM_IER_REG, 0x00);
+
+    // 8 bits, no parity, one stop bit
+    outb(COM1_PORT + COM_LCR_REG, 0x03);
+
+    // Enable FIFO, clear them, with 14-byte threshold
+    outb(COM1_PORT + COM_IIR_REG, 0xC7);
+
+    // IRQs enabled, RTS/DSR set
+    outb(COM1_PORT + COM_MCR_REG, 0x0B);
+}
 
 void serial_init(void) {
     rust_serial_init();
 }
 
 /**
- * Write a character to serial port
+ * Write a character to serial port (C implementation replacing Rust)
  */
-extern void rust_serial_write(uint8_t c);
+void rust_serial_write(uint8_t c) {
+    serial_wait_transmit();
+    outb(COM1_PORT + COM_DATA_REG, c);
+}
 
 void serial_putc(char c) {
     // Convert \n to \r\n for proper terminal display
     if (c == '\n') {
         rust_serial_write('\r');
     }
-    
+
     rust_serial_write((uint8_t)c);
 }
 
